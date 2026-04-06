@@ -23,7 +23,6 @@ DIRS=(
   "mcp-servers/fs-manager"
   "mcp-servers/db-vector"
   "mcp-servers/git-sync"
-  "mcp-servers/user-context"
   "infrastructure"
   "schemas"
   "world-engine"

@@ -25,7 +25,6 @@ install: env
     pip install -q -r mcp-servers/fs-manager/requirements.txt
     pip install -q -r mcp-servers/db-vector/requirements.txt
     pip install -q -r mcp-servers/git-sync/requirements.txt
-    pip install -q -r mcp-servers/user-context/requirements.txt
 
 # ─── Cloud Environment ────────────────────────────────────────────────────────
 
@@ -76,10 +75,6 @@ db-vector:
 # Start the git-sync MCP server on :8012 (verbose dev mode)
 git-sync:
     python3 mcp-servers/git-sync/server.py --port 8012 --dev
-
-# Start the user-context MCP server on :8013 (verbose dev mode)
-user-context:
-    python3 mcp-servers/user-context/server.py --port 8013 --dev
 
 # ─── Build & Type Checks ──────────────────────────────────────────────────────
 
