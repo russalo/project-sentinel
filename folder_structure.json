@@ -89,9 +89,14 @@
         "dm.py": "DM_SYSTEM_PROMPT — ported verbatim from backend/api/dm_ai.py during migration."
       },
       "agents": {
-        "description": "Agent entry points. Streaming is a plain generator protocol so Django and a future FastAPI adapter can consume the same stream_turn() generator.",
-        "dm.py": "DM agent — run_turn() and stream_turn(). Stub; raises NotImplementedError.",
-        "fact_extractor.py": "Bridges raw DM narrative to a schema-valid apply_world_update payload. Stub; blocked on source-of-truth decision in docs/BACKLOG.md."
+        "description": "Agent entry points. Streaming is a plain generator protocol so the backend SSE view can consume the same stream_turn() generator without the engine leaking framework concepts.",
+        "dm.py": "DM agent — run_turn() and stream_turn(). Builds messages from a WorldContext, calls the OpenAI client, yields narrative tokens.",
+        "fact_extractor.py": "Bridges raw DM narrative to a schema-valid apply_world_update payload. Pure function: text + session context → validated payload (or None when the DM emitted nothing to commit)."
+      },
+      "dispatch": {
+        "description": "MCP Bridge HTTP clients. Each submodule wraps one MCP server. Agents do not import dispatch modules directly; the caller (backend) orchestrates the agents → dispatch pipeline.",
+        "__init__.py": "Re-exports common entry points (DispatchResult, apply_world_update).",
+        "fs_manager.py": "Synchronous HTTP client for fs-manager's /tools/apply_world_update endpoint. Uses httpx with optional client injection for test mocking via MockTransport."
       },
       "requirements.txt": "Python dependencies (jsonschema, openai).",
       "README.md": "Package overview and the four boundary rules enforced by tests/engine/test_boundaries.py."

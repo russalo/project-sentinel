@@ -33,6 +33,7 @@ DIRS=(
   "backend/sentinel"
   "engine"
   "engine/agents"
+  "engine/dispatch"
   "engine/prompts"
   "lib/db"
   "docs"
@@ -56,6 +57,8 @@ FILES=(
   "engine/types.py"
   "engine/schema.py"
   "engine/requirements.txt"
+  "engine/dispatch/__init__.py"
+  "engine/dispatch/fs_manager.py"
   "docs/adr/README.md"
   "docs/adr/0001-data-canonical-source-of-truth.md"
 )

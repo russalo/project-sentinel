@@ -14,14 +14,22 @@ from typing import Any
 class Config:
     """Runtime configuration. Callers build this and pass it to engine entry points.
 
-    The engine package does not read `os.environ` — callers (e.g. the Django
-    adapter in backend/) assemble this from their own settings and hand it in.
+    The engine package does not read `os.environ` — callers (e.g. the
+    backend adapter) assemble this from their own settings and hand it in.
+
+    MCP Bridge URLs default to the local dev layout used by `just start`
+    (fs-manager on :8010, db-vector on :8011, git-sync on :8012). Production
+    or Tailscale-mesh deployments override these.
     """
 
     openai_api_key: str
     openai_base_url: str | None = None
     dm_model: str = "gpt-4o-mini"
     max_completion_tokens: int = 2000
+
+    fs_manager_url: str = "http://127.0.0.1:8010"
+    db_vector_url: str = "http://127.0.0.1:8011"
+    git_sync_url: str = "http://127.0.0.1:8012"
 
 
 @dataclass

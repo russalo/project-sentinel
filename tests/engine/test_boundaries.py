@@ -58,6 +58,8 @@ def test_engine_package_has_expected_surface():
         "agents/__init__.py",
         "agents/dm.py",
         "agents/fact_extractor.py",
+        "dispatch/__init__.py",
+        "dispatch/fs_manager.py",
     }
     actual = {
         str(p.relative_to(ENGINE_ROOT)).replace("\\", "/")
