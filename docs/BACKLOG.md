@@ -68,7 +68,7 @@ for v1.0 and should not be worked in parallel with Phase 1.
       _Discovered: 2026-04-13 | Context: ADR 0001 mentions this as "later" — not a Phase 1 concern, but the natural next step after the core engine loop is running_
 
 - [ ] **Background simulation / world progression.** The "world keeps evolving while you sleep" piece from the README tagline. Cron-driven agent runs that mutate `data/` via the same engine → fs-manager path as player turns. Needs a locking story so simulation writes don't collide with player turns (file-level lock via fs-manager, or sequencing via a queue). Not Phase 1.
-      _Discovered: 2026-04-13 | Context: referenced in ARCHITECTURE.md §7 (orchestrator/simulation); currently not scaffolded; Phase 2+_
+      _Discovered: 2026-04-13 | Context: referenced in ARCHITECTURE.md §7 (orchestrator/simulation); currently not scaffolded; Phase 2 or later_
 
 ---
 

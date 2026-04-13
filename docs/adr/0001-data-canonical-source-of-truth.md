@@ -301,7 +301,7 @@ truth for Project Sentinel. All world-state writes must pass through the
 engine → `fs-manager` → `git-sync` path. The Inference Node never gets
 direct filesystem or database access.**
 
-Adopting this in a single megalithic rewrite is unsafe and unnecessary.
+Adopting this in a single monolithic rewrite is unsafe and unnecessary.
 The decision is implemented in two phases:
 
 ### Phase 1 — canonical by path, Postgres demoted to read cache
@@ -321,6 +321,14 @@ The immediate scope:
    necessary. In practice for v1.0, reading JSON files directly is
    expected to be fast enough that the Postgres cache layer is not worth
    maintaining, and Phase 1 will likely ship without actively using it.
+   If the cache turns out to be retained *and* a future world grows large
+   enough that full-rebuild-on-startup becomes a noticeable delay, the
+   upgrade path is incremental sync — a filesystem watcher, a change-log
+   append, or a hash comparison between the Postgres state and the
+   `data/` tree — rather than continuing to rebuild from scratch. That
+   upgrade is not designed in this ADR because the expected outcome is
+   Phase 2 (removing Postgres entirely) lands before it becomes
+   necessary.
 4. Django, `backend/api/dm_ai.py`, `backend/api/models.py`, and
    `backend/api/views.py` are replaced by the new FastAPI layer. The Django
    codebase is removed from the repo in the same PR that lands its
@@ -581,10 +589,10 @@ implies the work that has to happen to honor it. The concrete follow-ups:
 
 4. **Django backend.** `backend/sentinel/`, `backend/api/`, and
    `backend/manage.py` are removed in the same PR that lands the FastAPI
-   replacement. `backend/requirements.txt` is replaced with
-   `backend/requirements.txt` for the FastAPI stack (or renamed).
-   `scripts/check-structure.sh` and `folder_structure.json` updated
-   accordingly.
+   replacement. The contents of `backend/requirements.txt` are rewritten
+   to list the FastAPI stack instead of the Django stack (same filename,
+   different dependencies). `scripts/check-structure.sh` and
+   `folder_structure.json` updated accordingly.
 
 5. **Express dev reference + Drizzle.** `artifacts/api-server/` and
    `lib/db/` are removed. These have been double-dead-code since PR #7
