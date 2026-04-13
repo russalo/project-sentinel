@@ -19,7 +19,7 @@ default:
 env:
     chezmoi apply --source .chezmoi --destination . --force
 
-# Install all dependencies: Node packages (pnpm) + Python MCP servers + Django backend + engine + tests
+# Install all dependencies: Node packages (pnpm) + Python MCP servers + FastAPI backend + engine + tests
 install: env
     pnpm install --frozen-lockfile
     pip install -q -r mcp-servers/fs-manager/requirements.txt
@@ -89,31 +89,23 @@ build:
 typecheck:
     pnpm typecheck
 
-# ─── Local Dev (Reference Artifacts) ─────────────────────────────────────────
+# ─── Local Dev ────────────────────────────────────────────────────────────────
 
 # Start the Sentinel UI frontend dev server (apps/sentinel-ui)
 dev-frontend:
     pnpm --filter @sentinel/ui run dev
 
-# Start the Express backend dev server (api-server artifact — dev reference only)
+# Start the FastAPI backend on :8001 (per ADR 0001 Phase 1)
 dev-backend:
-    pnpm --filter @workspace/api-server run dev
+    uvicorn backend.main:app --host 127.0.0.1 --port 8001 --reload
 
-# Start the Django backend on :8001 (production backend)
-dev-django:
-    cd backend && python manage.py runserver 8001
-
-# Apply Django database migrations (no-op when models are managed=False)
-migrate:
-    cd backend && python manage.py migrate
-
-# Install Django backend dependencies
-install-django:
+# Install backend Python dependencies (FastAPI stack)
+install-backend:
     pip install -r backend/requirements.txt
 
-# Start both frontend and Django backend
+# Start both frontend and backend together
 dev:
-    just dev-django & just dev-frontend
+    just dev-backend & just dev-frontend
 
 # ─── Tests ────────────────────────────────────────────────────────────────────
 
