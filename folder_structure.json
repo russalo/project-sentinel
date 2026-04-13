@@ -132,17 +132,23 @@
       }
     },
     "backend": {
-      "description": "Django production backend. Serves the Sentinel API on :8001. Shares the PostgreSQL schema with the Drizzle reference implementation via managed=False models.",
-      "sentinel": "Django project package — settings, root URL conf, and WSGI entry point.",
-      "api": {
-        "description": "Django app — all API endpoints including the SSE streaming DM turn endpoint.",
-        "models.py": "ORM models (managed=False) — reads existing PostgreSQL tables created by infrastructure/migrations/.",
-        "views.py": "All 10 endpoints: session management, entity reads, and POST /api/stream (StreamingHttpResponse SSE).",
-        "dm_ai.py": "DM AI logic — world context builder, message builder, world update parser/applier, turn persistence.",
-        "urls.py": "URL routing."
+      "description": "FastAPI production backend. Serves the Sentinel API on :8001 per ADR 0001 Phase 1. Reads state directly from data/state/*.json, dispatches writes through the engine → fs-manager → git-sync pipeline. No ORM, no Django.",
+      "main.py": "FastAPI application factory and uvicorn entry point. Mounts route modules and CORS middleware.",
+      "config.py": "Settings dataclass loaded from infrastructure/.env via python-dotenv. Replaces Django's settings.py.",
+      "schemas.py": "Pydantic request/response models mirroring the frontend contract (camelCase aliasing).",
+      "engine_bridge.py": "Adapter that constructs engine.Config from backend.Settings. The one place the backend imports engine.",
+      "routes": {
+        "description": "FastAPI route modules — one per endpoint family.",
+        "health.py": "GET /healthz liveness probe.",
+        "session.py": "POST /api/session/new — creates a session and runs the engine intro through the Fact-Extractor → fs-manager pipeline.",
+        "stream.py": "POST /api/stream — SSE streaming DM turn. Yields token events live, dispatches Fact-Extractor output after the stream closes."
       },
-      "manage.py": "Django management CLI entry point.",
-      "requirements.txt": "Python dependencies (django, psycopg2-binary, openai, django-cors-headers)."
+      "state": {
+        "description": "Read-side and session-metadata helpers over data/state/*.json. Every write goes through engine.apply_world_update (fs-manager); reads are direct JSON loads.",
+        "world_context.py": "load_world_context(data_dir, session_id, recent_turns) → engine.WorldContext assembled from on-disk state files.",
+        "sessions.py": "Session dataclass, read_session() for on-disk loading, write_session() for engine-dispatched writes."
+      },
+      "requirements.txt": "Python dependencies (fastapi, uvicorn, pydantic, python-dotenv, httpx) plus engine deps (jsonschema, openai)."
     },
     "lib": {
       "description": "Shared TypeScript libraries consumed across workspace packages.",
