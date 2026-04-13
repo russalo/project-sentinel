@@ -151,7 +151,12 @@
     },
     "docs": {
       "description": "Project documentation and working reference files.",
-      "BACKLOG.md": "Single source of truth for discovered, deferred, and in-progress work items. Maintained by agents and contributors."
+      "BACKLOG.md": "Single source of truth for discovered, deferred, and in-progress work items. Maintained by agents and contributors.",
+      "adr": {
+        "description": "Architecture Decision Records — append-only log of cross-cutting decisions, their context, alternatives, and consequences. See docs/adr/README.md for when and how to write one.",
+        "README.md": "ADR convention, format, and index.",
+        "0001-data-canonical-source-of-truth.md": "Decision: data/state/*.json + data/lore/*.md + git is canonical; Django/Postgres retire in a phased rollout; the engine → fs-manager → git-sync path becomes the real schema gate."
+      }
     },
     ".github": {
       "ISSUE_TEMPLATE": {

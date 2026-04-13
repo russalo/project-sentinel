@@ -1,5 +1,20 @@
 # Project Sentinel — Architecture Reference
 
+> **Status — 2026-04-13:** this document describes the target
+> architecture, which currently diverges from running code in one
+> important way. The code today (`backend/api/dm_ai.py`) writes directly
+> to Postgres via Django ORM and does not route per-turn writes through
+> `fs-manager`. Per **[ADR 0001](docs/adr/0001-data-canonical-source-of-truth.md)**,
+> this divergence is being closed by rewriting the code — not the docs.
+> The per-turn write path (§7 Full Update Pipeline) and the Node Roles
+> table (§5) reflect the intended architecture and the direction the
+> code is moving toward. Sections 1–4 (Core vs. Community, namespace
+> separation, override hierarchy, protected fields) are accurate today
+> because the new `engine/` package and `fs-manager` both honor them
+> already. This document will be rewritten against running code once
+> ADR 0001 Phase 1 ships; until then, when code and docs disagree,
+> prefer ADR 0001's framing.
+
 ## The Core vs. Community Framework
 
 Sentinel is designed to ingest community content without ever risking corruption of the primary world state. This document defines the exact rules that govern how Core and Community content coexist.

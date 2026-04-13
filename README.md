@@ -28,6 +28,8 @@ This is **Prompt-Driven Development** at the infrastructure level: the narrative
 
 ## Architecture Skeleton
 
+> **Direction note:** this section describes the current codebase layout. The per-turn write path and the backend framework are being reworked per **[ADR 0001 — `data/` is the canonical source of truth](docs/adr/0001-data-canonical-source-of-truth.md)**. The direction is: `data/state/*.json` + `data/lore/*.md` + git is canonical, all writes route through `engine/` → `fs-manager` → `git-sync`, and the Django backend is being replaced by a FastAPI backend that reads from `data/` directly. Postgres is retained as a read cache in Phase 1 and retired in Phase 2. Do not treat the Django + Postgres references below as the target architecture — they are the starting point the rewrite is moving away from.
+
 Sentinel operates on a strict separation of concerns to enable seamless remote play via a Tailscale mesh network.
 
 1. **Inference Node** (`/engine`): A pure-Python package that will house the DM, Fact-Extractor, and Lorekeeper agents. It evaluates user input, queries the world state, and outputs rich narrative alongside machine-readable `<world_update>` tags. Currently scaffolding only — see `engine/README.md`. The legacy `/world-engine` directory (prompt YAML stubs from the Replit era) is retained pending removal; do not add code to it.

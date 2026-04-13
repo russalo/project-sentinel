@@ -36,6 +36,7 @@ DIRS=(
   "engine/prompts"
   "lib/db"
   "docs"
+  "docs/adr"
   ".chezmoi"
 )
 
@@ -55,6 +56,8 @@ FILES=(
   "engine/types.py"
   "engine/schema.py"
   "engine/requirements.txt"
+  "docs/adr/README.md"
+  "docs/adr/0001-data-canonical-source-of-truth.md"
 )
 
 MISSING=()
