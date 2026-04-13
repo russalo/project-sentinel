@@ -17,9 +17,16 @@ from typing import Any, Iterable
 import pytest
 
 from engine.agents import dm as dm_agent
-from engine.agents.dm import _build_messages, _strip_world_update, run_turn, stream_turn
+from engine.agents.dm import (
+    _build_intro_messages,
+    _build_messages,
+    _strip_world_update,
+    generate_intro,
+    run_turn,
+    stream_turn,
+)
 from engine.prompts.dm import DM_SYSTEM_PROMPT
-from engine.types import Config, DMTurnInput, DMTurnResult, WorldContext
+from engine.types import Config, DMTurnInput, DMTurnResult, IntroInput, WorldContext
 
 
 # ── fake OpenAI client plumbing ─────────────────────────────────────
@@ -348,6 +355,118 @@ def test_stream_turn_builds_default_client_when_none_passed(monkeypatch):
 
     tokens = list(stream_turn(_make_config(), _make_turn_input()))
     assert tokens == ["one", "two"]
+
+
+# ── generate_intro ──────────────────────────────────────────────────
+
+
+def _make_intro_input(world_seed: str | None = None) -> IntroInput:
+    return IntroInput(
+        world_name="The Shattered Expanse",
+        player_name="Kael",
+        player_class="Wanderer",
+        world_seed=world_seed,
+    )
+
+
+def test_build_intro_messages_uses_system_prompt_and_intro_user_message():
+    messages = _build_intro_messages(_make_intro_input())
+    assert len(messages) == 2
+    assert messages[0]["role"] == "system"
+    assert messages[0]["content"] == DM_SYSTEM_PROMPT
+    assert messages[1]["role"] == "user"
+    user = messages[1]["content"]
+    assert "The Shattered Expanse" in user
+    assert "Kael" in user
+    assert "Wanderer" in user
+    assert "Begin a new RPG session" in user
+    assert "introduce at least 2 NPCs" in user
+
+
+def test_build_intro_messages_falls_back_to_default_seed_when_none():
+    messages = _build_intro_messages(_make_intro_input(world_seed=None))
+    user = messages[1]["content"]
+    assert "classic dark fantasy" in user.lower()
+
+
+def test_build_intro_messages_uses_provided_seed_when_given():
+    messages = _build_intro_messages(_make_intro_input(world_seed="A sunlit desert kingdom"))
+    user = messages[1]["content"]
+    assert "sunlit desert kingdom" in user
+    assert "classic dark fantasy" not in user.lower()
+
+
+def test_generate_intro_returns_dm_turn_result_with_stripped_narrative():
+    client = _FakeOpenAI()
+    client.chat.completions.set_blocking_response(
+        "The Shattered Expanse greets you under a sky of iron clouds.\n"
+        "<world_update>\n"
+        '{"world": {"currentLocation": "Trog Tavern", "tension": 3}}\n'
+        "</world_update>"
+    )
+
+    result = generate_intro(_make_config(), _make_intro_input(), client=client)
+
+    assert isinstance(result, DMTurnResult)
+    assert "Shattered Expanse" in result.narrative
+    assert "<world_update>" not in result.narrative
+    assert "<world_update>" in result.raw_response
+    assert result.world_update_payload is None
+
+
+def test_generate_intro_passes_config_model_and_token_limit():
+    client = _FakeOpenAI()
+    client.chat.completions.set_blocking_response("Intro.")
+
+    generate_intro(_make_config(), _make_intro_input(), client=client)
+
+    assert len(client.chat.completions.calls) == 1
+    call = client.chat.completions.calls[0]
+    assert call["model"] == "test-model"
+    assert call["max_completion_tokens"] == 1234
+    assert call.get("stream") in (None, False)
+
+
+def test_generate_intro_builds_default_client_when_none_passed(monkeypatch):
+    fake = _FakeOpenAI()
+    fake.chat.completions.set_blocking_response("Dawn over the wastes.")
+
+    def fake_build_client(config: Config) -> Any:
+        return fake
+
+    monkeypatch.setattr(dm_agent, "build_client", fake_build_client)
+    result = generate_intro(_make_config(), _make_intro_input())
+    assert result.narrative == "Dawn over the wastes."
+
+
+def test_generate_intro_result_round_trips_through_fact_extractor():
+    """End-to-end sanity: an intro response's raw_response carries a
+    <world_update> block that the Fact-Extractor can parse into a
+    schema-valid payload — same pipeline the FastAPI backend will use
+    on POST /api/session/new."""
+    from engine.agents.fact_extractor import extract
+
+    client = _FakeOpenAI()
+    client.chat.completions.set_blocking_response(
+        "The tavern hushes as you enter — weary travelers, a watchful barkeep.\n"
+        "<world_update>\n"
+        '{"world": {"currentLocation": "Trog Tavern", "tension": 2},'
+        ' "characters": [{"name": "Old Maren", "action": "upsert", "role": "npc", "status": "alive"}],'
+        ' "locations": [{"name": "Trog Tavern", "action": "upsert", "type": "tavern"}]}\n'
+        "</world_update>"
+    )
+
+    result = generate_intro(_make_config(), _make_intro_input(), client=client)
+    extracted = extract(
+        result.raw_response,
+        "123e4567-e89b-12d3-a456-426614174000",
+        turn_number=0,
+    )
+    assert extracted.payload is not None
+    targets = {u["target_file"] for u in extracted.payload["updates"]}
+    assert "data/state/core/world/state.json" in targets
+    assert "data/state/core/entities/old_maren.json" in targets
+    assert "data/state/core/locations/trog_tavern.json" in targets
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -46,11 +46,11 @@ implementable.
 These items depend on Phase 1 being stable. They are not prerequisites
 for v1.0 and should not be worked in parallel with Phase 1.
 
-- [ ] **Drop Postgres entirely from the Docker stack.** ADR 0001 Phase 2. Remove `sentinel-postgres` from `infrastructure/docker-compose.yml`, delete `infrastructure/migrations/*.sql`, remove psycopg2 and database URL wiring from any remaining code, update `just` recipes and health checks. Only do this once Phase 1 has proven that the Postgres cache layer is never load-bearing — in practice, that probably means Phase 1 ships reading directly from `data/` and Postgres is quietly never used.
-      _Discovered: 2026-04-13 | Context: ADR 0001 Phase 2; explicitly deferred until Phase 1 is stable_
+- [ ] **Drop Postgres entirely from the Docker stack.** ADR 0001 Phase 2. Remove `sentinel-postgres` from `infrastructure/docker-compose.yml`, delete `infrastructure/migrations/*.sql`, remove any remaining psycopg2 references and DATABASE_URL wiring, update `just` recipes and health checks accordingly. Phase 1 already ships without any Postgres consumer — `backend/` reads from `data/` directly and never queries the database — so Phase 2 is purely cleanup.
+      _Discovered: 2026-04-13 | Context: ADR 0001 Phase 2; Phase 1 now confirms the cache layer was never built, so Phase 2 is uncontested — just needs scheduling_
 
-- [ ] **Rewrite `README.md` and `ARCHITECTURE.md` Core Loop narratives to match running code.** Once Phase 1 lands and `data/` is actually canonical in the code, the documents can be rewritten from "describes the target architecture" to "describes the running system." Until then they carry forward-pointing callouts to ADR 0001. This is the good kind of documentation debt: deferred intentionally because writing it now would be writing aspiration, and writing it after the code lands will be writing reality.
-      _Discovered: 2026-04-13 | Context: ADR 0001 implementation implications; explicitly not done in the ADR PR_
+- [ ] **Rewrite `README.md` and `ARCHITECTURE.md` Core Loop narratives to match running code.** The forward-pointing callouts added in PR #10 (ADR 0001) were placeholders until the code caught up. Phase 1 has now shipped; the callouts can be replaced with accurate descriptions of the running system. `ARCHITECTURE.md` §7 (Full Update Pipeline) should describe the engine → fs-manager → git-sync path as the actual per-turn flow, and the Node Roles table (§5) should describe the FastAPI backend and retired Django.
+      _Discovered: 2026-04-13 | Context: ADR 0001 said "rewrite after Phase 1 ships"; Phase 1 has now shipped_
 
 - [ ] **Revisit the `db-vector` MCP server's role.** Currently designed as "route structured queries to Postgres, semantic queries to ChromaDB." Under ADR 0001 Phase 2, Postgres goes away, so `db-vector` becomes either a ChromaDB-only wrapper or a unified read layer over `data/` + ChromaDB. Decide what it is during Phase 2.
       _Discovered: 2026-04-13 | Context: ADR 0001 Consequences § Neutral — flagged as requiring a design decision during Phase 2_
@@ -65,18 +65,15 @@ for v1.0 and should not be worked in parallel with Phase 1.
 
 ## Architecture & Structure
 
-- [ ] **Auth strategy decision (future):** three clear paths — (1) simple API key middleware for single-player public deployment, (2) DRF TokenAuthentication + Django User model for multi-user, (3) outsourced JWT (Auth0/Clerk/Supabase) if password management is unwanted. SSE streaming endpoint has no conflict with any of these — auth middleware runs before the stream opens. Decision not needed for 1.0. **Note:** per ADR 0001, option (2) is no longer on the table — Django is retiring. The multi-user path would likely be FastAPI middleware + a JWT library or an outsourced identity provider.
-      _Discovered: 2026-03-27 | Updated: 2026-04-13 | Context: originally discussed during Django backend planning; updated after ADR 0001 retired Django as an option_
-
-- [ ] **DRF adoption decision (future):** ~~not needed for 1.0~~ **No longer applicable.** ADR 0001 retires Django, which makes Django REST Framework moot. Any equivalent question under FastAPI (e.g. "at what point do we switch from raw route handlers to Pydantic models everywhere?") would be a separate discussion.
-      _Discovered: 2026-03-27 | Updated: 2026-04-13 | Context: superseded by ADR 0001_
+- [ ] **Auth strategy decision (future):** two clear paths remaining — (1) simple API key middleware for single-player public deployment, (2) outsourced JWT (Auth0/Clerk/Supabase) if password management is unwanted. SSE streaming endpoint has no conflict with either — auth middleware runs before the stream opens. Decision not needed for 1.0. The Django User model path is no longer on the table now that Django has retired.
+      _Discovered: 2026-03-27 | Updated: 2026-04-13 | Context: originally Django-era planning; trimmed to viable FastAPI-era options only_
 
 ---
 
 ## Documentation Drift
 
-- [ ] **`docs/WORKSPACE.md` is stale from before the Django backend and the engine package.** Lists "API framework: Express 5" as if Django doesn't exist; the Stack table has no row for `backend/`; the directory tree has no `backend/` or `engine/`; the AI Architecture section only describes `artifacts/api-server/src/lib/dm-ai.ts`. **Note:** after ADR 0001 lands, this document will be even more wrong — it should be rewritten against the FastAPI backend + `data/` canonical model, not against the current Django code. Defer until Phase 1 ships, then write it once against reality.
-      _Discovered: 2026-04-13 | Updated: 2026-04-13 | Context: originally filed during the engine/ scaffold PR doc audit; now additionally gated on ADR 0001 Phase 1_
+- [ ] **`docs/WORKSPACE.md` is stale — rewrite against the current stack.** The document still lists "API framework: Express 5" and describes `artifacts/api-server/src/lib/dm-ai.ts` as the AI architecture — neither file nor framework exists any more. Rewrite against the current reality: FastAPI backend reading `data/state/*.json`, engine package as the Inference Node, the retired Django/Express/Drizzle history collapsed to a one-line "previously" note. Should happen together with the `README.md` / `ARCHITECTURE.md` rewrite tracked under Phase 2 above.
+      _Discovered: 2026-04-13 | Updated: 2026-04-13 | Context: Phase 1 has shipped; no longer gated, just scheduling_
 
 - [ ] **`CHANGELOG.md` `[Unreleased]` section is empty of ~6 months of work.** No entries for PR #7 (Django backend + SSE), PR #5 (frontend clean build), Replit migration, `just`/chezmoi tooling, PR #9 (Lane A housekeeping + engine scaffold), or anything since. Either catch it up in one pass from git history and resume maintenance, or add a note at the top that the changelog is currently unmaintained so contributors aren't misled.
       _Discovered: 2026-04-13 | Context: surveyed during the engine/ scaffold PR doc audit; pre-existing drift, not touched in that PR_

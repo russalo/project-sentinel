@@ -36,12 +36,15 @@ Everything in this package obeys four rules:
 
 ## Current status
 
-**End-to-end in-process, not yet wired to a backend.** Every piece of
-the per-turn pipeline is implemented and unit-tested in isolation:
-a caller can build a `DMTurnInput`, run it through `stream_turn` for
-tokens, accumulate the response, hand it to `fact_extractor.extract`,
-and dispatch the resulting payload to `fs-manager` — all without any
-production backend touching the engine yet.
+**Wired into the production backend.** The engine package is the
+Inference Node referenced in ADR 0001 Phase 1. Every per-turn
+HTTP request served by the FastAPI backend (`backend/main.py`)
+goes through this package: the backend calls `dm.stream_turn()`,
+accumulates tokens, hands the raw response to
+`fact_extractor.extract()`, and dispatches the resulting payload
+via `engine.apply_world_update()`. Session creation
+(`POST /api/session/new`) uses the same pipeline via
+`dm.generate_intro()`.
 
 Implemented:
 
@@ -102,9 +105,11 @@ if result.payload is not None:
 yield "data: [DONE]\n\n"
 ```
 
-Not yet wired: no caller uses `engine` in production. The Django
-backend (`backend/api/dm_ai.py`) still serves turns. That changes
-when the new FastAPI backend lands per ADR 0001 Phase 1.
+Wired in production: `backend/routes/session.py` and
+`backend/routes/stream.py` are the primary callers. Django has
+been retired. `backend/api/dm_ai.py` no longer exists. Every
+new turn the frontend triggers runs through this engine package
+and writes to `data/` via fs-manager.
 
 ## Install
 

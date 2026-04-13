@@ -129,11 +129,10 @@ Never push to `main` directly.
 - `just fs-manager` / `just db-vector` / `just git-sync` — run an individual MCP server in verbose dev mode on its port (8010 / 8011 / 8012)
 
 **Dev servers**
-- `just dev-django` — Django production backend on `:8001`
+- `just dev-backend` — FastAPI backend on `:8001` (`uvicorn backend.main:app --reload`)
 - `just dev-frontend` — `apps/sentinel-ui` Vite dev server
-- `just dev-backend` — Express reference backend (`artifacts/api-server/`, dev reference only — not production)
-- `just dev` — frontend + Django together
-- `just migrate` — Django `manage.py migrate` (no-op: models are `managed=False`)
+- `just dev` — frontend + backend together
+- `just install-backend` — reinstall backend Python deps alone (used internally by `just install`)
 
 **Build & typecheck**
 - `just build` — `pnpm build` across the workspace
@@ -154,7 +153,7 @@ Never push to `main` directly.
 
 ## Architecture at a Glance
 
-> **Read this first:** the source-of-truth decision has been recorded in **[ADR 0001](docs/adr/0001-data-canonical-source-of-truth.md)**. Canonical state lives in `data/state/*.json` + `data/lore/*.md` + git; all writes go through `engine/` → `fs-manager` → `git-sync`; Django and Postgres are retiring in phases. The description below still mentions Django as the production backend because the ADR's Phase 1 replacement (a FastAPI backend reading from `data/`) has not landed yet. Treat the Django references as "currently running code, being replaced" — not as the target.
+> **Read this first:** the source-of-truth decision is recorded in **[ADR 0001](docs/adr/0001-data-canonical-source-of-truth.md)**. Canonical state lives in `data/state/*.json` + `data/lore/*.md` + git; all writes go through `engine/` → `fs-manager` → `git-sync`. ADR 0001 Phase 1 has shipped: the production backend is **FastAPI** (`backend/main.py`, `backend/routes/*.py`) reading state directly from `data/` — Django has been retired. Postgres keeps running but nothing in the read or write path touches it; Phase 2 (removal) is tracked in `docs/BACKLOG.md`.
 
 Sentinel is a two-node agentic system with a strict filesystem firewall between them. Understanding this split is required before editing anything in `engine/`, `mcp-servers/`, or `schemas/`.
 
@@ -183,9 +182,7 @@ The two nodes communicate over a Tailscale mesh in production; locally they run 
 - `data/{lore,state}/community/<pack>/` — community packs, additive only
 - Protected fields (`unique_id`, `world_seed`, `namespace`, `created_at`, `canon`, `core_faction_id`) are immutable to community payloads — enforced via `x-sentinel-protected: true` in the JSON schemas. See `ARCHITECTURE.md` §4.
 
-**Two backends coexist on purpose**
-- `backend/` — **Django production backend on `:8001`**. SSE streaming DM turns via `StreamingHttpResponse`; LiteLLM via the standard `openai` client; PostgreSQL via the shared Drizzle schema exposed as `managed=False` Django models (migrations are no-ops).
-- `artifacts/api-server/` — Express 5 + Drizzle ORM. **Kept as a working dev reference, not dead code.** Do not delete without explicit direction.
+**Backend** — `backend/` is a FastAPI app on `:8001`. It serves three endpoints (`GET /healthz`, `POST /api/session/new`, `POST /api/stream`), reads state from `data/state/*.json` directly, calls `engine/` for turn handling, and dispatches writes through `engine.apply_world_update` → fs-manager. No ORM, no Django, no Postgres queries. The retired Django backend and Express dev reference lived at `backend/{sentinel,api}/` and `artifacts/api-server/` historically — both are gone as of ADR 0001 Phase 1.
 
 **Frontend** — `apps/sentinel-ui/` (`@sentinel/ui`), React 19 + Vite + Tailwind v4. Connects to Django via fetch-based SSE. Remember: the 1.0 frontend strategy is undecided — do not build new frontend features without explicit direction (see rules above).
 

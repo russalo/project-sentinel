@@ -9,12 +9,13 @@ See engine/README.md for the full boundary contract.
 
 from .dispatch import DispatchResult, apply_world_update
 from .schema import ValidationResult, validate
-from .types import Config, DMTurnInput, DMTurnResult, WorldContext
+from .types import Config, DMTurnInput, DMTurnResult, IntroInput, WorldContext
 
 __all__ = [
     "Config",
     "DMTurnInput",
     "DMTurnResult",
+    "IntroInput",
     "WorldContext",
     "ValidationResult",
     "validate",
