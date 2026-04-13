@@ -28,7 +28,7 @@ This is **Prompt-Driven Development** at the infrastructure level: the narrative
 
 ## Architecture Skeleton
 
-> **Direction note:** this section describes the current codebase layout. The per-turn write path and the backend framework are being reworked per **[ADR 0001 — `data/` is the canonical source of truth](docs/adr/0001-data-canonical-source-of-truth.md)**. The direction is: `data/state/*.json` + `data/lore/*.md` + git is canonical, all writes route through `engine/` → `fs-manager` → `git-sync`, and the Django backend is being replaced by a FastAPI backend that reads from `data/` directly. Postgres is retained as a read cache in Phase 1 and retired in Phase 2. Do not treat the Django + Postgres references below as the target architecture — they are the starting point the rewrite is moving away from.
+> **Note:** per **[ADR 0001](docs/adr/0001-data-canonical-source-of-truth.md)**, `data/state/*.json` + `data/lore/*.md` + git is now the canonical source of truth. All world-state writes route through `engine/` → `fs-manager` → `git-sync`. Phase 1 shipped: the Django backend has been replaced by a FastAPI backend (`backend/`) that reads from `data/` directly and calls the engine for turn handling. Postgres keeps running but is no longer in the read or write path; its removal is tracked as Phase 2 in `docs/BACKLOG.md`. The directory tree and prose below still describe the project shape accurately; a fuller rewrite is tracked in the BACKLOG.
 
 Sentinel operates on a strict separation of concerns to enable seamless remote play via a Tailscale mesh network.
 
@@ -65,11 +65,7 @@ project-sentinel/
 │   └── agents/*.yaml          # prompt stubs kept for reference only
 ├── apps/
 │   └── sentinel-ui/           # React 19 + Vite + Tailwind v4 frontend
-├── artifacts/
-│   └── api-server/            # Express 5 + Drizzle dev reference backend
-├── backend/                   # Django production backend (:8001)
-├── lib/
-│   └── db/                    # Shared Drizzle ORM schema + PostgreSQL client
+├── backend/                   # FastAPI production backend (:8001)
 ├── docs/
 │   └── BACKLOG.md             # Open work items
 ├── .github/
@@ -202,9 +198,9 @@ Exits 0 if all checks pass.
 
 A reference implementation of Project Sentinel is available in this repository:
 
-- **Frontend** — `apps/sentinel-ui/` (`@sentinel/ui`) — React 19 + Vite + Tailwind v4, diegetic design system, World Creation flow, DM Persona system. Connects to the Django backend via `fetch`-based SSE streaming.
-- **Production backend** — `backend/` — Django on `:8001`. SSE streaming DM turns via `StreamingHttpResponse`, PostgreSQL via shared schema (managed=False models), LiteLLM via the standard OpenAI client.
-- **Dev reference** — `artifacts/api-server/` — Express 5 + Drizzle ORM. Kept as a working reference implementation alongside the Django backend.
+- **Frontend** — `apps/sentinel-ui/` (`@sentinel/ui`) — React 19 + Vite + Tailwind v4, diegetic design system, World Creation flow, DM Persona system. Talks to the FastAPI backend via `fetch`-based SSE streaming.
+- **Backend** — `backend/` — FastAPI on `:8001`. Reads state directly from `data/state/*.json` per ADR 0001; calls the `engine/` package for DM turn handling and routes every write through `engine → fs-manager → git-sync`. No ORM, no Django, no Postgres in the read or write path.
+- **Inference engine** — `engine/` — pure-Python package housing the DM agent, Fact-Extractor, and HTTP dispatcher for the MCP Bridge. Framework-agnostic; boundary-enforced.
 
 ---
 
