@@ -218,7 +218,7 @@ The `fs-manager` reads `x-sentinel-protected: true` and adds those keys to a blo
 
 | Node | Role | Can Write To | Cannot Write To |
 |---|---|---|---|
-| Inference Node (World Engine) | Generates narrative + `<world_update>` tags | Via MCP servers only | Filesystem directly |
+| Inference Node (`engine/`) | Generates narrative + `<world_update>` tags | Via MCP servers only | Filesystem directly |
 | fs-manager MCP | Executes validated file writes | `data/state/community/`, `data/lore/community/`, `data/lore/core/sessions/` | `data/state/core/entities/`, `data/lore/core/codex/` (without core token) |
 | db-vector MCP | Reads/writes PostgreSQL + ChromaDB | All DB tables for reads; `community` namespace for writes | Core namespace records |
 | git-sync MCP | Commits after each world update | Git history | N/A |

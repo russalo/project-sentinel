@@ -154,11 +154,13 @@ Never push to `main` directly.
 
 ## Architecture at a Glance
 
-Sentinel is a two-node agentic system with a strict filesystem firewall between them. Understanding this split is required before editing anything in `world-engine/`, `mcp-servers/`, or `schemas/`.
+Sentinel is a two-node agentic system with a strict filesystem firewall between them. Understanding this split is required before editing anything in `engine/`, `mcp-servers/`, or `schemas/`.
 
 **The two nodes**
-- **Inference Node** (`world-engine/`) — DM, Fact-Extractor, and Lorekeeper agents run here. **Never granted direct filesystem access.** Generates narrative, then emits a structured `<world_update>` JSON payload.
+- **Inference Node** (`engine/`) — pure-Python package that will house the DM, Fact-Extractor, and Lorekeeper agents. **Never granted direct filesystem access.** Generates narrative, then emits a structured `<world_update>` JSON payload. Currently scaffolding only — the agent entry points raise `NotImplementedError`; `backend/api/dm_ai.py` still serves turns until the migration lands. See `engine/README.md` for the boundary contract.
 - **Infrastructure Node** (`mcp-servers/` + `infrastructure/`) — PostgreSQL + pgvector + ChromaDB + the Git-backed hybrid filesystem under `data/`. The only path from Inference → disk.
+
+> `world-engine/` is legacy Replit-era scaffolding (prompt YAML stubs only) pending removal. Do not add code under it. The new Inference Node lives in `engine/`.
 
 The two nodes communicate over a Tailscale mesh in production; locally they run side-by-side on the same host.
 

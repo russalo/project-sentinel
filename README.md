@@ -30,7 +30,7 @@ This is **Prompt-Driven Development** at the infrastructure level: the narrative
 
 Sentinel operates on a strict separation of concerns to enable seamless remote play via a Tailscale mesh network.
 
-1. **Inference Node** (`/world-engine`): Houses the DM, Fact-Extractor, and Lorekeeper agents. It evaluates user input, queries the world state, and outputs rich narrative alongside machine-readable `<world_update>` tags.
+1. **Inference Node** (`/engine`): A pure-Python package that will house the DM, Fact-Extractor, and Lorekeeper agents. It evaluates user input, queries the world state, and outputs rich narrative alongside machine-readable `<world_update>` tags. Currently scaffolding only — see `engine/README.md`. The legacy `/world-engine` directory (prompt YAML stubs from the Replit era) is retained pending removal; do not add code to it.
 2. **Infrastructure Node** (`/infrastructure`): The persistent storage layer. It manages the PostgreSQL/Vector database, background simulations, and a Git-backed hybrid filesystem (JSON for state, Markdown for lore).
 3. **The MCP Bridge** (`/mcp-servers`): The Inference Node *never* touches files directly. It issues structured requests to local MCP servers on the Infrastructure Node, which validate and execute filesystem, database, and git operations.
 
@@ -53,13 +53,14 @@ project-sentinel/
 │   └── git-sync/              # Automated version control and state snapshotting
 ├── schemas/                   # Shared JSON Schema contracts
 │   └── apply_world_update.schema.json
-├── world-engine/              # Inference & Orchestration (The Brain)
-│   ├── agents/                # Prompt boundaries and persona definitions
-│   │   ├── dm.yaml            # Storyteller and rule arbiter
-│   │   ├── fact-extractor.yaml# Parses narrative into <world_update> events
-│   │   └── lorekeeper.yaml    # Manages RAG context injection
-│   ├── orchestrator/          # The Core Loop (Action -> Narrative -> Extract -> Update)
-│   └── simulation/            # Background world progression and cron-events
+├── engine/                    # Inference Node (The Brain — pure Python, scaffolding)
+│   ├── types.py               # Config, WorldContext, DMTurnInput, DMTurnResult
+│   ├── schema.py              # apply_world_update.schema.json loader + validator
+│   ├── llm.py                 # OpenAI client wrapper
+│   ├── prompts/dm.py          # DM system prompt
+│   └── agents/                # dm.py, fact_extractor.py (stubs — see engine/README.md)
+├── world-engine/              # LEGACY (Replit-era scaffolding, pending removal)
+│   └── agents/*.yaml          # prompt stubs kept for reference only
 ├── apps/
 │   └── sentinel-ui/           # React 19 + Vite + Tailwind v4 frontend
 ├── artifacts/
