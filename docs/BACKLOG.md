@@ -41,6 +41,13 @@ Completed items should be removed by the end-session workflow, not left to accum
 
 ---
 
+## Engine Package
+
+- [ ] **`engine/schema.py` schema-path coupling.** `_SCHEMA_PATH` is hard-coded to `Path(__file__).parent.parent / "schemas" / ...`, which only resolves correctly when `engine/` sits at the repo root alongside `schemas/`. The PR #9 boundary contract states `engine/` should be extractable into a standalone package; in that scenario this path breaks. Fix options: (a) bundle the schema as package data and load via `importlib.resources`, (b) copy `schemas/` into `engine/` as a sibling of `engine/schema.py`, or (c) have the caller inject the loaded schema or its path. Option (c) is the cleanest architecturally but changes `validate()`'s public API. Defer until extraction actually happens.
+      _Discovered: 2026-04-13 | Context: flagged by Copilot on PR #9; documented in the module docstring of engine/schema.py and deferred to this item instead of reworked in the scaffold PR_
+
+---
+
 ## Documentation Drift
 
 - [ ] **`docs/WORKSPACE.md` is stale from before the Django backend and the engine package.** Lists "API framework: Express 5" as if Django doesn't exist; the Stack table has no row for `backend/`; the directory tree has no `backend/` or `engine/`; the AI Architecture section only describes `artifacts/api-server/src/lib/dm-ai.ts`. Needs a full refresh, or a clear marker saying it only describes the TypeScript/Express dev-reference half of the workspace.

@@ -118,8 +118,8 @@ Never push to `main` directly.
 
 **Setup**
 - `just env` — regenerate `infrastructure/.env` from the chezmoi template (OS-aware: Docker socket path, Python binary)
-- `just install` — `pnpm install --frozen-lockfile` + pip install for all three MCP servers
-- `just install-django` — pip install Django backend requirements
+- `just install` — one-stop installer: pnpm workspace + all Python deps (three MCP servers, Django backend, engine package, and pytest for tests). Fresh clone should be runnable after `just env && just install`.
+- `just install-django` — standalone Django-only installer; used by `just install` and still available as a convenience alias when you only need to refresh backend deps.
 
 **Run the stack**
 - `just start` — full cloud stack: Docker (PostgreSQL + ChromaDB) → wait healthy → all three MCP servers in background

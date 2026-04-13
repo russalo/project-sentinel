@@ -28,7 +28,7 @@ def _iter_engine_source_files():
 def test_engine_does_not_import_forbidden_modules():
     violations = []
     for path in _iter_engine_source_files():
-        tree = ast.parse(path.read_text(), filename=str(path))
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:

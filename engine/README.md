@@ -21,9 +21,13 @@ Everything in this package obeys four rules:
 2. **No `os.environ` reads.** All configuration arrives via `engine.Config`
    passed explicitly from the caller.
 
-3. **No side effects.** `engine/` does not write to disk, query databases,
-   or make HTTP calls to the MCP servers. It produces strings and
-   structured payloads; the caller is responsible for dispatching them.
+3. **No runtime side effects.** `engine/` does not write to disk,
+   mutate databases, or make HTTP calls to the MCP servers. It produces
+   strings and structured payloads; the caller is responsible for
+   dispatching them. Reading bundled schema/prompt resources (e.g.
+   `schemas/apply_world_update.schema.json` loaded lazily by
+   `engine/schema.py`) is explicitly allowed — those are
+   framework-agnostic initialization reads, not external state changes.
 
 4. **Streaming is a generator protocol, not a framework concern.**
    `stream_turn(...)` yields tokens. Django wraps the generator in
