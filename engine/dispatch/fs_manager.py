@@ -89,11 +89,17 @@ def apply_world_update(
     Returns
     -------
     DispatchResult
-        `ok=True` on HTTP 200. `ok=False` with `status_code=422/403/etc.`
-        for schema or protected-field violations. `ok=False` with
-        `status_code=0` for network errors or connection failures.
+        `ok=True` on any HTTP 2xx response. `ok=False` with
+        `status_code=422/403/etc.` for schema or protected-field
+        violations. `ok=False` with `status_code=0` for network errors
+        or connection failures.
     """
-    url = f"{config.fs_manager_url}/tools/apply_world_update"
+    # Normalize the base URL so a trailing slash in config.fs_manager_url
+    # (e.g. "http://127.0.0.1:8010/" from an env var) doesn't produce
+    # "//tools/apply_world_update", which some routers treat as a
+    # different path and return 404.
+    base = config.fs_manager_url.rstrip("/")
+    url = f"{base}/tools/apply_world_update"
 
     owns_client = client is None
     if owns_client:

@@ -335,6 +335,82 @@ def test_non_list_collection_yields_error_but_other_collections_still_work():
 # ── invalid session_id surfaces as self-validation error ────────────
 
 
+def test_multiple_world_update_blocks_are_all_processed():
+    """If the LLM emits more than one <world_update> block, every block
+    must be processed. The narrative stripper removes all of them, so
+    losing any block here would be silent data loss.
+    """
+    raw = (
+        "You meet Kael by the fire.\n"
+        "<world_update>\n"
+        '{"characters": [{"name": "Kael", "action": "upsert", "role": "npc", "status": "alive"}]}\n'
+        "</world_update>\n"
+        "The fire crackles; a second figure emerges from the shadows.\n"
+        "<world_update>\n"
+        '{"characters": [{"name": "Mira", "action": "upsert", "role": "ally", "status": "alive"}]}\n'
+        "</world_update>\n"
+    )
+    result = extract(raw, VALID_SESSION_ID, turn_number=1)
+
+    assert result.payload is not None
+    targets = {u["target_file"] for u in result.payload["updates"]}
+    assert "data/state/core/entities/kael.json" in targets
+    assert "data/state/core/entities/mira.json" in targets
+    # The narrative stripper removed both blocks; make sure the
+    # Fact-Extractor still saw both.
+    assert "<world_update>" not in result.narrative
+    # And the extractor warned about the unexpected multi-block case
+    assert any("found 2 <world_update> blocks" in e for e in result.errors)
+
+
+def test_multiple_blocks_merge_updates_in_order():
+    """Multi-block output produces updates[] in block-then-entry order,
+    so a later block's update to an already-mentioned entity naturally
+    wins at the fs-manager merge step."""
+    raw = (
+        "Kael looks hurt.\n"
+        "<world_update>\n"
+        '{"characters": [{"name": "Kael", "action": "upsert", "health": 80}]}\n'
+        "</world_update>\n"
+        "But then he takes a bigger wound.\n"
+        "<world_update>\n"
+        '{"characters": [{"name": "Kael", "action": "upsert", "health": 50}]}\n'
+        "</world_update>\n"
+    )
+    result = extract(raw, VALID_SESSION_ID, turn_number=1)
+    assert result.payload is not None
+    updates = result.payload["updates"]
+    # Two updates against the same target file, in order
+    assert len(updates) == 2
+    assert updates[0]["target_file"] == "data/state/core/entities/kael.json"
+    assert updates[1]["target_file"] == "data/state/core/entities/kael.json"
+    assert updates[0]["data"]["health"] == 80
+    assert updates[1]["data"]["health"] == 50
+
+
+def test_one_of_multiple_blocks_malformed_others_still_processed():
+    """A malformed block should surface an error but not poison the
+    other blocks — the good ones still produce updates."""
+    raw = (
+        "<world_update>\n"
+        '{"world": {"tension": 5}}\n'
+        "</world_update>\n"
+        "<world_update>\n"
+        "{this is not json}\n"
+        "</world_update>\n"
+        "<world_update>\n"
+        '{"characters": [{"name": "Kael", "action": "upsert", "role": "npc", "status": "alive"}]}\n'
+        "</world_update>\n"
+    )
+    result = extract(raw, VALID_SESSION_ID, turn_number=1)
+    assert result.payload is not None
+    targets = [u["target_file"] for u in result.payload["updates"]]
+    assert "data/state/core/world/state.json" in targets
+    assert "data/state/core/entities/kael.json" in targets
+    assert any("block 1 is not valid JSON" in e for e in result.errors)
+    assert any("found 3 <world_update> blocks" in e for e in result.errors)
+
+
 def test_invalid_uuid_session_id_self_validation_fails():
     raw = _wrap("A moment passes.", {"world": {"tension": 2}})
     result = extract(raw, "not-a-uuid", turn_number=1)

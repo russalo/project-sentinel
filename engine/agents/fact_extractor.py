@@ -16,11 +16,13 @@ the repo:
    fs-manager enforces:
    `{session_id, log_entry, updates: [{target_file, operation, data}]}`.
 
-The Fact-Extractor walks (1) and produces (2). It does not touch the
-filesystem, does not call fs-manager, does not validate (the caller
-does that via `engine.validate()` or relies on fs-manager's own gate).
-It does self-validate as a sanity check — if its own output fails
-schema validation, something is wrong with this module, not the caller.
+The Fact-Extractor walks (1) and produces (2). It does not call
+fs-manager and does not read or write any world-state files. It does
+self-validate as a sanity check, and that self-validation lazily loads
+`schemas/apply_world_update.schema.json` from disk on first use via
+`engine.schema.validate()` — a one-time initialization read, not a
+runtime side effect. If its own output fails schema validation,
+something is wrong with this module, not the caller.
 
 Path layout
 -----------
@@ -128,23 +130,41 @@ def extract(
     narrative = _strip_world_update_block(raw_response)
     errors: list[str] = []
 
-    block = _extract_block(raw_response)
-    if block is None:
+    blocks = _extract_blocks(raw_response)
+    if not blocks:
         return FactExtractResult(payload=None, narrative=narrative, errors=errors)
 
-    try:
-        hint = json.loads(block)
-    except json.JSONDecodeError as exc:
-        errors.append(f"world_update block is not valid JSON: {exc}")
-        return FactExtractResult(payload=None, narrative=narrative, errors=errors)
-
-    if not isinstance(hint, dict):
+    # Process every block the DM emitted. In normal operation the DM
+    # prompt instructs a single block at the end, but the narrative
+    # stripper removes *all* blocks via re.sub(), so if the LLM ever
+    # emits more than one we must see them all here — otherwise the
+    # later blocks get hidden from the player AND silently lost from
+    # state, which is the worst possible outcome.
+    if len(blocks) > 1:
         errors.append(
-            f"world_update block is {type(hint).__name__}, expected object"
+            f"found {len(blocks)} <world_update> blocks; DM prompt expects 1. "
+            f"Processing all of them in order."
         )
-        return FactExtractResult(payload=None, narrative=narrative, errors=errors)
 
-    updates = _build_updates(hint, errors)
+    updates: list[dict] = []
+    for block_index, block in enumerate(blocks):
+        try:
+            hint = json.loads(block)
+        except json.JSONDecodeError as exc:
+            errors.append(
+                f"world_update block {block_index} is not valid JSON: {exc}"
+            )
+            continue
+
+        if not isinstance(hint, dict):
+            errors.append(
+                f"world_update block {block_index} is {type(hint).__name__}, "
+                f"expected object"
+            )
+            continue
+
+        updates.extend(_build_updates(hint, errors))
+
     if not updates:
         return FactExtractResult(payload=None, narrative=narrative, errors=errors)
 
@@ -177,11 +197,15 @@ def extract(
 # ── helpers ──────────────────────────────────────────────────────────
 
 
-def _extract_block(raw: str) -> str | None:
-    match = _BLOCK_PATTERN.search(raw)
-    if match is None:
-        return None
-    return match.group(1).strip()
+def _extract_blocks(raw: str) -> list[str]:
+    """Return every <world_update> block in raw response order.
+
+    The DM prompt expects exactly one block, but the narrative stripper
+    removes all of them — so returning a list here keeps the extractor
+    consistent with the stripper and prevents silent data loss if the
+    LLM ever emits multiple blocks.
+    """
+    return [match.group(1).strip() for match in _BLOCK_PATTERN.finditer(raw)]
 
 
 def _strip_world_update_block(raw: str) -> str:

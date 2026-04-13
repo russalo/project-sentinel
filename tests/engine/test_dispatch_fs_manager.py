@@ -146,6 +146,47 @@ def test_url_uses_config_fs_manager_url():
     assert captured["url"] == "https://sentinel.tailscale.net:8010/tools/apply_world_update"
 
 
+def test_trailing_slash_in_fs_manager_url_is_normalized():
+    """A trailing slash in config.fs_manager_url must not produce
+    //tools/apply_world_update — some routers return 404 on that."""
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        return httpx.Response(200, json={"success": True})
+
+    config = _config("http://fs-manager.test/")  # note trailing slash
+    apply_world_update(config, {}, client=_client_returning(handler))
+
+    assert captured["url"] == "http://fs-manager.test/tools/apply_world_update"
+    assert "//tools" not in captured["url"]
+
+
+def test_multiple_trailing_slashes_are_all_normalized():
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        return httpx.Response(200, json={"success": True})
+
+    config = _config("http://fs-manager.test///")
+    apply_world_update(config, {}, client=_client_returning(handler))
+
+    assert captured["url"] == "http://fs-manager.test/tools/apply_world_update"
+
+
+def test_2xx_non_200_responses_count_as_success():
+    """The docstring now says 'any 2xx' counts as success — verify."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(202, json={"success": True, "queued": True})
+
+    config = _config()
+    result = apply_world_update(config, {}, client=_client_returning(handler))
+
+    assert result.ok is True
+    assert result.status_code == 202
+
+
 def test_accepts_list_body_gracefully():
     """A server response that is a JSON list (not dict) shouldn't crash."""
     def handler(request: httpx.Request) -> httpx.Response:
