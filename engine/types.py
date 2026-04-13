@@ -64,6 +64,22 @@ class DMTurnInput:
 
 
 @dataclass
+class IntroInput:
+    """Input to a session-intro turn.
+
+    The intro turn uses a different system-prompt framing than a
+    normal turn — the LLM is told to establish a new world, introduce
+    NPCs and locations, and give the player an immediate situation to
+    respond to. See `engine.agents.dm.generate_intro`.
+    """
+
+    world_name: str
+    player_name: str
+    player_class: str
+    world_seed: str | None = None
+
+
+@dataclass
 class DMTurnResult:
     """Result of a completed DM turn.
 

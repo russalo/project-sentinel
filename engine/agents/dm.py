@@ -59,7 +59,7 @@ from typing import Any, Iterator
 
 from ..llm import build_client
 from ..prompts.dm import DM_SYSTEM_PROMPT
-from ..types import Config, DMTurnInput, DMTurnResult, WorldContext
+from ..types import Config, DMTurnInput, DMTurnResult, IntroInput, WorldContext
 
 # Strip a trailing <world_update>...</world_update> block from raw DM
 # output before returning the user-facing narrative. Mirrors the
@@ -172,6 +172,58 @@ def stream_turn(
             yield token
 
 
+def generate_intro(
+    config: Config,
+    intro_input: IntroInput,
+    *,
+    client: Any | None = None,
+) -> DMTurnResult:
+    """Run a session-intro turn and return the complete result.
+
+    Unlike ``run_turn``/``stream_turn`` (which build their user
+    message from the current world context + player action), the
+    intro turn uses a different user message that tells the LLM to
+    establish a new world from scratch: introduce NPCs, seed
+    locations, and open with an immediate situation for the player
+    to respond to.
+
+    The returned ``DMTurnResult.raw_response`` includes a
+    ``<world_update>`` block establishing the initial state, which
+    the caller passes to the Fact-Extractor to produce the initial
+    ``apply_world_update`` payload for fs-manager.
+
+    Parameters
+    ----------
+    config
+        Engine configuration.
+    intro_input
+        World name, player character, optional seed. When the seed
+        is None, the DM is given a fallback "classic dark fantasy"
+        framing matching the existing backend behavior.
+    client
+        Optional OpenAI-SDK-compatible client for test injection,
+        same pattern as ``run_turn``.
+    """
+    if client is None:
+        client = build_client(config)
+
+    messages = _build_intro_messages(intro_input)
+
+    response = client.chat.completions.create(
+        model=config.dm_model,
+        messages=messages,
+        max_completion_tokens=config.max_completion_tokens,
+    )
+    raw = (response.choices[0].message.content or "") if response.choices else ""
+    narrative = _strip_world_update(raw)
+
+    return DMTurnResult(
+        narrative=narrative,
+        raw_response=raw,
+        world_update_payload=None,
+    )
+
+
 # ── helpers ──────────────────────────────────────────────────────────
 
 
@@ -241,4 +293,34 @@ def _build_messages(ctx: WorldContext, player_action: str) -> list[dict]:
     return [
         {"role": "system", "content": DM_SYSTEM_PROMPT},
         {"role": "user", "content": context_block + "\nPLAYER ACTION: " + player_action},
+    ]
+
+
+_INTRO_SEED_FALLBACK = "Create a classic dark fantasy setting with mystery and danger."
+
+
+def _build_intro_messages(intro: IntroInput) -> list[dict]:
+    """Assemble the OpenAI ``messages`` array for a session-intro turn.
+
+    Ported from the Django backend's ``generate_world_intro`` but
+    operates on the engine's ``IntroInput`` dataclass. Produces a
+    two-message list: the shared DM system prompt followed by a
+    user message that tells the LLM to establish a new world.
+    """
+    seed_context = intro.world_seed if intro.world_seed else _INTRO_SEED_FALLBACK
+
+    user_content = (
+        f"Begin a new RPG session with these parameters:\n"
+        f"- World Name: {intro.world_name}\n"
+        f"- Player Character: {intro.player_name}, a {intro.player_class}\n"
+        f"- {seed_context}\n\n"
+        f"Open the story with an atmospheric introduction. Set the scene, "
+        f"establish the world, introduce at least 2 NPCs and 2 locations. "
+        f"Give the player an immediate situation to respond to.\n\n"
+        f"Create a compelling opening that establishes the tone and immediately draws the player in."
+    )
+
+    return [
+        {"role": "system", "content": DM_SYSTEM_PROMPT},
+        {"role": "user", "content": user_content},
     ]
