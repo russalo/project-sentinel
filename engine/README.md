@@ -36,9 +36,12 @@ Everything in this package obeys four rules:
 
 ## Current status
 
-**Partially implemented.** The source-of-truth decision (ADR 0001)
-unblocked the agent work. The MCP Bridge dispatcher and the
-Fact-Extractor are real; the DM agent follows immediately after.
+**End-to-end in-process, not yet wired to a backend.** Every piece of
+the per-turn pipeline is implemented and unit-tested in isolation:
+a caller can build a `DMTurnInput`, run it through `stream_turn` for
+tokens, accumulate the response, hand it to `fact_extractor.extract`,
+and dispatch the resulting payload to `fs-manager` — all without any
+production backend touching the engine yet.
 
 Implemented:
 
@@ -54,15 +57,50 @@ Implemented:
   hint blocks and emits schema-valid payloads; returns
   `FactExtractResult(payload, narrative, errors)`; self-validates
   output so callers can trust a non-None payload is fs-manager-ready
+- `engine.agents.dm.run_turn` / `engine.agents.dm.stream_turn` —
+  the real DM agent. `stream_turn` is a plain generator yielding
+  token strings so any transport (FastAPI SSE, test loop, CLI,
+  future FastAPI adapter) can consume it. Both functions accept
+  optional `client=` injection for test mocking, matching the
+  dispatcher's pattern.
 - `engine.prompts.dm.DM_SYSTEM_PROMPT` — ported verbatim from
   `backend/api/dm_ai.py`
 
-Still stubbed (`NotImplementedError`):
+Still stubbed:
 
-- `engine.agents.dm.run_turn` and `engine.agents.dm.stream_turn` —
-  land in the next commit of the `feat/engine-agents` PR
-- `engine.agents.lorekeeper.*` — scaffolded directory only; full
-  module deferred to Phase 2 per `docs/BACKLOG.md`
+- `engine.agents.lorekeeper.*` — the RAG step that queries ChromaDB
+  for relevant lore and injects it into the DM's context window. No
+  file yet; scaffolded as BACKLOG Phase 2 once the core loop is
+  running against a real backend.
+
+Typical caller pattern (what the new FastAPI backend will do):
+
+```python
+import engine
+from engine.agents import dm as dm_agent, fact_extractor
+
+config = engine.Config(openai_api_key=..., ...)  # from app settings
+turn_input = engine.DMTurnInput(
+    session_id=session_uuid,
+    player_action=action_text,
+    world_context=load_world_context(),  # caller reads data/state/*.json
+)
+
+full = []
+for token in dm_agent.stream_turn(config, turn_input):
+    full.append(token)
+    yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
+
+raw = "".join(full)
+result = fact_extractor.extract(raw, session_uuid, turn_number)
+if result.payload is not None:
+    dispatch_result = engine.apply_world_update(config, result.payload)
+    if not dispatch_result.ok:
+        # feed the error back to the DM for retry, per ARCHITECTURE.md
+        ...
+
+yield "data: [DONE]\n\n"
+```
 
 Not yet wired: no caller uses `engine` in production. The Django
 backend (`backend/api/dm_ai.py`) still serves turns. That changes

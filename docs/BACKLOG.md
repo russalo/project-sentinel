@@ -30,9 +30,6 @@ The Inference Node work is unblocked by ADR 0001. The order below reflects
 the dependency chain: each item needs the previous one landed to be
 implementable.
 
-- [ ] **Implement `engine/agents/dm.py`** (`run_turn` + `stream_turn`). Wraps the OpenAI chat completion call. `stream_turn` is a plain generator yielding token strings — the caller (FastAPI SSE endpoint) wraps that generator in whatever transport it needs. Ports `_build_messages` logic out of `backend/api/dm_ai.py` (the prompt itself is already in `engine/prompts/dm.py`). No Django, no ORM, no side effects. Tests use client injection to mock the OpenAI SDK.
-      _Discovered: 2026-04-13 | Context: scaffolded as NotImplementedError stubs in PR #9; unblocked by ADR 0001; in progress on branch `feat/engine-agents` alongside the dispatcher and Fact-Extractor_
-
 - [ ] **New FastAPI backend to replace Django.** Replaces `backend/sentinel/` + `backend/api/` with a FastAPI application. Reads directly from `data/` (no ORM, no Django models in the hot path). Calls the engine for turn handling. Dispatches writes through `engine.dispatch` to `fs-manager`. Preserves the existing SSE response contract (`{type: 'token', content}`, `{type: 'world_update', data}`, `[DONE]`) so the frontend continues working without changes. Sized at ~500–800 lines of Python + tests. Matches the async model and dependency stack used by the MCP servers.
       _Discovered: 2026-04-13 | Context: ADR 0001 Phase 1 core deliverable; retires PR #7's Django backend after it has served its purpose (unblocking the frontend and proving the SSE flow)_
 
