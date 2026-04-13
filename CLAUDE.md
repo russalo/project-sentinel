@@ -154,6 +154,8 @@ Never push to `main` directly.
 
 ## Architecture at a Glance
 
+> **Read this first:** the source-of-truth decision has been recorded in **[ADR 0001](docs/adr/0001-data-canonical-source-of-truth.md)**. Canonical state lives in `data/state/*.json` + `data/lore/*.md` + git; all writes go through `engine/` → `fs-manager` → `git-sync`; Django and Postgres are retiring in phases. The description below still mentions Django as the production backend because the ADR's Phase 1 replacement (a FastAPI backend reading from `data/`) has not landed yet. Treat the Django references as "currently running code, being replaced" — not as the target.
+
 Sentinel is a two-node agentic system with a strict filesystem firewall between them. Understanding this split is required before editing anything in `engine/`, `mcp-servers/`, or `schemas/`.
 
 **The two nodes**
