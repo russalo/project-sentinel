@@ -78,7 +78,10 @@ class Settings:
             value = os.environ.get(name)
             return value if value else default
 
-        debug = (_env("DJANGO_DEBUG", "true") or "true").lower() == "true"
+        # Debug mode defaults to OFF for safety. Dev environments
+        # that want permissive CORS + verbose errors should set
+        # SENTINEL_DEBUG=true in their infrastructure/.env.
+        debug = (_env("SENTINEL_DEBUG", "false") or "false").lower() == "true"
 
         return cls(
             openai_api_key=_env("OPENAI_API_KEY", "") or "",

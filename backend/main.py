@@ -22,8 +22,6 @@ or directly:
     uvicorn backend.main:app --host 127.0.0.1 --port 8001 --reload
 """
 
-from contextlib import asynccontextmanager
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -31,14 +29,13 @@ from .config import Settings
 from .routes import health, session, stream
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Load settings once at startup; fail fast if .env is missing.
-    app.state.settings = Settings.load()
-    yield
-
-
 def create_app() -> FastAPI:
+    # Load settings exactly once per process. Stored on
+    # ``app.state.settings`` for route handlers and reused here for
+    # CORS middleware configuration. No lifespan context manager is
+    # needed — nothing async has to happen at startup.
+    settings = Settings.load()
+
     app = FastAPI(
         title="Project Sentinel Backend",
         description=(
@@ -47,18 +44,13 @@ def create_app() -> FastAPI:
             "git-sync write path per ADR 0001."
         ),
         version="0.2.0",
-        lifespan=lifespan,
     )
+    app.state.settings = settings
 
-    # CORS configured lazily at first request — we don't have
-    # app.state.settings yet at create_app() time, but the middleware
-    # is installed up-front with the default dev origins and permissive
-    # mode. Production deployments should override via CORS_ALLOWED_ORIGINS.
-    settings_for_cors = Settings.load()
     app.add_middleware(
         CORSMiddleware,
         allow_origins=(
-            ["*"] if settings_for_cors.cors_allow_all_origins else list(settings_for_cors.cors_allowed_origins)
+            ["*"] if settings.cors_allow_all_origins else list(settings.cors_allowed_origins)
         ),
         allow_credentials=False,
         allow_methods=["GET", "POST", "OPTIONS"],

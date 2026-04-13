@@ -8,12 +8,20 @@ handle missing files, empty directories, and malformed JSON gracefully
 import json
 from pathlib import Path
 
+import pytest
+
 from backend.state.sessions import (
     Session,
     read_session,
     session_file_path,
 )
 from backend.state.world_context import load_world_context
+
+# UUIDs used across tests. Session file paths validate input is a
+# UUID (path-traversal defense), so every write/read test that wants
+# to hit a real file must use one of these.
+VALID_SESSION_ID = "aaaaaaaa-1111-2222-3333-bbbbbbbbbbbb"
+ANOTHER_VALID_SESSION_ID = "cccccccc-4444-5555-6666-dddddddddddd"
 
 
 def test_load_world_context_on_empty_tree_returns_defaults(tmp_data_dir):
@@ -85,11 +93,12 @@ def test_load_world_context_skips_malformed_json_files(tmp_data_dir: Path):
 
 
 def test_read_session_returns_none_when_missing(tmp_data_dir):
-    assert read_session(tmp_data_dir, "does-not-exist") is None
+    # A well-formed UUID that just has no on-disk file yet.
+    assert read_session(tmp_data_dir, VALID_SESSION_ID) is None
 
 
 def test_read_session_loads_from_disk(tmp_data_dir: Path):
-    session_id = "abc-123"
+    session_id = VALID_SESSION_ID
     sessions_dir = tmp_data_dir / "state" / "core" / "sessions"
     sessions_dir.mkdir(parents=True, exist_ok=True)
     (sessions_dir / f"{session_id}.json").write_text(
@@ -113,12 +122,54 @@ def test_read_session_loads_from_disk(tmp_data_dir: Path):
 
 
 def test_read_session_treats_non_dict_root_as_missing(tmp_data_dir: Path):
+    """A valid-UUID-named file that contains a list (not a dict)
+    should resolve to 'not found' rather than crashing."""
+    session_id = ANOTHER_VALID_SESSION_ID
     sessions_dir = tmp_data_dir / "state" / "core" / "sessions"
     sessions_dir.mkdir(parents=True, exist_ok=True)
-    (sessions_dir / "weird.json").write_text(json.dumps([1, 2, 3]))
-    assert read_session(tmp_data_dir, "weird") is None
+    (sessions_dir / f"{session_id}.json").write_text(json.dumps([1, 2, 3]))
+    assert read_session(tmp_data_dir, session_id) is None
 
 
 def test_session_file_path_roundtrip(tmp_data_dir: Path):
-    p = session_file_path(tmp_data_dir, "xyz")
-    assert p == tmp_data_dir / "state" / "core" / "sessions" / "xyz.json"
+    p = session_file_path(tmp_data_dir, VALID_SESSION_ID)
+    assert p == tmp_data_dir / "state" / "core" / "sessions" / f"{VALID_SESSION_ID}.json"
+
+
+# ── path traversal / UUID validation ────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "malicious_id",
+    [
+        "../lore/core/codex/some_file",
+        "../../etc/passwd",
+        "abc-123",  # not a valid UUID
+        "notauuidatall",
+        "",
+        "aaaaaaaa-1111-2222-3333-bbbbbbbbbbbb/../../../etc",
+        "aaaaaaaa-1111-2222-3333-bbbbbbbbbbbb/nested",
+    ],
+)
+def test_read_session_rejects_non_uuid_and_path_traversal(tmp_data_dir, malicious_id):
+    """Any session_id that isn't a bare UUID must resolve to None —
+    the caller treats None as 'not found', which prevents the
+    malicious ID from ever building a real filesystem path."""
+    assert read_session(tmp_data_dir, malicious_id) is None
+
+
+@pytest.mark.parametrize(
+    "malicious_id",
+    [
+        "../lore/core/codex/some_file",
+        "abc-123",
+        "notauuidatall",
+    ],
+)
+def test_session_file_path_raises_on_non_uuid(tmp_data_dir, malicious_id):
+    """session_file_path is the lower-level boundary. Callers that
+    receive user input should go through read_session (which catches
+    the ValueError and returns None); callers that have a
+    freshly-minted UUID from uuid.uuid4() can call this directly."""
+    with pytest.raises(ValueError, match="not a valid UUID"):
+        session_file_path(tmp_data_dir, malicious_id)

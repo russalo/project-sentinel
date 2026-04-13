@@ -15,6 +15,7 @@ Nothing here writes to disk directly. Every mutation goes through
 """
 
 import json
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -23,6 +24,29 @@ import engine
 
 
 _SESSIONS_REL = Path("state/core/sessions")
+
+
+def _require_uuid(session_id: str) -> None:
+    """Security boundary against path traversal via user-supplied IDs.
+
+    Every session file path is built from the session_id, which on
+    the read side (`read_session`, and by extension the stream
+    handler) comes from untrusted request bodies. If a client sends
+    e.g. ``sessionId="../lore/core/codex/some_file"``, a naive
+    ``sessions/<id>.json`` join escapes the sessions directory and
+    could read arbitrary JSON files elsewhere in ``data/``.
+
+    UUID format is strict enough to reject anything with slashes,
+    dots, or control characters. It also matches how session IDs
+    are generated (``uuid.uuid4()`` in the session-creation handler),
+    so legitimate requests always pass.
+    """
+    try:
+        uuid.UUID(session_id)
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise ValueError(
+            f"session_id is not a valid UUID: {session_id!r}"
+        ) from exc
 
 
 @dataclass
@@ -42,17 +66,34 @@ class Session:
 
 
 def session_file_path(data_dir: Path, session_id: str) -> Path:
+    """Construct the absolute path of a session JSON file.
+
+    Validates ``session_id`` is a UUID via ``_require_uuid``; raises
+    ``ValueError`` otherwise. Callers that accept session IDs from
+    untrusted input (like ``read_session``) should catch the
+    exception and treat it as "session not found."
+    """
+    _require_uuid(session_id)
     return data_dir / _SESSIONS_REL / f"{session_id}.json"
 
 
 def read_session(data_dir: Path, session_id: str) -> Session | None:
     """Load a session file from disk.
 
-    Returns None if the file doesn't exist or is unreadable/malformed —
-    the caller decides whether that means "reject the request" or
-    "treat as fresh session."
+    Returns None if:
+      - session_id is not a valid UUID (path traversal defense)
+      - the file doesn't exist on disk
+      - the file is unreadable or contains malformed JSON
+      - the file's top-level JSON is not an object
+
+    All four cases are treated the same way (return None) because
+    the caller's response is the same: reject the request as
+    "session not found or inactive."
     """
-    path = session_file_path(data_dir, session_id)
+    try:
+        path = session_file_path(data_dir, session_id)
+    except ValueError:
+        return None
     if not path.exists():
         return None
     try:

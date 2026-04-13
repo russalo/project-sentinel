@@ -19,8 +19,11 @@ All engine calls are stubbed via fixtures in conftest.py.
 import json
 from pathlib import Path
 
-# The Fact-Extractor self-validates session_id as format: uuid, so
-# tests that want the dispatch path to exercise must use real UUIDs.
+import pytest
+
+# The Fact-Extractor self-validates session_id as format: uuid AND
+# read_session rejects non-UUID paths for path-traversal defense, so
+# tests that want to hit a real session file must use real UUIDs.
 VALID_SESSION_ID = "11111111-2222-3333-4444-555555555555"
 VALID_SESSION_ID_2 = "22222222-3333-4444-5555-666666666666"
 VALID_SESSION_ID_3 = "33333333-4444-5555-6666-777777777777"
@@ -248,3 +251,93 @@ def test_stream_error_emits_error_event_then_done(
     assert events[-1] == "[DONE]"
     # No dispatches on the error path.
     assert fake_dispatch_log == []
+
+
+# ── path traversal defense ──────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "malicious_id",
+    [
+        "../lore/core/codex/some_file",
+        "../../etc/passwd",
+        "abc-123",
+        "notauuidatall",
+    ],
+)
+def test_stream_rejects_malicious_session_id(
+    client, fake_openai, fake_dispatch_log, malicious_id
+):
+    """A non-UUID session_id must be rejected as 'not found' rather
+    than building a filesystem path that escapes the sessions
+    directory. The caller never sees any file contents."""
+    response = client.post(
+        "/api/stream", json={"action": "look around", "sessionId": malicious_id}
+    )
+    assert response.status_code == 400
+    assert "not found" in response.json()["detail"].lower()
+    # No OpenAI call, no dispatches.
+    assert fake_openai.chat.completions.calls == []
+    assert fake_dispatch_log == []
+
+
+# ── session write failure during streaming ─────────────────────────
+
+
+def test_stream_emits_error_when_session_write_fails(
+    app, fake_openai, tmp_data_dir, monkeypatch
+):
+    """If the session-file append fails mid-stream, the handler
+    must surface a structured error event before [DONE] so the
+    frontend can show a toast. Narrative tokens have already
+    streamed to the player — we don't roll those back."""
+    import engine
+    import engine.dispatch.fs_manager as dispatcher_module
+    from fastapi.testclient import TestClient
+
+    session_id = "77777777-8888-9999-aaaa-bbbbbbbbbbbb"
+    _prime_session(tmp_data_dir, session_id)
+
+    fake_openai.chat.completions.set_stream_tokens(_dm_stream_tokens())
+
+    # Fail the *second* dispatch (the session-file append).
+    # The first dispatch (Fact-Extractor payload) still succeeds.
+    calls = {"count": 0}
+
+    def failing_dispatch(config, payload, *, client=None, timeout=30.0):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            return engine.DispatchResult(ok=True, status_code=200, body={"success": True})
+        return engine.DispatchResult(
+            ok=False,
+            status_code=503,
+            body={"detail": "fs-manager offline"},
+            error="fs-manager rejected payload (503): fs-manager offline",
+        )
+
+    monkeypatch.setattr(dispatcher_module, "apply_world_update", failing_dispatch)
+    monkeypatch.setattr(engine, "apply_world_update", failing_dispatch)
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/stream", json={"action": "scout", "sessionId": session_id}
+    )
+    assert response.status_code == 200
+    events = _parse_sse_events(response.text)
+
+    # Tokens streamed successfully; the error only surfaces after
+    # the session-write attempt fails.
+    token_events = [e for e in events if isinstance(e, dict) and e.get("type") == "token"]
+    assert len(token_events) >= 1
+
+    error_events = [e for e in events if isinstance(e, dict) and e.get("type") == "error"]
+    assert len(error_events) == 1
+    assert "Failed to save turn to session" in error_events[0]["content"]
+    assert "fs-manager offline" in error_events[0]["content"]
+
+    # Stream still closes with [DONE] so the frontend's useDMStream
+    # handler finishes cleanly.
+    assert events[-1] == "[DONE]"
+
+    # Both dispatches were attempted; only the second failed.
+    assert calls["count"] == 2

@@ -48,7 +48,12 @@ router = APIRouter(prefix="/api")
     response_model=NewSessionResponse,
     response_model_by_alias=True,
 )
-async def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse:
+def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse:
+    # NOTE: This handler is deliberately `def`, not `async def`.
+    # Everything it calls is synchronous blocking I/O (OpenAI, fs-manager
+    # HTTP, filesystem). FastAPI runs sync handlers in a thread pool
+    # automatically, so they don't stall the event loop. Making this
+    # `async def` would block the loop on every request.
     settings: Settings = request.app.state.settings
     config = build_engine_config(settings)
 
@@ -110,12 +115,22 @@ async def new_session(request: Request, body: NewSessionRequest) -> NewSessionRe
         active=True,
     )
 
-    session_state.write_session(
+    # Writing the session file is the critical durability step: if
+    # this dispatch fails, the caller will get back a sessionId that
+    # has no on-disk record, and every subsequent /api/stream request
+    # against that ID will 400 with "session not found." Treat that
+    # as a creation failure rather than silently returning success.
+    write_result = session_state.write_session(
         config,
         session,
         log_entry=f"[Session Start] {body.world_name} — intro generated.",
         turn_number=0,
     )
+    if not write_result.ok:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to persist new session: {write_result.error}",
+        )
 
     return NewSessionResponse(
         session_id=session_id,

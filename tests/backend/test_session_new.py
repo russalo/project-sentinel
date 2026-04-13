@@ -131,3 +131,52 @@ def test_new_session_uses_defaults_when_fields_omitted(client, fake_openai):
     data = response.json()
     # NewSessionRequest defaults
     assert data["worldName"] == "The Shattered Realm"
+
+
+def test_new_session_returns_502_when_session_write_fails(
+    app, fake_openai, monkeypatch
+):
+    """If fs-manager rejects the session-file write, the handler must
+    not return a sessionId that was never persisted. It must surface
+    the failure as a 502 so the frontend can react instead of
+    quietly handing back an unusable ID."""
+    import engine
+    import engine.dispatch.fs_manager as dispatcher_module
+    from fastapi.testclient import TestClient
+
+    fake_openai.chat.completions.set_blocking_response(_opening_response())
+
+    # Override the dispatcher to fail on the *second* dispatch (the
+    # session-file write). First dispatch (Fact-Extractor payload)
+    # still succeeds so we isolate the session-write failure path.
+    calls = {"count": 0}
+
+    def failing_dispatch(config, payload, *, client=None, timeout=30.0):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            return engine.DispatchResult(ok=True, status_code=200, body={"success": True})
+        return engine.DispatchResult(
+            ok=False,
+            status_code=503,
+            body={"detail": "fs-manager offline"},
+            error="fs-manager rejected payload (503): fs-manager offline",
+        )
+
+    monkeypatch.setattr(dispatcher_module, "apply_world_update", failing_dispatch)
+    monkeypatch.setattr(engine, "apply_world_update", failing_dispatch)
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/session/new",
+        json={
+            "worldName": "Unreliable",
+            "playerCharacterName": "Doomed",
+            "playerCharacterClass": "Hero",
+        },
+    )
+
+    assert response.status_code == 502
+    assert "Failed to persist new session" in response.json()["detail"]
+    assert "fs-manager offline" in response.json()["detail"]
+    # Both dispatches were attempted: fact-extractor first, then session.
+    assert calls["count"] == 2

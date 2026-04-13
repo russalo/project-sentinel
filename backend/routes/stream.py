@@ -26,7 +26,7 @@ them defensively but the old backend never emitted them either).
 
 import json
 import re
-from typing import AsyncIterator
+from typing import Iterator
 
 from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
@@ -67,7 +67,16 @@ def _parse_frontend_hint(raw: str) -> dict:
 
 
 @router.post("/stream")
-async def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
+def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
+    # NOTE: This handler is deliberately `def`, not `async def`.
+    # The generator it returns iterates engine.agents.dm.stream_turn
+    # (a synchronous generator), and every dispatch inside it is
+    # synchronous blocking I/O (fs-manager HTTP, file reads). FastAPI
+    # runs sync handlers — and sync generators returned to
+    # StreamingResponse — in a thread pool, so they don't stall the
+    # event loop. An `async def` handler with an async generator
+    # that drives a sync iterator internally would block the loop
+    # on every token.
     settings: Settings = request.app.state.settings
     config = build_engine_config(settings)
 
@@ -105,14 +114,10 @@ async def stream_turn(request: Request, body: StreamRequest) -> StreamingRespons
 
     next_turn_number = (session.turns[-1]["turn_number"] + 1) if session.turns else 1
 
-    async def generator() -> AsyncIterator[str]:
+    def generator() -> Iterator[str]:
         buffer: list[str] = []
 
         try:
-            # NB: stream_turn is a sync generator — iterate it
-            # synchronously. FastAPI runs async generators in the
-            # event loop; for our v1.0 single-player use the direct
-            # iteration is fine and keeps the engine framework-agnostic.
             for token in dm_agent.stream_turn(config, turn_input):
                 buffer.append(token)
                 yield _sse_event({"type": "token", "content": token})
@@ -157,12 +162,27 @@ async def stream_turn(request: Request, body: StreamRequest) -> StreamingRespons
                 "created_at": "",  # created_at currently unused by the frontend
             }
         )
-        session_state.write_session(
+        session_write = session_state.write_session(
             config,
             session,
             log_entry=narrative[:200] or f"Turn {next_turn_number} completed.",
             turn_number=next_turn_number,
         )
+        # If the session write fails, the narrative has already been
+        # streamed to the player and the game is in a half-persisted
+        # state: the world-state dispatch (above) succeeded, but the
+        # per-session turn log and counter didn't advance. Surface
+        # this as a structured error event so the frontend can show
+        # the toast; we still emit [DONE] so the stream closes
+        # cleanly. The next turn will regenerate from whatever
+        # `recent_turns` the stale session file has.
+        if not session_write.ok:
+            yield _sse_event(
+                {
+                    "type": "error",
+                    "content": f"Failed to save turn to session: {session_write.error}",
+                }
+            )
 
         yield "data: [DONE]\n\n"
 
