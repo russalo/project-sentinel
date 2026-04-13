@@ -2,9 +2,19 @@ import os
 from pathlib import Path
 from urllib.parse import urlparse
 
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
-load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent.parent / "infrastructure" / ".env")
+_ENV_PATH = Path(__file__).resolve().parent.parent.parent / "infrastructure" / ".env"
+
+if not _ENV_PATH.exists() and not os.environ.get("SENTINEL_SKIP_ENV_CHECK"):
+    raise ImproperlyConfigured(
+        f"infrastructure/.env not found at {_ENV_PATH}.\n"
+        f"Run `just env` from the repo root to generate it, then retry.\n"
+        f"(Set SENTINEL_SKIP_ENV_CHECK=1 to bypass — e.g. in CI where env vars are injected directly.)"
+    )
+
+load_dotenv(dotenv_path=_ENV_PATH)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 

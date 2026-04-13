@@ -176,10 +176,11 @@ Exits 0 if all checks pass.
 
 ### Initialize the Inference Loop
 
-```bash
-cd world-engine
-python orchestrator/main.py
-```
+> **Status: not yet implemented.** The original `world-engine/` directory contains
+> only legacy prompt stubs from the Replit-era scaffolding. The Inference Node —
+> the orchestrator loop that turns DM narrative into validated `<world_update>`
+> payloads and dispatches them across the MCP Bridge — is being rebuilt from
+> scratch and is not currently runnable. Track progress in `docs/BACKLOG.md`.
 
 ---
 

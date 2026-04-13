@@ -19,12 +19,13 @@ default:
 env:
     chezmoi apply --source .chezmoi --destination . --force
 
-# Install all dependencies: Node packages (pnpm) + Python MCP servers (pip)
+# Install all dependencies: Node packages (pnpm) + Python MCP servers + Django backend
 install: env
     pnpm install --frozen-lockfile
     pip install -q -r mcp-servers/fs-manager/requirements.txt
     pip install -q -r mcp-servers/db-vector/requirements.txt
     pip install -q -r mcp-servers/git-sync/requirements.txt
+    pip install -q -r backend/requirements.txt
 
 # ─── Cloud Environment ────────────────────────────────────────────────────────
 

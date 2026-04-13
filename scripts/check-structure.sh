@@ -29,6 +29,8 @@ DIRS=(
   "apps/sentinel-ui"
   "artifacts/api-server"
   "backend"
+  "backend/api"
+  "backend/sentinel"
   "lib/db"
   "docs"
   ".chezmoi"
@@ -41,6 +43,11 @@ FILES=(
   "folder_structure.json"
   "justfile"
   "backend/requirements.txt"
+  "backend/manage.py"
+  "backend/sentinel/settings.py"
+  "backend/sentinel/urls.py"
+  "backend/api/views.py"
+  "backend/api/urls.py"
 )
 
 MISSING=()
