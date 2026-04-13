@@ -78,21 +78,31 @@
       "location.schema.json": "Schema for location state objects.",
       "item.schema.json": "Schema for item state objects."
     },
-    "world-engine": {
-      "description": "Inference & Orchestration (The Brain) — LLM agents and the core turn-processing loop.",
+    "engine": {
+      "description": "Inference Node (The Brain) — pure-Python package housing the DM, Fact-Extractor, and Lorekeeper agents. Does not import Django, touch disk, or call MCP servers; callers are responsible for side effects. Currently scaffolding only — agent entry points raise NotImplementedError pending the Fact-Extractor implementation and backend wiring.",
+      "__init__.py": "Public API surface — re-exports Config, DMTurnInput, DMTurnResult, WorldContext, and validate/ValidationResult.",
+      "types.py": "Plain dataclasses defining the engine's contract with callers (no Django models, no ORM coupling).",
+      "schema.py": "Loads schemas/apply_world_update.schema.json and exposes validate() via the Draft 2020-12 validator.",
+      "llm.py": "Thin OpenAI client wrapper. Builds a client from a Config; does not read os.environ.",
+      "prompts": {
+        "description": "Agent system prompts — separated from agent logic so prompt changes are diffable.",
+        "dm.py": "DM_SYSTEM_PROMPT — ported verbatim from backend/api/dm_ai.py during migration."
+      },
       "agents": {
-        "description": "Prompt boundaries and persona definitions for each specialized agent.",
-        "dm.yaml": "Dungeon Master — storyteller, rule arbiter, narrative generator.",
-        "fact-extractor.yaml": "Parses DM narrative into structured <world_update> JSON events.",
-        "lorekeeper.yaml": "Manages RAG context injection — queries ChromaDB, prioritizes Core over Community."
+        "description": "Agent entry points. Streaming is a plain generator protocol so Django and a future FastAPI adapter can consume the same stream_turn() generator.",
+        "dm.py": "DM agent — run_turn() and stream_turn(). Stub; raises NotImplementedError.",
+        "fact_extractor.py": "Bridges raw DM narrative to a schema-valid apply_world_update payload. Stub; blocked on source-of-truth decision in docs/BACKLOG.md."
       },
-      "orchestrator": {
-        "description": "The Core Loop — routes player input through the full Action → Narrative → Extract → Update pipeline.",
-        "main.py": "Primary event loop. Entry point for the Inference Node."
-      },
-      "simulation": {
-        "description": "Background world progression — cron-driven events that mutate world state without player input.",
-        "scheduler.py": "Time-based simulation tick (faction movements, weather changes, NPC actions)."
+      "requirements.txt": "Python dependencies (jsonschema, openai).",
+      "README.md": "Package overview and the four boundary rules enforced by tests/engine/test_boundaries.py."
+    },
+    "world-engine": {
+      "description": "LEGACY — Replit-era scaffolding retained for prompt-YAML reference only. Pending removal. Do not add code here; the real Inference Node lives in engine/.",
+      "agents": {
+        "description": "Original prompt boundary/persona YAML stubs. May be consulted when writing prompts for engine/agents/, then deleted.",
+        "dm.yaml": "Dungeon Master prompt stub.",
+        "fact-extractor.yaml": "Fact-Extractor prompt stub.",
+        "lorekeeper.yaml": "Lorekeeper prompt stub."
       }
     },
     "apps": {

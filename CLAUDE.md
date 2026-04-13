@@ -1,3 +1,7 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # Agent Instructions — Project Sentinel
 
 This file contains standing instructions for AI agents (Claude Code and others) working
@@ -105,3 +109,89 @@ Never push to `main` directly.
   without explicit direction.
 - `just` is the command runner. Add new recipes to `justfile` rather than creating
   standalone scripts unless the logic is complex enough to warrant a separate file.
+
+---
+
+## Common Commands
+
+`just` is the entry point for everything. `just` with no args lists all recipes.
+
+**Setup**
+- `just env` — regenerate `infrastructure/.env` from the chezmoi template (OS-aware: Docker socket path, Python binary)
+- `just install` — one-stop installer: pnpm workspace + all Python deps (three MCP servers, Django backend, engine package, and pytest for tests). Fresh clone should be runnable after `just env && just install`.
+- `just install-django` — standalone Django-only installer; used by `just install` and still available as a convenience alias when you only need to refresh backend deps.
+
+**Run the stack**
+- `just start` — full cloud stack: Docker (PostgreSQL + ChromaDB) → wait healthy → all three MCP servers in background
+- `just health` — pass/fail table for every service; exits non-zero if anything is down
+- `just reset` — wipe Docker volumes and restart from scratch
+- `just up` / `just down` / `just down-volumes` / `just ps` / `just logs [service]` — raw Docker Compose passthroughs
+- `just fs-manager` / `just db-vector` / `just git-sync` — run an individual MCP server in verbose dev mode on its port (8010 / 8011 / 8012)
+
+**Dev servers**
+- `just dev-django` — Django production backend on `:8001`
+- `just dev-frontend` — `apps/sentinel-ui` Vite dev server
+- `just dev-backend` — Express reference backend (`artifacts/api-server/`, dev reference only — not production)
+- `just dev` — frontend + Django together
+- `just migrate` — Django `manage.py migrate` (no-op: models are `managed=False`)
+
+**Build & typecheck**
+- `just build` — `pnpm build` across the workspace
+- `just typecheck` — `pnpm typecheck` (no emit)
+
+**Tests**
+- `just test` — Python schema tests + all workspace JS tests (`pnpm -r --if-present run test`)
+- `just test-schemas` — Python schema validation only (`pytest tests/`)
+- Single Python test: `pytest tests/path/to/test_file.py::test_name`
+- Single JS package: `pnpm --filter <pkg-name> test`
+
+**Session lifecycle**
+- `just start-session` — fetch, branch status, open backlog items, structure check
+- `just end-session` — backlog + structure reminder before closing
+- `just check-structure` — verify all documented paths exist
+
+---
+
+## Architecture at a Glance
+
+Sentinel is a two-node agentic system with a strict filesystem firewall between them. Understanding this split is required before editing anything in `engine/`, `mcp-servers/`, or `schemas/`.
+
+**The two nodes**
+- **Inference Node** (`engine/`) — pure-Python package that will house the DM, Fact-Extractor, and Lorekeeper agents. **Never granted direct filesystem access.** Generates narrative, then emits a structured `<world_update>` JSON payload. Currently scaffolding only — the agent entry points raise `NotImplementedError`; `backend/api/dm_ai.py` still serves turns until the migration lands. See `engine/README.md` for the boundary contract.
+- **Infrastructure Node** (`mcp-servers/` + `infrastructure/`) — PostgreSQL + pgvector + ChromaDB + the Git-backed hybrid filesystem under `data/`. The only path from Inference → disk.
+
+> `world-engine/` is legacy Replit-era scaffolding (prompt YAML stubs only) pending removal. Do not add code under it. The new Inference Node lives in `engine/`.
+
+The two nodes communicate over a Tailscale mesh in production; locally they run side-by-side on the same host.
+
+**The MCP Bridge** — three Python servers, each on a fixed port:
+- `fs-manager` (`:8010`) — only thing that writes `data/state/*.json` and `data/lore/*.md`
+- `db-vector` (`:8011`) — PostgreSQL queries + ChromaDB vector upserts
+- `git-sync`  (`:8012`) — atomic commit after each world update
+
+**The core loop** (see `ARCHITECTURE.md` §7 for the full diagram):
+1. Player action → DM agent → narrative text
+2. Fact-Extractor parses `<world_update>` tags out of the narrative
+3. Payload validated against `schemas/apply_world_update.schema.json` (Draft 2020-12). **Invalid payloads are rejected and fed back to the DM** — schema failure is a first-class control-flow path, not an error case.
+4. Router dispatches to fs-manager / db-vector / git-sync
+5. Lorekeeper re-queries ChromaDB and injects fresh context into the next DM turn
+
+**Hybrid storage under `data/`** — human-readable Markdown for lore, machine-readable JSON for state, everything under git. Namespace separation is enforced at write time by fs-manager:
+- `data/{lore,state}/core/` — Core team only; writes require a `"namespace": "core"` authorization token
+- `data/{lore,state}/community/<pack>/` — community packs, additive only
+- Protected fields (`unique_id`, `world_seed`, `namespace`, `created_at`, `canon`, `core_faction_id`) are immutable to community payloads — enforced via `x-sentinel-protected: true` in the JSON schemas. See `ARCHITECTURE.md` §4.
+
+**Two backends coexist on purpose**
+- `backend/` — **Django production backend on `:8001`**. SSE streaming DM turns via `StreamingHttpResponse`; LiteLLM via the standard `openai` client; PostgreSQL via the shared Drizzle schema exposed as `managed=False` Django models (migrations are no-ops).
+- `artifacts/api-server/` — Express 5 + Drizzle ORM. **Kept as a working dev reference, not dead code.** Do not delete without explicit direction.
+
+**Frontend** — `apps/sentinel-ui/` (`@sentinel/ui`), React 19 + Vite + Tailwind v4. Connects to Django via fetch-based SSE. Remember: the 1.0 frontend strategy is undecided — do not build new frontend features without explicit direction (see rules above).
+
+**Shared DB schema** — `lib/db/` (Drizzle ORM) is the single source of truth for the PostgreSQL schema. Both the Express reference backend and the Django production backend consume it (Django via `managed=False` models). Schema changes happen in `lib/db/` first.
+
+**Polyglot tooling**
+- pnpm workspace (Node 24, pnpm 10) — `pnpm-workspace.yaml` covers `apps/*`, `artifacts/*`, `lib/*`
+- Python 3.11+ for the three MCP servers and the Django backend — each MCP server has its own `requirements.txt`
+- `chezmoi` generates `infrastructure/.env` from `.chezmoi/dot_infrastructure/dot_env.tmpl` — that's why `just env` exists, and why you should never hand-write `infrastructure/.env`
+
+**Cross-OS constraint** — this project targets macOS, Linux, and Windows. The chezmoi template handles OS-specific values (Docker socket path, Python binary). Never write linux-only shell in a `justfile` recipe without providing the equivalent for other platforms.
