@@ -36,12 +36,37 @@ Everything in this package obeys four rules:
 
 ## Current status
 
-**Scaffolding only.** The public types, schema loader, LLM client wrapper,
-and DM system prompt have landed, but none of the agent functions are
-implemented yet. Everything raises `NotImplementedError`. This is
-intentional — see `docs/BACKLOG.md` for the remaining design decisions that
-gate real implementation (source-of-truth, Fact-Extractor output shape,
-agent topology).
+**Partially implemented.** The source-of-truth decision (ADR 0001)
+unblocked the agent work. The MCP Bridge dispatcher and the
+Fact-Extractor are real; the DM agent follows immediately after.
+
+Implemented:
+
+- `engine.Config`, `engine.WorldContext`, `engine.DMTurnInput`,
+  `engine.DMTurnResult` — the public type contracts
+- `engine.validate()` — lazy-loaded Draft 2020-12 validator with
+  `format_checker` (enforces `session_id` UUID, etc.)
+- `engine.llm.build_client()` — thin OpenAI client wrapper
+- `engine.dispatch.apply_world_update()` — synchronous HTTP client
+  for `fs-manager:8010/tools/apply_world_update` with structured
+  `DispatchResult` and optional `httpx.Client` injection for tests
+- `engine.agents.fact_extractor.extract()` — parses DM `<world_update>`
+  hint blocks and emits schema-valid payloads; returns
+  `FactExtractResult(payload, narrative, errors)`; self-validates
+  output so callers can trust a non-None payload is fs-manager-ready
+- `engine.prompts.dm.DM_SYSTEM_PROMPT` — ported verbatim from
+  `backend/api/dm_ai.py`
+
+Still stubbed (`NotImplementedError`):
+
+- `engine.agents.dm.run_turn` and `engine.agents.dm.stream_turn` —
+  land in the next commit of the `feat/engine-agents` PR
+- `engine.agents.lorekeeper.*` — scaffolded directory only; full
+  module deferred to Phase 2 per `docs/BACKLOG.md`
+
+Not yet wired: no caller uses `engine` in production. The Django
+backend (`backend/api/dm_ai.py`) still serves turns. That changes
+when the new FastAPI backend lands per ADR 0001 Phase 1.
 
 ## Install
 
