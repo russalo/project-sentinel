@@ -1,0 +1,15 @@
+{
+  "name": "Garek",
+  "health": 75,
+  "status": "alive",
+  "currentLocation": "Blackroot Vale",
+  "description": "Hollowbrook villager clutching a rusted key",
+  "traits": [
+    "terrified",
+    "desperate"
+  ],
+  "role": "ally",
+  "class": "peasant",
+  "race": "human",
+  "level": 1
+}

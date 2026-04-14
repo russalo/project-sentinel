@@ -1,0 +1,15 @@
+{
+  "name": "Thalia",
+  "health": 85,
+  "status": "alive",
+  "currentLocation": "Blackroot Vale",
+  "description": "Skilled tracker with a bow, wary of the temple\u2019s magic",
+  "traits": [
+    "archer",
+    "protective"
+  ],
+  "role": "ally",
+  "class": "Ranger",
+  "race": "Human",
+  "level": 2
+}
