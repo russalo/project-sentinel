@@ -53,5 +53,4 @@ Initial working prototype. The schema gate holds. The loop runs.
 
 ---
 
-[Unreleased]: https://github.com/russalo/present/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/russalo/present/releases/tag/v0.1.0
+[0.1.0]: https://github.com/russalo/project-sentinel/releases/tag/v0.1.0
