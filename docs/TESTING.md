@@ -68,8 +68,8 @@ Flagging gaps honestly so TESTING.md doesn't lie by omission:
   §2 (writes to `data/{state,lore}/core/` blocked without a
   `"namespace": "core"` token) and the `core_faction_id` entry in the
   §4 protected-fields table both exist in the spec but not in code.
-  `server.py`'s `PROTECTED_FIELDS` set is `{unique_id, world_seed,
-  namespace, created_at, canon}` — no `core_faction_id` — and there
+  `server.py`'s `PROTECTED_FIELDS` set is `{"unique_id", "world_seed",
+  "namespace", "created_at", "canon"}` — no `core_faction_id` — and there
   is no namespace-token check anywhere in the file. This is a bigger
   finding than a testing gap: the "core vs community" authorization
   story that the project's security posture rests on is currently
