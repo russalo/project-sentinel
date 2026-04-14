@@ -80,10 +80,46 @@ Healthy critique is part of the job. Silent compliance that ships a wrong answer
 
 ---
 
-## Development Branch
+## Branching and Merging
 
-All work goes to `claude/setup-cloud-environment-VGYBM` unless explicitly directed otherwise.
-Never push to `main` directly.
+The default branch is `master`. Never push to `master` directly.
+
+Every unit of work gets its own branch off fresh master, named after
+the kind of change it is:
+
+- `feat/<short-description>` — new feature or capability
+- `fix/<short-description>` — bug fix or regression
+- `chore/<short-description>` — cleanup, deletion, refactor with no
+  behavior change
+- `docs/<short-description>` — documentation-only change
+- `ci/<short-description>` — CI workflow or tooling change
+
+Workflow for each unit of work:
+
+1. `git checkout master && git pull --ff-only`
+2. `git checkout -b <prefix>/<short-description>`
+3. Make the changes and commit them (multiple commits are fine; they
+   get squashed on merge anyway)
+4. Push with `git push -u origin <branch>`
+5. Open a PR with `gh pr create` — title + body formatted to match
+   recent PRs on this repo
+6. Wait for CI; address review-bot comments inline as small followup
+   commits on the same branch
+7. Squash-merge with `gh pr merge <N> --squash --delete-branch` once
+   CI is green and comments are addressed
+8. Stop at equilibrium — don't chain into the next unit of work
+   without checking in with the user first
+
+Multiple logically-separate units of work should go to separate PRs
+— but "logically separate" is judged by the user's "solo repo, bigger
+swaths OK" preference: a coherent multi-commit sweep is one PR, not
+six. Splitting into smaller PRs is only worth it when the split makes
+the diff more legible or lets part of the work ship while another
+part waits for review.
+
+`tomorrow prep` or `end of day` may involve closing loose ends on
+multiple branches; those are the exceptions where multiple PRs
+land back-to-back.
 
 ---
 
