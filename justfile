@@ -117,6 +117,18 @@ test-schemas:
 test: test-schemas
     pnpm -r --if-present run test
 
+# ─── Claude Code Integration ──────────────────────────────────────────────────
+
+# Copy the current Claude Code session transcript into chatlogs/.
+# Invoked automatically by the PreCompact hook in .claude/settings.json
+# before Claude Code compacts the context window, so the full
+# unabridged session JSONL is preserved locally before it's lost.
+# Also runnable manually to snapshot the current conversation.
+# Cross-OS: delegates to a Python script that parses the hook's
+# JSON-on-stdin contract and anchors output to $CLAUDE_PROJECT_DIR.
+capture-transcript:
+    python3 scripts/capture-transcript.py
+
 # ─── Session Lifecycle ────────────────────────────────────────────────────────
 
 # Fetch latest, show branch status, open backlog items, and verify structure

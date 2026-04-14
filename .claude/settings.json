@@ -3,7 +3,7 @@
     "PreCompact": [
       {
         "type": "command",
-        "command": "mkdir -p chatlogs && if [ -n \"$CLAUDE_TRANSCRIPT_PATH\" ] && [ -f \"$CLAUDE_TRANSCRIPT_PATH\" ]; then cp \"$CLAUDE_TRANSCRIPT_PATH\" \"chatlogs/$(date -u +%Y%m%dT%H%M%SZ)-${CLAUDE_SESSION_ID:-session}.jsonl\"; fi"
+        "command": "just capture-transcript"
       }
     ]
   }

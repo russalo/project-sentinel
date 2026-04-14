@@ -64,6 +64,8 @@ FILES=(
   "engine/dispatch/git_sync.py"
   "docs/adr/README.md"
   "docs/adr/0001-data-canonical-source-of-truth.md"
+  "scripts/capture-transcript.py"
+  ".claude/settings.json"
 )
 
 MISSING=()
