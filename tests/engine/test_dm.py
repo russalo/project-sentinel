@@ -396,6 +396,68 @@ def test_build_intro_messages_uses_provided_seed_when_given():
     assert "classic dark fantasy" not in user.lower()
 
 
+def test_build_intro_messages_omits_creation_context_block_when_all_fields_default():
+    # Layer 1 creation-context fields are all optional. Callers that
+    # pre-date this feature (e.g. any test that constructs IntroInput
+    # without them) should produce an intro prompt that never mentions
+    # a CREATION CONTEXT block at all.
+    messages = _build_intro_messages(_make_intro_input())
+    user = messages[1]["content"]
+    assert "CREATION CONTEXT" not in user
+
+
+def test_build_intro_messages_includes_creation_context_block_when_fields_set():
+    intro = IntroInput(
+        world_name="The Neon Basilica",
+        player_name="Iris",
+        player_class="Netrunner",
+        world_seed=None,
+        genre="Cyberpunk",
+        tone="Noir",
+        starting_region="Lower Terraces",
+        persona_id="stern-scholar",
+        mood="desperate",
+        sandbox=True,
+        permadeath=True,
+    )
+    messages = _build_intro_messages(intro)
+    user = messages[1]["content"]
+
+    assert "CREATION CONTEXT" in user
+    assert "Genre: Cyberpunk" in user
+    assert "Tone: Noir" in user
+    assert "Starting region: Lower Terraces" in user
+    assert "DM persona: stern-scholar" in user
+    assert "DM mood: desperate" in user
+    assert "Sandbox mode" in user
+    assert "Permadeath mode" in user
+
+
+def test_build_intro_messages_only_lists_creation_fields_that_are_set():
+    # Partial population — genre and tone set, everything else default.
+    # The block should appear but only list the fields that were
+    # actually specified, not every possible line.
+    intro = IntroInput(
+        world_name="The Shattered Expanse",
+        player_name="Kael",
+        player_class="Wanderer",
+        genre="Fantasy",
+        tone="Grimdark",
+    )
+    messages = _build_intro_messages(intro)
+    user = messages[1]["content"]
+
+    assert "CREATION CONTEXT" in user
+    assert "Genre: Fantasy" in user
+    assert "Tone: Grimdark" in user
+    # Fields the test didn't set must not leak into the prompt.
+    assert "Starting region:" not in user
+    assert "DM persona:" not in user
+    assert "DM mood:" not in user
+    assert "Sandbox mode" not in user
+    assert "Permadeath mode" not in user
+
+
 def test_generate_intro_returns_dm_turn_result_with_stripped_narrative():
     client = _FakeOpenAI()
     client.chat.completions.set_blocking_response(

@@ -70,12 +70,27 @@ class IntroInput:
     normal turn — the LLM is told to establish a new world, introduce
     NPCs and locations, and give the player an immediate situation to
     respond to. See `engine.agents.dm.generate_intro`.
+
+    The ``genre``/``tone``/``starting_region``/``persona_id``/``mood``/
+    ``sandbox``/``permadeath`` fields are optional World Generation
+    Layer 1 inputs — when any of them are set, the intro prompt
+    appends a "CREATION CONTEXT" block so the LLM can anchor its
+    opening to the player's choices. No preset lookups happen yet;
+    these are free-form strings passed straight through.
     """
 
     world_name: str
     player_name: str
     player_class: str
     world_seed: str | None = None
+
+    genre: str | None = None
+    tone: str | None = None
+    starting_region: str | None = None
+    persona_id: str | None = None
+    mood: str | None = None
+    sandbox: bool = False
+    permadeath: bool = False
 
 
 @dataclass

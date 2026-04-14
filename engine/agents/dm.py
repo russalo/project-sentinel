@@ -302,10 +302,15 @@ _INTRO_SEED_FALLBACK = "Create a classic dark fantasy setting with mystery and d
 def _build_intro_messages(intro: IntroInput) -> list[dict]:
     """Assemble the OpenAI ``messages`` array for a session-intro turn.
 
-    Ported from the Django backend's ``generate_world_intro`` but
-    operates on the engine's ``IntroInput`` dataclass. Produces a
-    two-message list: the shared DM system prompt followed by a
-    user message that tells the LLM to establish a new world.
+    Operates on the engine's ``IntroInput`` dataclass. Produces a
+    two-message list: the shared DM system prompt followed by a user
+    message that tells the LLM to establish a new world.
+
+    World Generation Layer 1: if any of the optional creation-context
+    fields (genre, tone, starting_region, persona_id, mood, sandbox,
+    permadeath) are set, append a "CREATION CONTEXT" block listing
+    only the fields the player actually specified. The DM sees them
+    as free-form strings and can anchor the opening to them.
     """
     seed_context = intro.world_seed if intro.world_seed else _INTRO_SEED_FALLBACK
 
@@ -313,14 +318,49 @@ def _build_intro_messages(intro: IntroInput) -> list[dict]:
         f"Begin a new RPG session with these parameters:\n"
         f"- World Name: {intro.world_name}\n"
         f"- Player Character: {intro.player_name}, a {intro.player_class}\n"
-        f"- {seed_context}\n\n"
-        f"Open the story with an atmospheric introduction. Set the scene, "
-        f"establish the world, introduce at least 2 NPCs and 2 locations. "
-        f"Give the player an immediate situation to respond to.\n\n"
-        f"Create a compelling opening that establishes the tone and immediately draws the player in."
+        f"- {seed_context}\n"
+    )
+
+    creation_lines = _creation_context_lines(intro)
+    if creation_lines:
+        user_content += "\nCREATION CONTEXT (player choices — honor them in the opening):\n"
+        user_content += "\n".join(f"- {line}" for line in creation_lines)
+        user_content += "\n"
+
+    user_content += (
+        "\nOpen the story with an atmospheric introduction. Set the scene, "
+        "establish the world, introduce at least 2 NPCs and 2 locations. "
+        "Give the player an immediate situation to respond to.\n\n"
+        "Create a compelling opening that establishes the tone and immediately draws the player in."
     )
 
     return [
         {"role": "system", "content": DM_SYSTEM_PROMPT},
         {"role": "user", "content": user_content},
     ]
+
+
+def _creation_context_lines(intro: IntroInput) -> list[str]:
+    """Return one prompt line per populated creation-context field.
+
+    Skips fields the player didn't set so the intro prompt stays
+    terse for callers that pre-date Layer 1. Booleans are only
+    emitted when True — the default (False) means "player didn't
+    opt into this mode."
+    """
+    lines: list[str] = []
+    if intro.genre:
+        lines.append(f"Genre: {intro.genre}")
+    if intro.tone:
+        lines.append(f"Tone: {intro.tone}")
+    if intro.starting_region:
+        lines.append(f"Starting region: {intro.starting_region}")
+    if intro.persona_id:
+        lines.append(f"DM persona: {intro.persona_id}")
+    if intro.mood:
+        lines.append(f"DM mood: {intro.mood}")
+    if intro.sandbox:
+        lines.append("Sandbox mode: the player prefers an open, non-linear world")
+    if intro.permadeath:
+        lines.append("Permadeath mode: the player has opted into permanent character death — consequences are real")
+    return lines
