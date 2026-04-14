@@ -44,7 +44,7 @@ You define the physical laws of the engine. You build the machine-readable JSON 
 
 - **Tasks:** Expanding entity schemas, creating new rule systems, and drafting the strict Draft 2020-12 JSON Schemas that validate them.
 - **Requirements:** Precision. Your schemas are the exact contracts the AI must follow to mutate the world. Every new property must include a `description`, a `type`, and where applicable, an `enum` or `pattern` constraint.
-- **Breaking changes:** If your schema change is non-backward-compatible, you must include a migration script in `infrastructure/migrations/`.
+- **Breaking changes deserve special attention.** Any modification to files in `schemas/` that removes or renames a required field is a **breaking change** and warrants a major version bump under [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Community pack authors (`community.json` maintainers) must be notified before breaking schema changes ship. Additive changes (new optional fields, new enum values) are backward-compatible and do not trigger a major bump.
 
 ### ⚙️ Technicians (MCP & Infrastructure)
 

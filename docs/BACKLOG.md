@@ -171,12 +171,15 @@ work will.
   **Content needed (substantial):** every preset above needs written content — the Markdown definitions, the JSON metadata files, and the seed entities for each region. This is real worldbuilding work, probably a Lore-Smith contributor pathway activity rather than an engineer task.
 
   **Order of operations when this becomes work:**
-  1. Start with just Layer 1 (wire the fields end-to-end, pass everything as free-form context) — one PR, immediate UX improvement
+  1. ✅ Start with just Layer 1 (wire the fields end-to-end, pass everything as free-form context) — landed in PR #20
   2. Then define the preset file layout (maybe an ADR — how do presets live under `data/`? how do they compose with community packs?)
   3. Then author a minimum viable set of preset content (probably one entry per category to prove the pattern)
   4. Then build the generation pipeline that consumes it
   5. Finally expand preset coverage to the full form
       _Discovered: 2026-04-14 | Context: user observed during smoke test that the WorldCreation form asks a lot of questions but none of them actually shape the generated world — the DM's intro is identical regardless of what you pick for tone, genre, region, etc. First issue filed under a fresh "World Generation" BACKLOG section because this area is clearly going to accumulate more items_
+
+- [ ] **Persona ID resolution (Layer 1.5).** PR #20 wired `persona_id` through to the DM intro prompt as a raw string — the LLM sees `"DM persona: oracle"` with no context about what "oracle" means. Gemini flagged this on review: an opaque ID is unlikely to make the LLM actually adopt the persona's voice, tone, or narrative style. Minimum viable fix (before the full preset system): either (a) have the frontend send `personaName` + a one-line `personaDescription` alongside `personaId`, or (b) have the backend resolve the ID against a small in-memory catalog of known personas and inject the descriptive version into the intro prompt. (a) is lower coupling but puts descriptive content in the frontend; (b) is higher coupling but keeps the source of truth on the backend. Either unblocks meaningful persona selection without waiting for the full preset file layout. Supersedes the "just pass the raw string" simplification that Layer 1 shipped.
+      _Discovered: 2026-04-14 | Context: Gemini Code Assist flagged on PR #20 — persona_id as an opaque string is unlikely to make the DM actually adopt the persona. Out of scope for Layer 1 intentionally, but worth fixing before the full DM Personas & Content Framework item ships_
 
 ---
 
