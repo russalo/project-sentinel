@@ -102,15 +102,6 @@
       "requirements.txt": "Python dependencies (jsonschema, openai, httpx).",
       "README.md": "Package overview and the four boundary rules enforced by tests/engine/test_boundaries.py."
     },
-    "world-engine": {
-      "description": "LEGACY — Replit-era scaffolding retained for prompt-YAML reference only. Pending removal. Do not add code here; the real Inference Node lives in engine/.",
-      "agents": {
-        "description": "Original prompt boundary/persona YAML stubs. May be consulted when writing prompts for engine/agents/, then deleted.",
-        "dm.yaml": "Dungeon Master prompt stub.",
-        "fact-extractor.yaml": "Fact-Extractor prompt stub.",
-        "lorekeeper.yaml": "Lorekeeper prompt stub."
-      }
-    },
     "apps": {
       "description": "Client-side applications.",
       "sentinel-ui": {

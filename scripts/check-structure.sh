@@ -25,7 +25,6 @@ DIRS=(
   "mcp-servers/git-sync"
   "infrastructure"
   "schemas"
-  "world-engine"
   "apps/sentinel-ui"
   "backend"
   "backend/routes"

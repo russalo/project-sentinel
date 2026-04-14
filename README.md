@@ -32,7 +32,7 @@ This is **Prompt-Driven Development** at the infrastructure level: the narrative
 
 Sentinel operates on a strict separation of concerns to enable seamless remote play via a Tailscale mesh network.
 
-1. **Inference Node** (`/engine`): A pure-Python package that will house the DM, Fact-Extractor, and Lorekeeper agents. It evaluates user input, queries the world state, and outputs rich narrative alongside machine-readable `<world_update>` tags. Currently scaffolding only — see `engine/README.md`. The legacy `/world-engine` directory (prompt YAML stubs from the Replit era) is retained pending removal; do not add code to it.
+1. **Inference Node** (`/engine`): A pure-Python package that will house the DM, Fact-Extractor, and Lorekeeper agents. It evaluates user input, queries the world state, and outputs rich narrative alongside machine-readable `<world_update>` tags. Currently scaffolding only — see `engine/README.md`.
 2. **Infrastructure Node** (`/infrastructure`): The persistent storage layer. It manages the PostgreSQL/Vector database, background simulations, and a Git-backed hybrid filesystem (JSON for state, Markdown for lore).
 3. **The MCP Bridge** (`/mcp-servers`): The Inference Node *never* touches files directly. It issues structured requests to local MCP servers on the Infrastructure Node, which validate and execute filesystem, database, and git operations.
 
@@ -61,8 +61,6 @@ project-sentinel/
 │   ├── llm.py                 # OpenAI client wrapper
 │   ├── prompts/dm.py          # DM system prompt
 │   └── agents/                # dm.py, fact_extractor.py (stubs — see engine/README.md)
-├── world-engine/              # LEGACY (Replit-era scaffolding, pending removal)
-│   └── agents/*.yaml          # prompt stubs kept for reference only
 ├── apps/
 │   └── sentinel-ui/           # React 19 + Vite + Tailwind v4 frontend
 ├── backend/                   # FastAPI production backend (:8001)
@@ -175,11 +173,10 @@ Exits 0 if all checks pass.
 
 ### Initialize the Inference Loop
 
-> **Status: not yet implemented.** The original `world-engine/` directory contains
-> only legacy prompt stubs from the Replit-era scaffolding. The Inference Node —
-> the orchestrator loop that turns DM narrative into validated `<world_update>`
-> payloads and dispatches them across the MCP Bridge — is being rebuilt from
-> scratch and is not currently runnable. Track progress in `docs/BACKLOG.md`.
+> **Status: not yet implemented.** The Inference Node — the orchestrator loop
+> that turns DM narrative into validated `<world_update>` payloads and dispatches
+> them across the MCP Bridge — lives in `engine/` as scaffolding today. Agent
+> entry points raise `NotImplementedError`. Track progress in `docs/BACKLOG.md`.
 
 ---
 
