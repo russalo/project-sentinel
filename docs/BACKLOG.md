@@ -387,8 +387,11 @@ turn-finalization code path and share the same visual primitives.
 
 ## Developer Experience
 
-- [ ] Add unit and integration tests for `apps/sentinel-ui/` — Zustand stores, API client, and key components
-      _Discovered: 2026-03-26 | Context: flagged in PR #5 review; no tests exist for any of the 8 frontend phases; recommend vitest + @testing-library/react_
+- [ ] Add unit and integration tests for `apps/sentinel-ui/` — Zustand stores, API client, and key components. See `docs/TESTING.md` "Near-term test work" item #1: vitest + @testing-library/react land alongside the Panel UX primitives (`EntityCard`, `DeltaMessage`, `TabbedChat`) from ROADMAP item #1. The fixture-based primitive tests are the smallest possible unlock for frontend CI coverage.
+      _Discovered: 2026-03-26 | Updated: 2026-04-14 | Context: flagged in PR #5 review; no tests exist for any of the 8 frontend phases; scoped to land with the Panel UX rewrite rather than as a standalone effort_
+
+- [ ] **Wire `mcp-servers/fs-manager/tests/` into CI.** The fs-manager server has its own pytest suite (path validation, protected-field enforcement, schema-gated CRUD) that runs locally but is not wired into the main `pytest tests/` CI invocation. Either glob it into the main invocation or add a dedicated job. Load-bearing because fs-manager is the entire security boundary between the LLM and the filesystem — its tests deserve first-class CI coverage, not "hope someone ran it locally."
+      _Discovered: 2026-04-14 | Context: surfaced while writing docs/TESTING.md after fixing PR #23's CI test-suite gap_
 
 - [ ] Add machine-readable requirements manifest (Brewfile or .tool-versions) for `just`, `chezmoi`, and other non-npm tools
       _Discovered: 2026-03-25 | Context: docs list prerequisites but no single install command exists for a new contributor_
