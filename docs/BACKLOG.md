@@ -304,19 +304,90 @@ context, which is fragile and prevents any genre from having real rules.
 
 ## Frontend / Turn UX
 
-Turn-finalization UX surfaced as a clear gap during the 2026-04-14 smoke
-test: the FastAPI backend correctly streams tokens, updates state files
-through fs-manager, and ships a `world_update` SSE event — but the frontend
-does nothing to help the player *see* what changed or *act* on what's
-next. The panels silently reflect new state; there's no "moment" in each
-turn that says "here's what matters right now." These three items
-together are what turn the raw narrative output into playable game UI,
-and they should probably ship as one or two coordinated PRs because they
-all touch the frontend's turn-finalization code path and the DM prompt
-at the same time.
+Turn-finalization and in-turn exploration UX both surfaced as clear
+gaps during the 2026-04-14 smoke test. The FastAPI backend correctly
+streams tokens, updates state files through fs-manager, commits via
+git-sync (as of PR #14), and ships a `world_update` SSE event — but
+the frontend does nothing to help the player *see* what changed,
+*act* on what's next, or *read* about anything on screen. The panels
+silently reflect new state with no way to inspect individual entries;
+the chat shows only the narrative stream with no historical audit
+view; there's no moment in each turn that says "here's what matters
+right now." These items together are what turn the raw narrative
+output into playable game UI. They should ship as one or two
+coordinated PRs because they all touch the frontend's
+turn-finalization code path and share the same visual primitives.
 
-- [ ] **Turn-delta feedback (cheap, pure frontend).** After each turn, compute the diff between the previous world state and the new `world_update` SSE payload and render it as a styled system message at the end of the turn, or animate affected panels with a pulse + before/after indicator. Example output: "Tension: 9 → 10. The Shadowbeast appeared. Russalo: wounded (100 → 85)." **Zero backend work, zero extra LLM calls** — the data to compute the diff is already in chatStore / worldStore. ~1 day of React/Zustand work. Biggest immediate UX win; ship this first.
-      _Discovered: 2026-04-14 | Context: user observed during smoke test that state was changing but nothing made it visible to the player — "there needs to be interface or system feedback on the turn when the DM responds, the part of the world update that is relevant to the player"_
+- [ ] **Panel UX system — unified state rendering across four views.** The session UI has four distinct views onto the same session state, each answering a different temporal question. Today all four are either missing entirely, hardcoded empty-state placeholders, or render name-only summaries that drop every field the DM emits. This item designs them together because they share data sources, visual primitives, and user flows — splitting them produces divergent renderers for the same data and inconsistent visual languages for "this is what you should look at."
+
+  **The four views and what each answers:**
+
+  1. **Panel cards — "what is this right now?"** Current state display. Left panel (Characters, Locations, Factions) and right panel tabs (Codex, Inventory, QuestLog). Today:
+     - Left-panel lists render one-line `<li>` items with `cursor-pointer` and a `hover:text-amber` effect, but NO click handler — they look interactive, they're not. Every field (`description`, `traits`, `role`, `class`, `race`, `level`, `health`, `status`, `currentLocation`) is silently dropped by the UI even though worldStore has the full dict.
+     - Right-panel tabs (`CodexPanel`, `InventoryPanel`, `QuestLogPanel`) are hardcoded static text — they don't import `useWorldStore`, don't consume props, don't react to anything. When the DM has generated 50 entities the Codex tab still says "No discoveries yet." They're promise-ware from an earlier phase of FRONTEND_PLAN.md that never got built.
+     - **Target:** click any entity in the left panel → detail card opens in a right-panel drawer (replaces the Codex/Inv/Quest tabs temporarily, preserves narrative real estate). The right-panel tabs become real — wired to worldStore, rendering live lists of all discovered entities via the shared `EntityCard` primitive (below). Hover reveals summary; click reveals full card.
+
+  2. **Narrative scroll — "what is the DM saying right now?"** Existing, mostly works. `NarrativeScroll.jsx` + `DMMessage.jsx` handle the DM stream with a typewriter cursor. No changes required except making the chat area *tabbed* (see view 3).
+
+  3. **System log tab — "what has happened across the whole session?"** **New.** The chat area becomes a tabbed container: `Narrative | System Log`. The System Log tab is a scrollable historical archive of state-change events — every turn's delta, every new entity, every removed entity, every world metric change — rendered in chronological order. When a new turn lands and the Narrative tab shows the DM's prose, the System Log tab silently accumulates a structured log entry describing what changed; the player can swap tabs at any time to review history. Probably a badge indicator on the System Log tab when new entries arrive and the user is on the Narrative tab.
+
+     Source of truth options:
+     - **Frontend-only (Phase 1):** chatStore gains a `systemLog: []` array that accumulates delta messages as they arrive via the `world_update` SSE event. Lost on page reload.
+     - **Backend-backed (Phase 2):** new `GET /api/session/<session_id>` endpoint returns the full session with `turns[]`, each turn containing its `world_updates` hint block. Frontend hydrates the system log from that on session load. Survives reloads.
+     - **git-history-backed (Phase 3 / far future):** since git-sync now produces per-turn commits (PR #14), a new `GET /api/session/<id>/history` endpoint could read git log filtered by session_id and expose the commit history directly. Makes "view world at turn N" possible via `git show`. Overkill for v1.0.
+
+  4. **Turn-delta feedback — "what just happened at the end of this turn?"** Ephemeral, at turn boundary. When the `world_update` SSE event arrives at `[DONE]`, diff the incoming payload against the previous world state and render the changes in two places:
+     - A styled system message at the bottom of the Narrative scroll — e.g. "Tension: 9 → 10. The Shadowbeast appeared. Russalo: wounded (100 → 85). New item: Shadow Blade (Russalo)." Fades in, stays visible until the next turn, or is implicitly dismissed by scroll.
+     - An animated pulse + before/after indicator on the affected panel cards. When the player clicks the pulsing entity, its detail card opens in **diff mode** showing the specific fields that changed highlighted with before/after values.
+
+     The same turn-delta event also writes an entry into view 3 (System Log tab), where it persists as a log line the player can scroll back to.
+
+  **Shared primitives — build once, consume everywhere:**
+
+  - `EntityCard` + `PropertyList` — schema-driven entity renderer (per `docs/FRONTEND_PLAN.md §4` and §6). Takes any entity dict and produces a styled card. Two modes: `current` (full state display, used by click-to-read) and `diff` (before/after highlights, used by turn-delta feedback when the entity changed). Pure component, no store wiring — all views consume it with data passed as props. Unit-testable against fixtures without mounting the app.
+  - `DeltaMessage` — renders a single "what changed" event as a styled system message. Used by the turn-delta feedback (rendered inline in the narrative scroll) AND by the System Log tab (each log entry is a DeltaMessage instance). Same visual language in both places.
+  - `TabbedChat` — small wrapper around `NarrativeScroll` that adds tab switching between Narrative and System Log. Could be shared with a future ThirdTab if needed.
+
+  **Data sources and flow:**
+
+  - **Current state** flows: SSE `world_update` event → `worldStore.applyUpdate(hint)` → panel cards (view 1) re-render.
+  - **Narrative** flows: SSE `token` events → `chatStore.appendToBuffer` → NarrativeScroll re-renders, then `[DONE]` → `chatStore.commitStreamMessage` → permanent message in scroll.
+  - **Turn-delta** flows: when `world_update` arrives, compare against previous snapshot in worldStore → compute delta → emit a DeltaMessage to chatStore's `systemLog` (view 3 persistent) AND emit a transient styled system message in the narrative scroll (view 4 ephemeral) AND trigger pulse animations on affected panel cards (view 1 indicator).
+  - **Historical log** flows: on page load or session resume, hydrate `chatStore.systemLog` from either in-memory accumulation (Phase 1) or a new GET /api/session/<id> endpoint (Phase 2).
+
+  **Build ordering:**
+
+  1. Build the shared primitives — `EntityCard`, `PropertyList`, `DeltaMessage` — as pure components with fixture-based tests. No store wiring yet. These are the smallest unit that unblocks everything else.
+  2. Wire the right-panel tabs (Codex, Inventory, QuestLog) to `worldStore` using `EntityCard` in `current` mode. This kills the hardcoded empty-state lie immediately.
+  3. Add click-to-expand on the left-panel list items — same primitive, opens in a right-panel drawer. Hovering the Characters/Locations/Factions lists already suggests clickability; this makes the suggestion real.
+  4. Implement turn-delta computation in `chatStore` — diff incoming world_update vs previous worldStore snapshot, produce a list of delta events. Emit them as styled system messages in the narrative scroll for the ephemeral feedback.
+  5. Add the TabbedChat container and wire the System Log tab to the same delta event stream — persistent historical view. Phase 1 is frontend-only accumulation; Phase 2 hydrates from a new backend endpoint.
+  6. Add pulse animation on affected panel cards. On click of a pulsing card, open the detail card in `diff` mode instead of `current` mode. Unifies the "see what changed" and "read the full detail" flows.
+  7. Optional Phase 3: new `GET /api/session/<id>` backend endpoint reads the session file and returns it as JSON. Frontend hydrates systemLog from that on page load. Makes the feature durable across reloads.
+
+  **Open UX questions the joint design needs to answer:**
+
+  - **Card open during new turn** — if a player has Russalo's detail card open in the right-panel drawer and a new turn arrives that modifies Russalo, does the card live-update with a visible diff, stay static until dismissed, or flash a "new data" indicator? Leaning: live-update in diff mode with a subtle "turn N+1 just landed" marker at the top of the card. Player sees the change without losing their place.
+  - **Right-panel drawer vs inline expand vs modal** — where does the detail live? Right-panel drawer (replaces Codex/Inv/Quest tabs temporarily) uses existing real estate and doesn't interrupt the narrative. Inline expand (accordion-style in the left panel) is more discoverable but cramps the left-panel layout. Modal interrupts the chat. Leaning: right-panel drawer with a "close" action that returns to the last-selected tab.
+  - **System Log tab notification** — when the player is on the Narrative tab and a new delta arrives, does the System Log tab get a badge (unread count), a subtle pulse, a highlight, or nothing? Leaning: badge with unread count, cleared when the player switches to the tab.
+  - **Removed entities** — does clicking a character that was removed in a prior turn show a tombstone card with "last seen: turn N, status: dead"? Or do they vanish from the list entirely? Tombstones are more interesting but require `worldStore` to track removed entities in a separate collection instead of deleting them. Leaning: tombstones — they're the game's memory, not an error state.
+  - **Empty states vs "never discovered"** — if the Codex tab is wired to worldStore and worldStore has one character, the panel shows one character. If worldStore is empty, what's the empty state? Is it the same "No discoveries yet" text as before, or something that distinguishes "fresh session, nothing yet" from "turn 1 happened but the DM didn't emit anything"?
+  - **Per-turn evolution timeline in the card** — does the detail card show ONLY current state, or also a timeline of how this entity evolved across turns (via git history lookup)? Phase 2+ territory, but the shape matters because it affects whether `EntityCard` needs a third mode (`timeline`) beyond current/diff.
+  - **System Log tab scroll anchoring** — when new entries arrive, does the tab auto-scroll to newest (like a chat) or preserve the user's scroll position (like a log)? Leaning: preserve scroll position if the user has scrolled up, auto-scroll if they're at the bottom.
+  - **Keyboard navigation** — arrow keys to navigate between panel cards? Number keys to jump to tabs? Deferred to implementation.
+
+  **What the other Turn UX items are NOT.** Suggested Actions (#2) and Exits (#3) are INPUT mechanisms — they surface what the player can DO next. This Panel UX system is DISPLAY mechanisms — it surfaces what IS, what CHANGED, and what HAPPENED. Both compose (a pulsing entity card in view 4 draws the player's eye to a target, suggested-action pills in another area offer verbs that apply to it), but the two concerns are separable and can ship independently. This item is only about the four display views.
+
+  **Relation to other BACKLOG items:**
+
+  - **Entity Sweeper (Engine Package).** When implemented, the Sweeper produces entities with `mentioned_only: true`. `EntityCard` needs a visual state for those — grayed out, italicized, or tagged "glimpsed" until the player interacts. The primitive should accommodate this mode from day one even if the Sweeper ships later.
+  - **World Identity & Multi-Session.** If the world identity model introduces a world_id into every commit and entity record, the System Log tab's backend endpoint should filter by world_id not just session_id. Cross-reference on implementation.
+  - **Suggested Actions (Frontend / Turn UX #2).** Compose as input-vs-display. Don't block each other, but the turn-delta visual ("pulse the affected entity") and the suggested-actions visual ("here are your pills") should feel like one coherent end-of-turn moment.
+  - **Exits (Frontend / Turn UX #3).** Same — the compass panel and the location card share the Location entity schema, so `EntityCard` on a location dict should probably surface the exits array prominently.
+  - **git-sync audit trail (ADR 0001 Phase 1, done in PR #14).** The System Log tab is a natural UI on top of the audit trail that git-sync now produces. Phase 3 of this item reads git log directly; git-sync's commit messages already contain session_id and turn metadata, so the wiring is mostly a new backend endpoint away.
+
+  **Before implementation: ADR.** This is enough scope to deserve its own ADR — smaller than 0001, comparable to the Entity Sweeper and World Identity directions. The ADR should pin down: the drawer-vs-modal decision, the Phase 1/2/3 system-log source split, the removed-entity tombstone behavior, and the composition with the Entity Sweeper's `mentioned_only` state. Call it roughly ADR 0002 or whatever number lands in order.
+      _Discovered: 2026-04-14 | Context: user asked during the smoke test whether they could read details on the panel cards (no — they're name-only lists with a decorative hover effect, plus the right-panel tabs are hardcoded empty-state text). That revealed the display surface is a coupled system: panel detail reading, turn-delta feedback, and a new System Log tab for historical audit are really four views on the same underlying data and have to be designed jointly. Replaces the previous "Turn-delta feedback (cheap, pure frontend)" backlog entry, which was too narrow — it framed turn feedback as a standalone ephemeral feature without accounting for the shared primitives and the historical scrollback view the player also needs. Reframed per user feedback "it also needs to be considered as to how they function with the turn update we have in the backlog," plus "there could also be a system log tab in the chat where a player could scroll back to see how things updated."_
 
 - [ ] **Suggested actions as structured field (hybrid: prompt + schema + frontend).** The DM already writes these in prose at the end of every turn ("Do you strike with shadow magic, let Thalia's arrow find its mark, or use the key?") — they should be a structured array in the `<world_update>` block, not buried in narrative. Proposed schema addition: `suggestedActions: [{"label": "...", "tone": "aggressive|defensive|clever|..."}]`. Frontend renders as clickable pills under the command bar; clicking types the label into the input (does NOT auto-submit — player still reviews). Frontend supplements with rule-based "always-available" actions ("Look around", "Rest", "Wait"). Tiny schema addition + small bullet in `DM_SYSTEM_PROMPT` + small frontend component. No extra LLM call — the DM emits in its existing response. Graceful fallback when the DM forgets: show the rule-based standards only.
       _Discovered: 2026-04-14 | Context: the DM always ends turns with choice-prompts but they're buried in prose; surfacing them as UI commits the player to a cleaner interaction model_
