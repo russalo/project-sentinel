@@ -1,26 +1,22 @@
 # Changelog
 
-All notable changes to Project Sentinel are documented here.
-
-Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). Project Sentinel uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-> **Schema changes deserve special attention.** Any modification to files in `schemas/` that removes or renames a required field is a **breaking change** and warrants a major version bump. Community pack authors (`community.json` maintainers) must be notified before breaking schema changes ship.
-
----
-
-## [Unreleased]
-
-### Added
-- `docs/QUICKSTART.md` — Zero to Hero in 5 minutes guide for new contributors
-- `ROADMAP.md` — v0.1 → v1.0 feature roadmap with open contributor bounties
-- `SECURITY.md` — vulnerability reporting policy and MCP server attack surface documentation
-- `CODE_OF_CONDUCT.md` — Contributor Covenant 2.1
-- `CHANGELOG.md` — this file
-- `.github/CODEOWNERS` — automatic PR review routing by contributor pathway
-- `ARCHITECTURE.md` — Mermaid diagrams: Architecture Node Graph, Full Update Pipeline, Sentinel Airlock
-- `README.md` — Shields.io badges (License, Python, Node, PRs Welcome, MCP Powered)
-- `README.md` — Rewritten opening paragraph and Mermaid Core Loop diagram
-- `docs/` directory for extended documentation
+> **Status: not actively maintained.** This file is kept as a historical
+> snapshot of the v0.1.0 release and is no longer updated turn-by-turn.
+> The authoritative change log for Project Sentinel is:
+>
+> - **`git log`** — per-commit history with full diffs
+> - **[GitHub Pull Requests](https://github.com/russalo/project-sentinel/pulls?q=is%3Apr+is%3Aclosed)** — merged PRs with descriptions and reviews
+> - **`docs/adr/`** — architecture decisions that shaped the codebase
+> - **`docs/BACKLOG.md`** + **`docs/ROADMAP.md`** — work in flight and next up
+>
+> Several items in the v0.1.0 section below (e.g. `mcp-servers/db-vector/`,
+> `infrastructure/migrations/`, `artifacts/api-server/`) have since been
+> removed from the codebase. They are preserved here as a record of what
+> shipped on 2026-03-24, not as a description of current state.
+>
+> If Keep-a-Changelog discipline returns to the project, it will start
+> from a fresh `[Unreleased]` section under a later release tag, not by
+> back-filling the ~6 months between v0.1.0 and now.
 
 ---
 
