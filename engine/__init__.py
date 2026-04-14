@@ -7,7 +7,7 @@ Callers are responsible for side effects.
 See engine/README.md for the full boundary contract.
 """
 
-from .dispatch import DispatchResult, apply_world_update
+from .dispatch import DispatchResult, apply_world_update, commit_snapshot
 from .schema import ValidationResult, validate
 from .types import Config, DMTurnInput, DMTurnResult, IntroInput, WorldContext
 
@@ -21,4 +21,5 @@ __all__ = [
     "validate",
     "DispatchResult",
     "apply_world_update",
+    "commit_snapshot",
 ]

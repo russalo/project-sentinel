@@ -2,8 +2,9 @@
 
 Each submodule here wraps one MCP server's HTTP API. Callers import the
 specific client they need — e.g. `from engine.dispatch.fs_manager import
-apply_world_update`. The top-level `engine` package re-exports the most
-common entry points for convenience.
+apply_world_update` or `from engine.dispatch.git_sync import commit_snapshot`.
+The top-level `engine` package re-exports the most common entry points
+for convenience.
 
 Keeping dispatch out of the agents (`engine/agents/*.py`) preserves the
 engine's layering: agents produce structured payloads; dispatch sends them
@@ -16,5 +17,6 @@ exists and why engine writes must go through it.
 """
 
 from .fs_manager import DispatchResult, apply_world_update
+from .git_sync import commit_snapshot
 
-__all__ = ["DispatchResult", "apply_world_update"]
+__all__ = ["DispatchResult", "apply_world_update", "commit_snapshot"]

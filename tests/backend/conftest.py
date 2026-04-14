@@ -62,7 +62,7 @@ def test_settings(tmp_data_dir: Path):
 
 
 @pytest.fixture
-def app(test_settings, fake_openai, fake_dispatch_log, monkeypatch):
+def app(test_settings, fake_openai, fake_dispatch_log, fake_commit_log, monkeypatch):
     """Build a FastAPI app that uses the injected settings + fakes.
 
     Also monkey-patches the engine's dm.build_client and the
@@ -76,6 +76,7 @@ def app(test_settings, fake_openai, fake_dispatch_log, monkeypatch):
     import engine
     import engine.agents.dm as dm_module
     import engine.dispatch.fs_manager as dispatcher_module
+    import engine.dispatch.git_sync as git_sync_module
 
     # Force every build_client call inside engine.agents.dm (run_turn,
     # stream_turn, generate_intro) to return our fake.
@@ -89,6 +90,40 @@ def app(test_settings, fake_openai, fake_dispatch_log, monkeypatch):
 
     monkeypatch.setattr(dispatcher_module, "apply_world_update", fake_dispatch)
     monkeypatch.setattr(engine, "apply_world_update", fake_dispatch)
+
+    # Capture commit_snapshot calls the same way. Separate log so
+    # tests can assert on the git-sync dispatches independently of
+    # fs-manager dispatches.
+    def fake_commit_snapshot(
+        config,
+        *,
+        session_id,
+        turn_number,
+        summary,
+        client=None,
+        timeout=30.0,
+    ):
+        fake_commit_log.append(
+            {
+                "config": config,
+                "session_id": session_id,
+                "turn_number": turn_number,
+                "summary": summary,
+            }
+        )
+        return engine.DispatchResult(
+            ok=True,
+            status_code=200,
+            body={
+                "status": "committed",
+                "commit": "faceb00c",
+                "session_id": session_id,
+                "turn_number": turn_number,
+            },
+        )
+
+    monkeypatch.setattr(git_sync_module, "commit_snapshot", fake_commit_snapshot)
+    monkeypatch.setattr(engine, "commit_snapshot", fake_commit_snapshot)
 
     # Build the app with the test settings already loaded.
     app = FastAPI()
@@ -175,4 +210,9 @@ def fake_openai():
 
 @pytest.fixture
 def fake_dispatch_log() -> list:
+    return []
+
+
+@pytest.fixture
+def fake_commit_log() -> list:
     return []

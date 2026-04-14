@@ -26,15 +26,19 @@ Items in this backlog may reference an ADR for context.
 
 ## High Priority — Do Soon
 
-The Inference Node work is unblocked by ADR 0001. The order below reflects
-the dependency chain: each item needs the previous one landed to be
-implementable.
+ADR 0001 Phase 1 is fully shipped. The Inference Node (engine
+package) is wired into a new FastAPI backend that reads state
+directly from `data/state/*.json` and dispatches every write
+through the complete engine → fs-manager → git-sync path. Django
+and Express are gone. The per-turn git audit trail is real and
+verified end-to-end against a live LLM.
 
-- [ ] **New FastAPI backend to replace Django.** Replaces `backend/sentinel/` + `backend/api/` with a FastAPI application. Reads directly from `data/` (no ORM, no Django models in the hot path). Calls the engine for turn handling. Dispatches writes through `engine.dispatch` to `fs-manager`. Preserves the existing SSE response contract (`{type: 'token', content}`, `{type: 'world_update', data}`, `[DONE]`) so the frontend continues working without changes. Sized at ~500–800 lines of Python + tests. Matches the async model and dependency stack used by the MCP servers.
-      _Discovered: 2026-04-13 | Context: ADR 0001 Phase 1 core deliverable; retires PR #7's Django backend after it has served its purpose (unblocking the frontend and proving the SSE flow)_
-
-- [ ] **Retire `artifacts/api-server/` (Express dev reference) and `lib/db/` (Drizzle schema).** These have been double-dead-code since PR #7 and retire together with the Django backend they referenced. Removes their workspace members from `pnpm-workspace.yaml` and updates `tsconfig.json` / root `package.json` accordingly. Removes `just dev-backend` from the `justfile`.
-      _Discovered: 2026-04-13 | Context: ADR 0001 implementation implications_
+Phase 1 delivery items all resolved — see merged commits on
+master for PRs #9 (engine scaffold), #10 (ADR 0001), #11 (engine
+agents), #12 (FastAPI backend, Django retirement), #13 (frontend
+field fixes from the first live smoke test), and the follow-up
+that wires engine → git-sync (this branch). The only remaining
+Phase 1 cleanup item is world-engine/ deletion below.
 
 - [ ] **Delete `world-engine/` entirely.** The three prompt YAMLs (`dm.yaml`, `fact-extractor.yaml`, `lorekeeper.yaml`) may be useful reference when writing the engine's agent prompts, so keep them until the engine agents are implemented — then remove the directory. Also remove `world-engine` from `scripts/check-structure.sh` at the same time.
       _Discovered: 2026-04-13 | Context: world-engine/ was retained during the engine/ scaffold PR to avoid deleting reference material prematurely; still retained until the new DM agent has harvested anything reusable from the YAMLs_
@@ -87,6 +91,71 @@ for v1.0 and should not be worked in parallel with Phase 1.
 
 - [ ] **`engine/schema.py` schema-path coupling.** `_SCHEMA_PATH` is hard-coded to `Path(__file__).parent.parent / "schemas" / ...`, which only resolves correctly when `engine/` sits at the repo root alongside `schemas/`. The PR #9 boundary contract states `engine/` should be extractable into a standalone package; in that scenario this path breaks. Fix options: (a) bundle the schema as package data and load via `importlib.resources`, (b) copy `schemas/` into `engine/` as a sibling of `engine/schema.py`, or (c) have the caller inject the loaded schema or its path. Option (c) is the cleanest architecturally but changes `validate()`'s public API. Defer until extraction actually happens.
       _Discovered: 2026-04-13 | Context: flagged by Copilot on PR #9; documented in the module docstring of engine/schema.py and deferred to this item instead of reworked in the scaffold PR_
+
+---
+
+## World Identity & Multi-Session
+
+Surfaced during the 2026-04-14 engine → git-sync wiring PR
+(commit 56c70ee landed the first real per-turn commit from the
+live backend). The question *"the git-sync is per world seed &
+session? How do we track?"* exposed three interlocking gaps in
+how world identity is modeled today. None of them are bugs in
+the smoke test — they're unanswered design questions that
+Phase 1 didn't need to resolve but any further world-content
+work will.
+
+- [ ] **World identity, world_seed persistence, and multi-session semantics.** Three related gaps, all of which should be settled together in one ADR (smaller scope than 0001 but same shape), because any partial answer creates more confusion than no answer.
+
+  **Gap 1 — `world_seed` is dropped on the floor.** The WorldCreation form collects it, `NewSessionRequest.world_seed` passes it to `engine.IntroInput`, `engine.agents.dm.generate_intro()` injects it into the DM's user message as the `seed_context`, and that's the end of its life. Nothing persists it to disk. When the backend restarts or a new session is created in the same data/ tree, the seed is gone and unrecoverable. The `<world_update>` hint the DM emits never contains it either, so the Fact-Extractor never has a chance to write it. The backend explicitly silently loses this user input on every turn.
+
+  **Gap 2 — no world-level identifier.** Every session under `data/state/core/sessions/<uuid>.json` shares the same `data/state/core/entities/`, `locations/`, `factions/`, `items/`, and `world/state.json`. There is no concept in the backend of "which world am I in" — the `read_session`/`write_session` helpers in `backend/state/sessions.py` look up by session UUID and return the session, but the *world* the session belongs to is implicit in which data/ tree the backend is pointed at. Creating a second session in the same data/ tree would silently inherit all the entities from the first session's world (Russalo, Thalia, Garek, the Hollowed Temple) — which is fine if the intent is "multi-session within one world" (resume a campaign, branch a what-if playthrough from an earlier point, run one character's story alongside another's in the same setting), but there's no code path that expresses or enforces that intent. The backend has no way to say "start a fresh world, wipe entities" without a contributor manually `rm -rf`ing the data tree.
+
+  **Gap 3 — no `world_id` in git-sync commit messages.** The current format is `[sentinel] session=<id[:8]> turn=<N> — <summary>` with the full session UUID in the commit body. You can filter one playthrough with `git log --grep "session=<id>"`. But if there are ever multiple worlds coexisting in the same data/ tree, or if a deployment ever wants to multiplex worlds (separate clones? branches? subdirectories?), there's no world-level tag in the commit history to disambiguate them — you'd have to chain session-to-world via a separate lookup. And if a user imports a `.spak` from another world into the same repo clone, commit history would be silently inconsistent with the world identity it's supposed to represent.
+
+  **Intended model** (based on re-reading README, ARCHITECTURE.md, and the Sentinel Porter language in `ARCHITECTURE.md §8`): **one `data/` tree = one world**. Multiple worlds live as separate `data/` trees — probably separate clones, possibly `.spak` imports of packaged worlds, possibly separate git branches in the same clone. A single world has many sessions across its lifetime (you play today, save, come back tomorrow, continue; or you start a second character's playthrough in the same setting). Entities persist across sessions within a world. They don't leak across worlds, because worlds don't share a data/ tree.
+
+  **Under that model, the minimum wiring to fix all three gaps:**
+
+  1. **Add a world genesis record to `data/state/core/world/state.json`**. Currently that file holds live world state (currentLocation, tension, weather, time). Extend its schema with an optional `genesis` block that captures world identity on first write and never changes thereafter:
+     ```json
+     {
+       "genesis": {
+         "world_id": "<uuid4>",
+         "world_seed": "<the seed_context the player provided>",
+         "world_name": "...",
+         "created_at": "<iso timestamp>",
+         "presets": {
+           "genre": "...", "tone": "...", "starting_region": "...",
+           "persona_id": "...", "mood": "...", "modifiers": [...]
+         }
+       },
+       "currentLocation": "...",
+       "tension": 5,
+       "weather": "...",
+       "timeOfDay": "..."
+     }
+     ```
+     The `genesis` block is set once by session/new on world creation, and every subsequent update to `world/state.json` preserves it (either via merge semantics in fs-manager's `update` operation, or via an explicit protected-field list analogous to `unique_id`/`created_at`/`canon` in ARCHITECTURE.md §4).
+
+  2. **Persist the world_seed during session creation.** `backend/routes/session.py` should, after the DM intro dispatch succeeds, emit a second apply_world_update payload that writes the `genesis` block to `world/state.json`. Or — simpler — teach the DM prompt to always emit a `genesis` block in the `<world_update>` on session-start turns (and nowhere else, ever). The Fact-Extractor then handles it uniformly.
+
+  3. **Thread `world_id` through git-sync commits.** The engine `commit_snapshot` dispatcher gains an optional `world_id` parameter; the commit message format becomes `[sentinel] world=<world_id[:8]> session=<session_id[:8]> turn=<N> — <summary>`; git-sync's `/tools/commit_snapshot` endpoint accepts the new field. This is the smallest change — additive, no breakage of existing commits.
+
+  4. **Session reads should include world context.** `backend/state/sessions.py::read_session` already returns a Session dataclass; extend `load_world_context` in `backend/state/world_context.py` to also surface the genesis block so the DM prompt can reference "you are in a world created with the seed X, genre Y, starting region Z" on every turn, not just session-start. This is how you get genre-aware DM behavior that actually persists across turns.
+
+  **Unresolved design questions** that the ADR should settle:
+
+  - **Multi-world-per-instance.** Is the intended deployment model strictly one-world-per-clone, or do we want a single backend process to multiplex multiple worlds (with a selector in the WorldCreation URL)? If multiplexed: how does the data/ layout change? Do we namespace everything under `data/worlds/<world_id>/…`? If so, every path reference in the engine / backend / MCP servers needs updating.
+  - **Sessions as branches vs. linear history.** Right now all sessions in a world commit to the same branch; their commits interleave in timestamp order. Is that right, or should each session be its own branch so you can swap between playthroughs? git-sync today has no branch awareness.
+  - **`.spak` import target.** When a `.spak` is imported, does it create a new clone, or can it be merged into an existing data/? If merged, what are the conflict semantics (protected fields, world_id uniqueness)?
+  - **Resume vs. new session in same world.** The frontend currently only has "begin a new world" — there's no "resume existing session" or "start a new character in the same world" UX. That's a frontend question tied to backlog items in the Frontend/Turn UX section, but it affects what the world identity model needs to support.
+  - **Multi-player future.** None of the above considers multi-player. If two players share a world, session_id ≠ player_id and the schema gains another layer. Deferred, but the world identity work should not actively preclude it.
+
+  **Why log as one item, not three.** Splitting them produces half-answers (persisting world_seed without a world_id to tag it against, or tagging commits without a world genesis to tag *with*, etc.). All three need to land together or the model stays inconsistent.
+
+  **Before implementation, write an ADR.** It should cover: the one-world-per-clone decision (or a decision to support multiplexing), the `genesis` block schema, the commit message format change, and the frontend UX for resume/new-session-in-world. Probably 200–400 lines, roughly half the length of ADR 0001.
+      _Discovered: 2026-04-14 | Context: user asked "the git-sync is per world seed & session? How do we track?" during the engine → git-sync wiring PR, when they saw commits tagged with session_id in the git log. The honest answer is: per-session only, world_seed isn't persisted anywhere, and multi-session-same-world vs multi-world-per-instance isn't decided — it's all implicit today. This item captures the design gap before any of the World Generation / Player Actions / DM Personas Framework items try to build on top of "what does a world mean."_
 
 ---
 

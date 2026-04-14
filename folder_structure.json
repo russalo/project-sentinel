@@ -95,10 +95,11 @@
       },
       "dispatch": {
         "description": "MCP Bridge HTTP clients. Each submodule wraps one MCP server. Agents do not import dispatch modules directly; the caller (backend) orchestrates the agents → dispatch pipeline.",
-        "__init__.py": "Re-exports common entry points (DispatchResult, apply_world_update).",
-        "fs_manager.py": "Synchronous HTTP client for fs-manager's /tools/apply_world_update endpoint. Uses httpx with optional client injection for test mocking via MockTransport."
+        "__init__.py": "Re-exports common entry points (DispatchResult, apply_world_update, commit_snapshot).",
+        "fs_manager.py": "Synchronous HTTP client for fs-manager's /tools/apply_world_update endpoint. Uses httpx with optional client injection for test mocking via MockTransport.",
+        "git_sync.py": "Synchronous HTTP client for git-sync's /tools/commit_snapshot endpoint. Called by the backend after every successful fs-manager write to produce the per-turn git audit trail. Same DispatchResult shape, same httpx.MockTransport-friendly client injection, same trailing-slash URL normalization. 'no_changes' server responses count as ok=True."
       },
-      "requirements.txt": "Python dependencies (jsonschema, openai).",
+      "requirements.txt": "Python dependencies (jsonschema, openai, httpx).",
       "README.md": "Package overview and the four boundary rules enforced by tests/engine/test_boundaries.py."
     },
     "world-engine": {
