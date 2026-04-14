@@ -8,11 +8,25 @@ on:
 
 jobs:
   # ----------------------------------------------------------------
-  # Job 1: Validate JSON Schema contracts + run pytest fixture tests
+  # Job 1: Run the full Python test suite (schema + backend + engine)
   # ----------------------------------------------------------------
-  validate-schemas:
+  #
+  # Historically this job only ran tests/test_schema_validation.py, which
+  # meant the backend route tests (tests/backend/) and engine agent/
+  # dispatch tests (tests/engine/) — ~100 tests — were never exercised
+  # by CI despite passing locally. That gap is closed here.
+  #
+  # SENTINEL_SKIP_ENV_CHECK=1 tells backend.config.Settings.load() to
+  # skip the infrastructure/.env presence check (there is no .env in
+  # CI — secrets are injected directly via env vars when needed). The
+  # backend tests don't need any real secrets because the app fixture
+  # in tests/backend/conftest.py patches the engine + dispatcher with
+  # in-memory fakes.
+  python-tests:
     name: Validate Schemas
     runs-on: ubuntu-latest
+    env:
+      SENTINEL_SKIP_ENV_CHECK: "1"
     steps:
       - uses: actions/checkout@v4
 
@@ -20,12 +34,18 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: pip
 
       - name: Install dependencies
-        run: pip install jsonschema pytest
+        run: |
+          pip install -r tests/requirements.txt
+          pip install -r backend/requirements.txt
+          pip install -r engine/requirements.txt
+          pip install -r mcp-servers/fs-manager/requirements.txt
+          pip install -r mcp-servers/git-sync/requirements.txt
 
-      - name: Run schema validation tests
-        run: pytest tests/test_schema_validation.py -v
+      - name: Run the full Python test suite
+        run: pytest tests/ -v
 
   # ----------------------------------------------------------------
   # Job 2: Lint and format-check all Python MCP server code
