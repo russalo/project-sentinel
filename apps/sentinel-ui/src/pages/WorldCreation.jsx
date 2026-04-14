@@ -1,5 +1,5 @@
 import { useEffect, useCallback, useState } from 'react';
-import { useNavigate } from 'wouter';
+import { useLocation } from 'wouter';
 import { apiClient } from '../api/client';
 import { useWorldCreationStore } from '../stores/worldCreationStore';
 import { usePlayerStore } from '../stores/playerStore';
@@ -57,7 +57,7 @@ async function generateSeedPreview(formData) {
 }
 
 export default function WorldCreation() {
-  const navigate = useNavigate();
+  const [, navigate] = useLocation();
   const creation = useWorldCreationStore();
   const { setSessionId, setCharacter } = usePlayerStore();
   const { addMessage, clearMessages } = useChatStore();
