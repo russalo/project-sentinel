@@ -42,6 +42,21 @@ class NewSessionRequest(_CamelModel):
     player_character_class: str = Field(default="Adventurer")
     world_seed: str | None = None
 
+    # World Generation — Layer 1 fields. The frontend's WorldCreation
+    # flow collects these from the user and (as of this change) sends
+    # them through. Currently consumed only as free-form context in the
+    # intro prompt — no preset lookups, no mechanical effects. The
+    # eventual genre/persona/mood preset system will replace the
+    # free-form handling with structured content bundles under
+    # data/{lore,state}/core/presets/.
+    genre: str | None = None
+    tone: str | None = None
+    starting_region: str | None = None
+    persona_id: str | None = None
+    mood: str | None = None
+    sandbox: bool = False
+    permadeath: bool = False
+
 
 class TurnResponse(_CamelModel):
     id: int

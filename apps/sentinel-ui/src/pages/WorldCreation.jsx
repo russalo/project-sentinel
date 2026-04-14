@@ -91,6 +91,13 @@ export default function WorldCreation() {
         worldName: creation.worldName,
         playerCharacterName: creation.characterName || 'Traveler',
         playerCharacterClass: creation.characterClass || 'Adventurer',
+        genre: creation.genre,
+        tone: creation.tone,
+        startingRegion: creation.startingRegion,
+        personaId: creation.personaId,
+        mood: creation.mood,
+        sandbox: creation.sandbox,
+        permadeath: creation.permadeath,
       });
 
       setSessionId(data.sessionId);

@@ -68,6 +68,13 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
         player_name=body.player_character_name,
         player_class=body.player_character_class,
         world_seed=body.world_seed,
+        genre=body.genre,
+        tone=body.tone,
+        starting_region=body.starting_region,
+        persona_id=body.persona_id,
+        mood=body.mood,
+        sandbox=body.sandbox,
+        permadeath=body.permadeath,
     )
 
     # 1. Run the intro through the engine.
