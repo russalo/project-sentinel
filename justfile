@@ -31,7 +31,6 @@ env:
 install: env
     pnpm install --frozen-lockfile
     pip install -q -r mcp-servers/fs-manager/requirements.txt
-    pip install -q -r mcp-servers/db-vector/requirements.txt
     pip install -q -r mcp-servers/git-sync/requirements.txt
     pip install -q -r backend/requirements.txt
     pip install -q -r engine/requirements.txt
@@ -78,10 +77,6 @@ logs service="":
 # Start the filesystem manager MCP server on :8010 (verbose dev mode)
 fs-manager:
     "{{ python_bin }}" mcp-servers/fs-manager/server.py --port 8010 --dev
-
-# Start the vector DB interface MCP server on :8011 (verbose dev mode)
-db-vector:
-    "{{ python_bin }}" mcp-servers/db-vector/server.py --port 8011 --dev
 
 # Start the git-sync MCP server on :8012 (verbose dev mode)
 git-sync:

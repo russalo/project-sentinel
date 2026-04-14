@@ -18,8 +18,8 @@ class Config:
     backend adapter) assemble this from their own settings and hand it in.
 
     MCP Bridge URLs default to the local dev layout used by `just start`
-    (fs-manager on :8010, db-vector on :8011, git-sync on :8012). Production
-    or Tailscale-mesh deployments override these.
+    (fs-manager on :8010, git-sync on :8012). Production or Tailscale-mesh
+    deployments override these.
     """
 
     openai_api_key: str
@@ -28,7 +28,6 @@ class Config:
     max_completion_tokens: int = 2000
 
     fs_manager_url: str = "http://127.0.0.1:8010"
-    db_vector_url: str = "http://127.0.0.1:8011"
     git_sync_url: str = "http://127.0.0.1:8012"
 
 
@@ -38,7 +37,7 @@ class WorldContext:
 
     This is the engine's view of the world — a flat, framework-agnostic
     representation. The caller loads it from wherever ground truth lives
-    (Postgres today; possibly data/state/*.json later).
+    (``data/state/*.json`` per ADR 0001).
     """
 
     world_name: str

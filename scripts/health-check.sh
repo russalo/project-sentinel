@@ -61,12 +61,6 @@ echo ""
 if ! command -v docker &> /dev/null || ! docker info &> /dev/null 2>&1; then
   echo -e "  ${YELLOW}⚠${RESET}   Docker not available — skipping container checks"
 else
-  # PostgreSQL
-  pg_status=$(docker_health "sentinel-postgres")
-  [[ "$pg_status" == "healthy" ]] \
-    && check "PostgreSQL" "ok" "127.0.0.1:5432  (container: $pg_status)" \
-    || check "PostgreSQL" "fail" "127.0.0.1:5432  (container: $pg_status)"
-
   # ChromaDB
   chroma_status=$(docker_health "sentinel-chromadb")
   chroma_http=$(http_check "http://127.0.0.1:8000/api/v1/heartbeat")
@@ -80,7 +74,7 @@ fi
 echo ""
 
 # MCP servers
-for server_port in "fs-manager:8010" "db-vector:8011" "git-sync:8012"; do
+for server_port in "fs-manager:8010" "git-sync:8012"; do
   name="${server_port%%:*}"
   port="${server_port##*:}"
   result=$(http_check "http://127.0.0.1:${port}/health")

@@ -45,15 +45,15 @@ The `fs-manager` validates `target_file` against a strict regex allowlist before
 - Run `fs-manager` as a dedicated low-privilege OS user with write access scoped only to `/data/`
 - Bind exclusively to `127.0.0.1` or a Tailscale IP — **never** `0.0.0.0`
 
-### 2. `db-vector` MCP Server (`:8011`)
+### 2. ChromaDB & the Future Lorekeeper Path
 
-**Risk: Prompt Injection via ChromaDB Queries**
+**Risk: Prompt Injection via RAG Queries**
 
-If a malicious actor can insert crafted text into the ChromaDB vector store (e.g., via a poisoned community pack), those strings may be retrieved by the Lorekeeper and injected into the DM's context window, causing unexpected model behaviour.
+ChromaDB is in the stack for the future Lorekeeper agent. Once that agent lands, retrieved documents will be injected into the DM's context window. A malicious actor who can insert crafted text into the vector store (e.g., via a poisoned community pack) could use that to manipulate model behaviour.
 
-**Mitigations in place:**
-- Community content is ingested at lower RAG priority than Core content
-- The Sentinel Airlock discards all imported ChromaDB vectors and re-generates embeddings locally from source Markdown
+**Mitigations designed in:**
+- Community content will be ingested at lower RAG priority than Core content
+- The (future) Sentinel Airlock discards all imported ChromaDB vectors and re-generates embeddings locally from source Markdown
 
 **Additional hardening recommended:**
 - Sanitize Markdown content for prompt-injection patterns (e.g., role-switching instructions) before ChromaDB ingestion
@@ -77,7 +77,7 @@ If user-controlled data (e.g., `session_id` or `log_entry` content) is interpola
 
 **Risk: Exposed Database Ports**
 
-Both `sentinel-postgres` (`:5432`) and `sentinel-chromadb` (`:8000`) bind to `TAILSCALE_BIND_IP` from `.env`. If this is set to `0.0.0.0` (intentionally or by mistake), the PostgreSQL and ChromaDB ports become accessible to any host on the network.
+`sentinel-chromadb` (`:8000`) binds to `TAILSCALE_BIND_IP` from `.env`. If this is set to `0.0.0.0` (intentionally or by mistake), the ChromaDB port becomes accessible to any host on the network.
 
 **Hardening required:**
 - Set `TAILSCALE_BIND_IP=127.0.0.1` for local-only development
@@ -101,8 +101,7 @@ Importing an untrusted `.spak` from the internet poses risks including directory
 ## Security Best Practices for Deployers
 
 1. **Never expose MCP server ports to the public internet.** They are designed for Tailscale mesh or localhost only.
-2. **Rotate `POSTGRES_PASSWORD` regularly** and use a strong, randomly generated value.
-3. **Do not store LLM API keys on the Infrastructure Node.** API keys belong on the Inference Node only (see `.env.example`).
+2. **Do not store LLM API keys on the Infrastructure Node.** API keys belong on the Inference Node only (see `.env.example`).
 4. **Audit `git log` regularly.** Every world update produces a Git commit — anomalous commit frequency or large diff sizes may indicate a runaway LLM loop.
 5. **Review community packs before importing.** Run `porter import --dry-run <file.spak>` (coming in v0.5) to inspect contents before promoting to `/data/`.
 

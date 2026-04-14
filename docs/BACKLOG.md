@@ -24,46 +24,32 @@ Items in this backlog may reference an ADR for context.
 
 ---
 
-## High Priority — Do Soon
+## Where we are
 
-ADR 0001 Phase 1 is fully shipped. The Inference Node (engine
-package) is wired into a new FastAPI backend that reads state
-directly from `data/state/*.json` and dispatches every write
-through the complete engine → fs-manager → git-sync path. Django
-and Express are gone. The per-turn git audit trail is real and
-verified end-to-end against a live LLM.
+ADR 0001 Phases 1 and 2 are both fully landed. The Inference Node (engine
+package) is wired into a FastAPI backend that reads state directly from
+`data/state/*.json` and dispatches every write through the complete
+engine → fs-manager → git-sync path. Django, Postgres, the orphaned
+`db-vector` MCP server, and the legacy `world-engine/` scaffolding are
+all gone. The per-turn git audit trail is real and verified end-to-end
+against a live LLM.
 
-Phase 1 delivery items all resolved — see merged commits on
-master for PRs #9 (engine scaffold), #10 (ADR 0001), #11 (engine
-agents), #12 (FastAPI backend, Django retirement), #13 (frontend
-field fixes from the first live smoke test), and the follow-up
-that wires engine → git-sync (this branch). The only remaining
-Phase 1 cleanup item is world-engine/ deletion below.
-
-- [ ] **Delete `world-engine/` entirely.** The three prompt YAMLs (`dm.yaml`, `fact-extractor.yaml`, `lorekeeper.yaml`) may be useful reference when writing the engine's agent prompts, so keep them until the engine agents are implemented — then remove the directory. Also remove `world-engine` from `scripts/check-structure.sh` at the same time.
-      _Discovered: 2026-04-13 | Context: world-engine/ was retained during the engine/ scaffold PR to avoid deleting reference material prematurely; still retained until the new DM agent has harvested anything reusable from the YAMLs_
+For what ships next vs. the long-term vision, see `docs/ROADMAP.md` and
+`docs/VISION.md`. This BACKLOG tracks everything *discovered* that
+doesn't yet belong in the roadmap.
 
 ---
 
-## Phase 2 — Deferred
+## Deferred (post-Phase-2)
 
-These items depend on Phase 1 being stable. They are not prerequisites
-for v1.0 and should not be worked in parallel with Phase 1.
+These items were called out as future work in ADR 0001 but are not yet
+scheduled. They stay here until they earn a spot on `docs/ROADMAP.md`.
 
-- [ ] **Drop Postgres entirely from the Docker stack.** ADR 0001 Phase 2. Remove `sentinel-postgres` from `infrastructure/docker-compose.yml`, delete `infrastructure/migrations/*.sql`, remove any remaining psycopg2 references and DATABASE_URL wiring, update `just` recipes and health checks accordingly. Phase 1 already ships without any Postgres consumer — `backend/` reads from `data/` directly and never queries the database — so Phase 2 is purely cleanup.
-      _Discovered: 2026-04-13 | Context: ADR 0001 Phase 2; Phase 1 now confirms the cache layer was never built, so Phase 2 is uncontested — just needs scheduling_
+- [ ] **Lorekeeper agent + ChromaDB indexing.** Add the RAG step to the turn loop. Index `data/lore/**/*.md` into ChromaDB on startup and on filesystem change (either a file watcher or a restart-only indexer). The Lorekeeper agent queries ChromaDB for context and injects results into the next DM turn. `engine/agents/lorekeeper.py` doesn't exist yet — scaffold + implementation are both part of this item.
+      _Discovered: 2026-04-13 | Context: ADR 0001 mentions this as "later" — the natural next step after the core engine loop is running under the new backend_
 
-- [ ] **Rewrite `README.md` and `ARCHITECTURE.md` Core Loop narratives to match running code.** The forward-pointing callouts added in PR #10 (ADR 0001) were placeholders until the code caught up. Phase 1 has now shipped; the callouts can be replaced with accurate descriptions of the running system. `ARCHITECTURE.md` §7 (Full Update Pipeline) should describe the engine → fs-manager → git-sync path as the actual per-turn flow, and the Node Roles table (§5) should describe the FastAPI backend and retired Django.
-      _Discovered: 2026-04-13 | Context: ADR 0001 said "rewrite after Phase 1 ships"; Phase 1 has now shipped_
-
-- [ ] **Revisit the `db-vector` MCP server's role.** Currently designed as "route structured queries to Postgres, semantic queries to ChromaDB." Under ADR 0001 Phase 2, Postgres goes away, so `db-vector` becomes either a ChromaDB-only wrapper or a unified read layer over `data/` + ChromaDB. Decide what it is during Phase 2.
-      _Discovered: 2026-04-13 | Context: ADR 0001 Consequences § Neutral — flagged as requiring a design decision during Phase 2_
-
-- [ ] **Lorekeeper agent + ChromaDB indexing.** Once the core loop is running end-to-end under the new backend, add the RAG step. Index `data/lore/**/*.md` into ChromaDB on startup and on filesystem change (either a file watcher or a restart-only indexer). The Lorekeeper agent queries ChromaDB for context and injects results into the next DM turn. `engine/agents/lorekeeper.py` doesn't exist yet — scaffold + implementation are both part of this item.
-      _Discovered: 2026-04-13 | Context: ADR 0001 mentions this as "later" — not a Phase 1 concern, but the natural next step after the core engine loop is running_
-
-- [ ] **Background simulation / world progression.** The "world keeps evolving while you sleep" piece from the README tagline. Cron-driven agent runs that mutate `data/` via the same engine → fs-manager path as player turns. Needs a locking story so simulation writes don't collide with player turns (file-level lock via fs-manager, or sequencing via a queue). Not Phase 1.
-      _Discovered: 2026-04-13 | Context: referenced in ARCHITECTURE.md §7 (orchestrator/simulation); currently not scaffolded; Phase 2 or later_
+- [ ] **Background simulation / world progression.** The "world keeps evolving while you sleep" piece from the README tagline. Cron-driven agent runs that mutate `data/` via the same engine → fs-manager path as player turns. Needs a locking story so simulation writes don't collide with player turns (file-level lock via fs-manager, or sequencing via a queue).
+      _Discovered: 2026-04-13 | Context: referenced in ARCHITECTURE.md §7 (orchestrator/simulation); currently not scaffolded_
 
 ---
 
@@ -76,8 +62,8 @@ for v1.0 and should not be worked in parallel with Phase 1.
 
 ## Documentation Drift
 
-- [ ] **`docs/WORKSPACE.md` is stale — rewrite against the current stack.** The document still lists "API framework: Express 5" and describes `artifacts/api-server/src/lib/dm-ai.ts` as the AI architecture — neither file nor framework exists any more. Rewrite against the current reality: FastAPI backend reading `data/state/*.json`, engine package as the Inference Node, the retired Django/Express/Drizzle history collapsed to a one-line "previously" note. Should happen together with the `README.md` / `ARCHITECTURE.md` rewrite tracked under Phase 2 above.
-      _Discovered: 2026-04-13 | Updated: 2026-04-13 | Context: Phase 1 has shipped; no longer gated, just scheduling_
+- [ ] **`docs/WORKSPACE.md` is stale — rewrite against the current stack.** The document still lists "API framework: Express 5" and describes `artifacts/api-server/src/lib/dm-ai.ts` as the AI architecture — neither file nor framework exists any more. Rewrite against the current reality: FastAPI backend reading `data/state/*.json`, engine package as the Inference Node, the retired Django/Express/Drizzle/Postgres history collapsed to a one-line "previously" note. The README/ARCHITECTURE rewrite in the cleanup PR didn't touch this file.
+      _Discovered: 2026-04-13 | Updated: 2026-04-14 | Context: drift not addressed in the README+ARCHITECTURE rewrite; lower priority than those were because WORKSPACE.md has fewer readers_
 
 - [ ] **`CHANGELOG.md` `[Unreleased]` section is empty of ~6 months of work.** No entries for PR #7 (Django backend + SSE), PR #5 (frontend clean build), Replit migration, `just`/chezmoi tooling, PR #9 (Lane A housekeeping + engine scaffold), or anything since. Either catch it up in one pass from git history and resume maintenance, or add a note at the top that the changelog is currently unmaintained so contributors aren't misled.
       _Discovered: 2026-04-13 | Context: surveyed during the engine/ scaffold PR doc audit; pre-existing drift, not touched in that PR_

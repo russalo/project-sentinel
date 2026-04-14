@@ -6,7 +6,6 @@
 #   • PostgreSQL 16  (Docker)
 #   • ChromaDB       (Docker)
 #   • fs-manager MCP server  (:8010)
-#   • db-vector  MCP server  (:8011)
 #   • git-sync   MCP server  (:8012)
 #
 # Usage:
@@ -15,7 +14,6 @@
 #
 # Logs:
 #   /tmp/sentinel-fs-manager.log
-#   /tmp/sentinel-db-vector.log
 #   /tmp/sentinel-git-sync.log
 # -----------------------------------------------------------------------------
 
@@ -83,7 +81,7 @@ wait_for_docker_healthy() {
 }
 
 kill_mcp_servers() {
-  for port in 8010 8011 8012; do
+  for port in 8010 8012; do
     local pid
     pid=$(lsof -ti :"$port" 2>/dev/null || true)
     if [[ -n "$pid" ]]; then
@@ -135,10 +133,7 @@ setup_env() {
   if [[ ! -f "$INFRA_DIR/.env" ]]; then
     info "No .env found — generating from .env.example"
     cp "$INFRA_DIR/.env.example" "$INFRA_DIR/.env"
-    # Set a default dev password so docker-compose doesn't fail
-    sed -i 's/POSTGRES_PASSWORD=CHANGE_ME_STRONG_PASSWORD/POSTGRES_PASSWORD=sentinel_dev_local/' \
-      "$INFRA_DIR/.env"
-    warn "Generated dev .env with default password. Edit infrastructure/.env before production use."
+    warn "Generated dev .env. Edit infrastructure/.env before production use."
   fi
   ok "infrastructure/.env ready"
 }
@@ -169,7 +164,7 @@ install_python_deps() {
   echo ""
   echo -e "${BOLD}[4/6] Python dependencies (MCP servers)${RESET}"
 
-  for server in fs-manager db-vector git-sync; do
+  for server in fs-manager git-sync; do
     local req="$MCP_DIR/$server/requirements.txt"
     if [[ -f "$req" ]]; then
       info "Installing $server deps..."
@@ -190,7 +185,7 @@ install_python_deps() {
 
 start_docker() {
   echo ""
-  echo -e "${BOLD}[5/6] Docker infrastructure (PostgreSQL + ChromaDB)${RESET}"
+  echo -e "${BOLD}[5/6] Docker infrastructure (ChromaDB)${RESET}"
 
   if [[ "${1:-}" == "--reset" ]]; then
     warn "Reset flag set — bringing down containers and wiping volumes"
@@ -199,14 +194,6 @@ start_docker() {
 
   info "Starting containers..."
   (cd "$INFRA_DIR" && docker compose up -d)
-
-  info "Waiting for sentinel-postgres to become healthy (up to 60s)..."
-  if wait_for_docker_healthy "sentinel-postgres" 60; then
-    ok "PostgreSQL healthy"
-  else
-    fail "PostgreSQL did not become healthy in 60s — check: docker compose logs postgres"
-    exit 1
-  fi
 
   info "Waiting for sentinel-chromadb to become healthy (up to 60s)..."
   if wait_for_docker_healthy "sentinel-chromadb" 60; then
@@ -228,7 +215,7 @@ start_mcp_servers() {
   # Kill any previously running MCP servers on our ports
   kill_mcp_servers
 
-  # Load env vars for db-vector
+  # Load env vars for MCP servers
   if [[ -f "$INFRA_DIR/.env" ]]; then
     set -a
     # shellcheck disable=SC1091
@@ -242,19 +229,6 @@ start_mcp_servers() {
     > /tmp/sentinel-fs-manager.log 2>&1 &
   echo $! > /tmp/sentinel-fs-manager.pid
 
-  # db-vector :8011
-  info "Starting db-vector on :8011..."
-  PGHOST="${PGHOST:-localhost}" \
-  PGPORT="${PGPORT:-5432}" \
-  PGDATABASE="${PGDATABASE:-${POSTGRES_DB:-sentinel_world}}" \
-  PGUSER="${PGUSER:-${POSTGRES_USER:-sentinel_admin}}" \
-  PGPASSWORD="${PGPASSWORD:-${POSTGRES_PASSWORD:-}}" \
-  CHROMA_HOST="${CHROMA_HOST:-localhost}" \
-  CHROMA_PORT="${CHROMA_PORT:-8000}" \
-    python3 "$MCP_DIR/db-vector/server.py" --port 8011 \
-    > /tmp/sentinel-db-vector.log 2>&1 &
-  echo $! > /tmp/sentinel-db-vector.pid
-
   # git-sync :8012
   info "Starting git-sync on :8012..."
   python3 "$MCP_DIR/git-sync/server.py" --port 8012 \
@@ -262,7 +236,7 @@ start_mcp_servers() {
   echo $! > /tmp/sentinel-git-sync.pid
 
   # Wait for each server
-  for server_port in "fs-manager:8010" "db-vector:8011" "git-sync:8012"; do
+  for server_port in "fs-manager:8010" "git-sync:8012"; do
     local name="${server_port%%:*}"
     local port="${server_port##*:}"
     info "Waiting for $name (:$port)..."
@@ -287,14 +261,12 @@ status_report() {
   echo ""
 
   # Docker
-  local pg_status chroma_status
-  pg_status=$(docker inspect --format='{{.State.Health.Status}}' sentinel-postgres 2>/dev/null || echo "unknown")
+  local chroma_status
   chroma_status=$(docker inspect --format='{{.State.Health.Status}}' sentinel-chromadb 2>/dev/null || echo "unknown")
-  [[ "$pg_status" == "healthy" ]] && ok "PostgreSQL     healthy at 127.0.0.1:5432" || fail "PostgreSQL     $pg_status"
   [[ "$chroma_status" == "healthy" ]] && ok "ChromaDB       healthy at 127.0.0.1:8000" || fail "ChromaDB       $chroma_status"
 
   # MCP servers
-  for server_port in "fs-manager:8010" "db-vector:8011" "git-sync:8012"; do
+  for server_port in "fs-manager:8010" "git-sync:8012"; do
     local name="${server_port%%:*}"
     local port="${server_port##*:}"
     if curl -sf "http://127.0.0.1:${port}/health" > /dev/null 2>&1; then
@@ -318,7 +290,6 @@ status_report() {
   echo ""
   echo -e "${BOLD}  Logs${RESET}"
   info "fs-manager → /tmp/sentinel-fs-manager.log"
-  info "db-vector  → /tmp/sentinel-db-vector.log"
   info "git-sync   → /tmp/sentinel-git-sync.log"
   echo ""
   echo -e "${GREEN}${BOLD}  All systems up. Project Sentinel is live.${RESET}"

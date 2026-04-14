@@ -24,6 +24,5 @@ def build_engine_config(settings: Settings) -> engine.Config:
         dm_model=settings.dm_model,
         max_completion_tokens=settings.max_completion_tokens,
         fs_manager_url=settings.fs_manager_url,
-        db_vector_url=settings.db_vector_url,
         git_sync_url=settings.git_sync_url,
     )

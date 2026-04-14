@@ -142,17 +142,16 @@ file if you need a custom PostgreSQL password before continuing.
 ### Step 2: Start the Infrastructure Backbone (Docker)
 
 ```bash
-just up    # start PostgreSQL + ChromaDB in the background
-just ps    # verify both containers show as healthy
+just up    # start ChromaDB in the background
+just ps    # verify the container shows as healthy
 ```
 
 ### Step 3: Start the MCP Bridge
 
-Open three terminal tabs — one per server:
+Open two terminal tabs — one per server:
 
 ```bash
 just fs-manager   # :8010 — schema-validated filesystem CRUD
-just db-vector    # :8011 — PostgreSQL + ChromaDB query router
 just git-sync     # :8012 — automated world-state snapshots
 ```
 

@@ -1,19 +1,17 @@
 """Backend configuration — loads from environment, validates at startup.
 
-Replaces ``backend/sentinel/settings.py``. This module is the boundary
-between the OS environment and the rest of the backend: every ``os.environ``
-read that the app does happens here, and everything downstream takes a
-``Settings`` instance as an explicit argument. The ``engine/`` package is
-forbidden from reading env vars by its own boundary contract, so the
-backend builds an ``engine.Config`` from these settings and hands it in.
+This module is the boundary between the OS environment and the rest of
+the backend: every ``os.environ`` read that the app does happens here,
+and everything downstream takes a ``Settings`` instance as an explicit
+argument. The ``engine/`` package is forbidden from reading env vars by
+its own boundary contract, so the backend builds an ``engine.Config``
+from these settings and hands it in.
 
-The structure mirrors the Django settings the old backend used so the
-transition is one-to-one: same env var names (``OPENAI_API_KEY``,
-``DM_MODEL``, ``DATABASE_URL``, etc.), same ``infrastructure/.env``
-file, same ``SENTINEL_SKIP_ENV_CHECK`` escape hatch for CI. Postgres
-configuration is read and preserved for forward compatibility with
-Phase 2 (ADR 0001), but nothing in this backend actually queries
-Postgres.
+Reads ``OPENAI_API_KEY``, ``OPENAI_BASE_URL``, ``DM_MODEL``,
+``DM_MAX_COMPLETION_TOKENS``, ``FS_MANAGER_URL``, ``GIT_SYNC_URL``,
+``CORS_ALLOWED_ORIGINS``, and ``SENTINEL_DEBUG`` from
+``infrastructure/.env`` via python-dotenv. Set ``SENTINEL_SKIP_ENV_CHECK=1``
+to bypass the .env requirement in CI.
 """
 
 import os
@@ -61,7 +59,6 @@ class Settings:
     max_completion_tokens: int
 
     fs_manager_url: str
-    db_vector_url: str
     git_sync_url: str
 
     data_dir: Path
@@ -89,7 +86,6 @@ class Settings:
             dm_model=_env("DM_MODEL", "gpt-4o-mini") or "gpt-4o-mini",
             max_completion_tokens=int(_env("DM_MAX_COMPLETION_TOKENS", "2000") or "2000"),
             fs_manager_url=_env("FS_MANAGER_URL", "http://127.0.0.1:8010") or "http://127.0.0.1:8010",
-            db_vector_url=_env("DB_VECTOR_URL", "http://127.0.0.1:8011") or "http://127.0.0.1:8011",
             git_sync_url=_env("GIT_SYNC_URL", "http://127.0.0.1:8012") or "http://127.0.0.1:8012",
             data_dir=DATA_DIR,
             cors_allowed_origins=tuple(

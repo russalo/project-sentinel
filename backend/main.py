@@ -1,17 +1,16 @@
 """Project Sentinel FastAPI backend.
 
-Replaces the Django backend described in ADR 0001 § Implementation
-implications. Responsibilities:
+Implements ADR 0001: canonical state lives in ``data/state/*.json`` +
+``data/lore/*.md`` under git. Responsibilities:
 
 - Serve POST /api/session/new (create a new game session)
 - Serve POST /api/stream (SSE streaming DM turns)
 - Serve GET /healthz (liveness)
 
-State reads go directly against data/state/*.json via
+State reads go directly against ``data/state/*.json`` via
 ``backend/state/``. State writes go through the engine → fs-manager →
-git-sync path (the engine package's dispatch module). There is no
-ORM, no Django, no Postgres query — Postgres keeps running per
-ADR 0001 Phase 1 but nothing in this backend touches it.
+git-sync path (the engine package's dispatch module). No ORM, no
+database queries.
 
 Run locally (from repo root) with:
 

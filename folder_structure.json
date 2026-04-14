@@ -34,14 +34,9 @@
       }
     },
     "infrastructure": {
-      "description": "Node Backbone (The Brawn) — databases, network config, and migration scripts.",
-      "docker-compose.yml": "Spins up PostgreSQL 16 and ChromaDB with Tailscale mesh binding.",
+      "description": "Node Backbone (The Brawn) — ChromaDB, network config.",
+      "docker-compose.yml": "Spins up ChromaDB with Tailscale mesh binding.",
       ".env.example": "Environment variable template. Copy to .env and fill in credentials.",
-      "migrations": {
-        "description": "SQL scripts auto-executed by PostgreSQL on fresh boot (initdb.d mount).",
-        "001_init_world_state.sql": "Creates core entity, faction, and session tables.",
-        "002_community_metadata.sql": "Creates community pack registry table."
-      },
       "tailscale": {
         "description": "Tailscale ACL policies and mesh configuration for split-node deployments.",
         "acl.json": "Access control list — restricts DB ports to Tailscale mesh only."
@@ -55,12 +50,6 @@
         "validator.py": "JSON Schema Draft 2020-12 validation layer — the gatekeeper.",
         "requirements.txt": "Python dependencies (fastapi, jsonschema, pydantic).",
         "tests": "Automated test suite covering schema rejection, path traversal prevention, and successful writes."
-      },
-      "db-vector": {
-        "description": "RAG/DB interface — routes semantic queries to ChromaDB and structured queries to PostgreSQL.",
-        "server.py": "MCP server exposing query_lore, upsert_entity, and search_context tools.",
-        "requirements.txt": "Python dependencies (chromadb, psycopg2, sentence-transformers).",
-        "tests": "Test suite for vector query accuracy and DB connection resilience."
       },
       "git-sync": {
         "description": "Automated version control — commits after each world update with session metadata.",
@@ -101,15 +90,6 @@
       },
       "requirements.txt": "Python dependencies (jsonschema, openai, httpx).",
       "README.md": "Package overview and the four boundary rules enforced by tests/engine/test_boundaries.py."
-    },
-    "world-engine": {
-      "description": "LEGACY — Replit-era scaffolding retained for prompt-YAML reference only. Pending removal. Do not add code here; the real Inference Node lives in engine/.",
-      "agents": {
-        "description": "Original prompt boundary/persona YAML stubs. May be consulted when writing prompts for engine/agents/, then deleted.",
-        "dm.yaml": "Dungeon Master prompt stub.",
-        "fact-extractor.yaml": "Fact-Extractor prompt stub.",
-        "lorekeeper.yaml": "Lorekeeper prompt stub."
-      }
     },
     "apps": {
       "description": "Client-side applications.",

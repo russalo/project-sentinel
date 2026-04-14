@@ -28,50 +28,48 @@ This is **Prompt-Driven Development** at the infrastructure level: the narrative
 
 ## Architecture Skeleton
 
-> **Note:** per **[ADR 0001](docs/adr/0001-data-canonical-source-of-truth.md)**, `data/state/*.json` + `data/lore/*.md` + git is now the canonical source of truth. All world-state writes route through `engine/` → `fs-manager` → `git-sync`. Phase 1 shipped: the Django backend has been replaced by a FastAPI backend (`backend/`) that reads from `data/` directly and calls the engine for turn handling. Postgres keeps running but is no longer in the read or write path; its removal is tracked as Phase 2 in `docs/BACKLOG.md`. The directory tree and prose below still describe the project shape accurately; a fuller rewrite is tracked in the BACKLOG.
+Per **[ADR 0001](docs/adr/0001-data-canonical-source-of-truth.md)**, canonical world state lives in `data/state/*.json` + `data/lore/*.md` under git. The production backend is FastAPI (`backend/`) — it reads from `data/` directly and dispatches every write through `engine/` → `fs-manager` → `git-sync`. No database queries sit in the turn loop.
 
 Sentinel operates on a strict separation of concerns to enable seamless remote play via a Tailscale mesh network.
 
-1. **Inference Node** (`/engine`): A pure-Python package that will house the DM, Fact-Extractor, and Lorekeeper agents. It evaluates user input, queries the world state, and outputs rich narrative alongside machine-readable `<world_update>` tags. Currently scaffolding only — see `engine/README.md`. The legacy `/world-engine` directory (prompt YAML stubs from the Replit era) is retained pending removal; do not add code to it.
-2. **Infrastructure Node** (`/infrastructure`): The persistent storage layer. It manages the PostgreSQL/Vector database, background simulations, and a Git-backed hybrid filesystem (JSON for state, Markdown for lore).
-3. **The MCP Bridge** (`/mcp-servers`): The Inference Node *never* touches files directly. It issues structured requests to local MCP servers on the Infrastructure Node, which validate and execute filesystem, database, and git operations.
+1. **Inference Node** (`/engine`): A pure-Python package that will house the DM, Fact-Extractor, and Lorekeeper agents. It evaluates user input, queries the world state, and outputs rich narrative alongside machine-readable `<world_update>` tags. Currently scaffolding only — see `engine/README.md`.
+2. **Infrastructure Node** (`/infrastructure` + `/mcp-servers`): ChromaDB (for future RAG / Lorekeeper), the git-backed hybrid filesystem under `data/`, and the two MCP servers that gate all writes.
+3. **The MCP Bridge** (`/mcp-servers`): The Inference Node *never* touches files directly. It issues structured requests to local MCP servers on the Infrastructure Node, which validate and execute every filesystem and git operation.
 
 ```text
 project-sentinel/
-├── data/                      # Hybrid Storage Layer
+├── data/                      # Canonical world state (ADR 0001)
 │   ├── lore/                  # Human-readable narrative (Markdown)
-│   │   ├── codex/             # World building, locations, histories
-│   │   └── sessions/          # Play session transcripts and logs
+│   │   ├── core/              # Core team content
+│   │   └── community/         # Community packs (additive-only)
 │   └── state/                 # Machine-readable current world state (JSON)
-│       ├── entities/          # NPCs, players, and items
-│       └── factions/          # Faction standings and resources
-├── infrastructure/            # Node Backbone (The Brawn)
-│   ├── docker/                # Compose files for PostgreSQL & pgvector
-│   ├── migrations/            # SQL scripts for DB schema initialization
-│   └── tailscale/             # Mesh network configurations and ACLs
-├── mcp-servers/               # The Bridge (Model Context Protocol)
-│   ├── db-vector/             # RAG/DB interface (query routing, vector search)
-│   ├── fs-manager/            # Zero-Touch file handler for /data CRUD
-│   └── git-sync/              # Automated version control and state snapshotting
-├── schemas/                   # Shared JSON Schema contracts
-│   └── apply_world_update.schema.json
-├── engine/                    # Inference Node (The Brain — pure Python, scaffolding)
-│   ├── types.py               # Config, WorldContext, DMTurnInput, DMTurnResult
+│       ├── core/              # Core entities, factions, sessions
+│       └── community/         # Community-pack state
+├── engine/                    # Inference Node (pure-Python, scaffolding)
+│   ├── types.py               # Config, WorldContext, DMTurnInput/Result
 │   ├── schema.py              # apply_world_update.schema.json loader + validator
 │   ├── llm.py                 # OpenAI client wrapper
 │   ├── prompts/dm.py          # DM system prompt
-│   └── agents/                # dm.py, fact_extractor.py (stubs — see engine/README.md)
-├── world-engine/              # LEGACY (Replit-era scaffolding, pending removal)
-│   └── agents/*.yaml          # prompt stubs kept for reference only
-├── apps/
-│   └── sentinel-ui/           # React 19 + Vite + Tailwind v4 frontend
+│   ├── agents/                # dm.py, fact_extractor.py (stubs)
+│   └── dispatch/              # httpx clients for fs-manager + git-sync
 ├── backend/                   # FastAPI production backend (:8001)
+│   ├── main.py                # App factory, uvicorn entry
+│   ├── routes/                # /healthz, /api/session/new, /api/stream
+│   └── state/                 # data/ readers: world_context, sessions
+├── mcp-servers/               # The MCP Bridge
+│   ├── fs-manager/            # :8010 — schema-validated filesystem writes
+│   └── git-sync/              # :8012 — atomic per-turn git commits
+├── infrastructure/            # Docker Compose (ChromaDB) + .env template
+├── schemas/                   # Shared JSON Schema contracts (Draft 2020-12)
+├── apps/sentinel-ui/          # React 19 + Vite + Tailwind v4 frontend
 ├── docs/
-│   └── BACKLOG.md             # Open work items
-├── .github/
-│   └── ISSUE_TEMPLATE/        # Contributor templates (Lore-Smith, Technician, Architect)
+│   ├── BACKLOG.md             # Open work items
+│   ├── ROADMAP.md             # Near-term execution plan
+│   ├── VISION.md              # Long-term direction
+│   ├── QUICKSTART.md          # 5-minute first-run walkthrough
+│   └── adr/                   # Architecture decision records
 ├── ARCHITECTURE.md            # Core vs. Community framework and namespace rules
-├── CONTRIBUTING.md            # Contributor pathways and coding standards
+├── CONTRIBUTING.md            # Contributor pathways
 ├── folder_structure.json      # Machine-readable repo manifest
 └── README.md
 ```
@@ -82,11 +80,11 @@ project-sentinel/
 
 ```mermaid
 flowchart TD
-    A["🎮 Player Action\n(Client Node)"] --> B
+    A["🎮 Player Action\n(Frontend)"] --> BACKEND["⚡ FastAPI /api/stream\n(backend/)"]
 
-    subgraph INFERENCE["Inference Node"]
-        B["🧙 DM Agent\nGenerates narrative response"]
-        B --> C["📖 Story Response\n(human-readable text)"]
+    subgraph INFERENCE["Inference Node (engine/)"]
+        BACKEND --> B["🧙 DM Agent\nGenerates narrative response"]
+        B --> C["📖 Story Response\n(streamed to frontend as SSE)"]
         C --> D["🔍 Fact-Extractor Agent\nParses &lt;world_update&gt; JSON tags"]
     end
 
@@ -94,27 +92,25 @@ flowchart TD
     E -->|"❌ Invalid payload"| ERR["🚫 Reject & Log\nError fed back to DM"]
     ERR --> B
 
-    E -->|"✅ Valid payload"| G["🔀 MCP Server Router"]
+    E -->|"✅ Valid payload"| DISPATCH["🔀 engine.dispatch"]
 
     subgraph MCP["MCP Bridge (Infrastructure Node)"]
-        G --> H["fs-manager :8010\nEntity / faction state mutations\n→ /data/state/*.json"]
-        G --> I["fs-manager :8010\nSession log appends\n→ /data/lore/*.md"]
-        G --> J["db-vector :8011\nStructured queries + vector upserts\n→ PostgreSQL + ChromaDB"]
-        G --> K["git-sync :8012\nAtomic commit\n→ Git version snapshot"]
+        DISPATCH --> H["fs-manager :8010\nState + lore writes\n→ data/state/*.json\n→ data/lore/*.md"]
+        H --> K["git-sync :8012\nAtomic per-turn commit\n→ Git history"]
     end
 
-    H & I & J & K --> L["✅ World State Updated"]
-    L --> M["📚 Lorekeeper Agent\nInjects fresh context into\nnext DM context window"]
+    K --> L["✅ World state updated on disk"]
+    L --> M["📚 Next turn reads\ndata/state/*.json directly"]
     M --> B
 ```
 
-1. **Action**: User inputs a role-play action via the Client Node.
-2. **Narrative**: DM Agent generates the story response.
-3. **Extraction**: Fact-Extractor parses the response for state changes.
-4. **Trigger**: System generates a structured `<world_update>` JSON payload.
-5. **Execution**: Relevant MCP server (Filesystem/DB) consumes the payload and updates the Infrastructure.
-6. **Sync**: Git-Sync MCP commits the change to version control.
-7. **Reload**: Updated world state is injected into the next DM context window.
+1. **Action**: Player submits a turn through the frontend, which hits `POST /api/stream`.
+2. **Narrative**: The DM agent generates a streamed story response.
+3. **Extraction**: The Fact-Extractor parses `<world_update>` tags out of the response.
+4. **Validation**: The payload is checked against `apply_world_update.schema.json`. Invalid payloads are rejected and fed back to the DM (a first-class control-flow path, not an error case).
+5. **Dispatch**: `engine.dispatch.apply_world_update` calls fs-manager to mutate `data/state/*.json` and `data/lore/*.md`.
+6. **Sync**: `engine.dispatch.commit_snapshot` calls git-sync to commit the turn atomically.
+7. **Next turn**: The backend re-reads `data/state/*.json` directly — no cache layer, no database round-trip.
 
 ---
 
@@ -139,8 +135,7 @@ just env
 
 Chezmoi reads `.chezmoi/dot_infrastructure/dot_env.tmpl` and writes
 `infrastructure/.env` with the correct Docker socket path and Python binary
-for your OS. Edit the generated file if you need a non-default PostgreSQL
-password before continuing.
+for your OS.
 
 ### 2. Install all dependencies
 
@@ -148,21 +143,17 @@ password before continuing.
 just install
 ```
 
-Runs `pnpm install --frozen-lockfile` and `pip install` for all three MCP
-servers in one step. To also install Django backend dependencies:
+Runs `pnpm install --frozen-lockfile` and installs Python deps for the MCP
+servers, the FastAPI backend, the engine package, and the pytest suite.
 
-```bash
-just install-django
-```
-
-### 3. Spin up the full cloud stack
+### 3. Spin up the stack
 
 ```bash
 just start
 ```
 
-Starts PostgreSQL and ChromaDB via Docker Compose, polls until both are
-healthy, then launches all three MCP servers in the background.
+Starts ChromaDB via Docker Compose, polls until it's healthy, then launches
+fs-manager and git-sync in the background.
 
 ### 4. Confirm everything is running
 
@@ -175,11 +166,10 @@ Exits 0 if all checks pass.
 
 ### Initialize the Inference Loop
 
-> **Status: not yet implemented.** The original `world-engine/` directory contains
-> only legacy prompt stubs from the Replit-era scaffolding. The Inference Node —
-> the orchestrator loop that turns DM narrative into validated `<world_update>`
-> payloads and dispatches them across the MCP Bridge — is being rebuilt from
-> scratch and is not currently runnable. Track progress in `docs/BACKLOG.md`.
+> **Status: not yet implemented.** The Inference Node — the orchestrator loop
+> that turns DM narrative into validated `<world_update>` payloads and dispatches
+> them across the MCP Bridge — lives in `engine/` as scaffolding today. Agent
+> entry points raise `NotImplementedError`. Track progress in `docs/BACKLOG.md`.
 
 ---
 
@@ -198,8 +188,8 @@ Exits 0 if all checks pass.
 
 A reference implementation of Project Sentinel is available in this repository:
 
-- **Frontend** — `apps/sentinel-ui/` (`@sentinel/ui`) — React 19 + Vite + Tailwind v4, diegetic design system, World Creation flow, DM Persona system. Talks to the FastAPI backend via `fetch`-based SSE streaming.
-- **Backend** — `backend/` — FastAPI on `:8001`. Reads state directly from `data/state/*.json` per ADR 0001; calls the `engine/` package for DM turn handling and routes every write through `engine → fs-manager → git-sync`. No ORM, no Django, no Postgres in the read or write path.
+- **Frontend** — `apps/sentinel-ui/` (`@sentinel/ui`) — React 19 + Vite + Tailwind v4, diegetic design system, World Creation flow, DM Persona system. Talks to the FastAPI backend via `fetch`-based SSE streaming. *(Note: the 1.0 frontend stack is not yet settled — see `docs/VISION.md`.)*
+- **Backend** — `backend/` — FastAPI on `:8001`. Reads state directly from `data/state/*.json` per ADR 0001; calls the `engine/` package for DM turn handling and routes every write through `engine → fs-manager → git-sync`. No ORM, no database queries.
 - **Inference engine** — `engine/` — pure-Python package housing the DM agent, Fact-Extractor, and HTTP dispatcher for the MCP Bridge. Framework-agnostic; boundary-enforced.
 
 ---

@@ -2,7 +2,7 @@
 
 Welcome, Technician. This guide gets the **Infrastructure Node** running on your local machine and proves — with a live API call — that the schema-enforcement layer actually works. No Tailscale required for local development.
 
-> **What you'll have at the end:** A running PostgreSQL database, a ChromaDB vector store, and a live MCP server that validates AI-generated world updates against a JSON Schema contract before touching a single file.
+> **What you'll have at the end:** A running ChromaDB vector store and a live MCP server that validates AI-generated world updates against a JSON Schema contract before touching a single file.
 
 ---
 
@@ -10,7 +10,7 @@ Welcome, Technician. This guide gets the **Infrastructure Node** running on your
 
 | Tool | Version | Why |
 |------|---------|-----|
-| [Docker](https://docs.docker.com/get-docker/) + Docker Compose | Latest | Runs PostgreSQL and ChromaDB containers |
+| [Docker](https://docs.docker.com/get-docker/) + Docker Compose | Latest | Runs the ChromaDB container |
 | [Python](https://www.python.org/downloads/) | **3.11+** | Runs the MCP servers (strict type hints require 3.11) |
 | [just](https://github.com/casey/just) | 1.x | Cross-OS command runner — `brew install just` · `cargo install just` · `winget install Casey.Just` |
 | [chezmoi](https://www.chezmoi.io/) | 2.x | OS-aware `.env` generation — `brew install chezmoi` · `sh -c "$(curl -fsLS get.chezmoi.io)"` |
@@ -39,8 +39,7 @@ just env
 Chezmoi reads `.chezmoi/dot_infrastructure/dot_env.tmpl` and writes
 `infrastructure/.env` with the correct settings for your OS — including a
 commented-out `DOCKER_HOST` line for macOS Docker Desktop and a `PYTHON_BIN`
-hint for Windows. If you want a non-default PostgreSQL password, open
-`infrastructure/.env` and change `POSTGRES_PASSWORD` before continuing.
+hint for Windows.
 
 > **Why this is cool:** The `TAILSCALE_BIND_IP` variable means the same template
 > works for both local dev (`127.0.0.1`) and a real multi-node mesh deployment
@@ -54,21 +53,20 @@ hint for Windows. If you want a non-default PostgreSQL password, open
 just up
 ```
 
-Verify both services are healthy:
+Verify the ChromaDB container is healthy:
 
 ```bash
 just ps
 ```
 
-Expected output — both showing **healthy**:
+Expected output — showing **healthy**:
 
 ```
 NAME                  STATUS
-sentinel-postgres     Up (healthy)
 sentinel-chromadb     Up (healthy)
 ```
 
-If they're still starting up, wait 20 seconds and check again. You can also
+If it's still starting up, wait 20 seconds and check again. You can also
 hit ChromaDB's heartbeat directly:
 
 ```bash
@@ -76,11 +74,12 @@ curl http://127.0.0.1:8000/api/v1/heartbeat
 # Expected: {"nanosecond heartbeat": <timestamp>}
 ```
 
-> **Why this is cool:** PostgreSQL handles rigid relational state (entity
-> inventories, faction resources, coordinates). ChromaDB is the semantic memory
-> — it lets the Lorekeeper agent search through thousands of Markdown lore
-> entries by *meaning*, not just keywords. When a player mentions "the old
-> lighthouse", the system already knows about it.
+> **Why this is cool:** Canonical world state lives on disk as JSON and
+> Markdown under `data/` (per ADR 0001), version-controlled by git. ChromaDB
+> is the semantic memory for the future Lorekeeper agent — it will let the
+> DM search through thousands of Markdown lore entries by *meaning*, not
+> just keywords. No database queries in the turn loop; the filesystem is
+> the truth.
 
 ---
 
@@ -211,8 +210,8 @@ Expected response (HTTP 422):
 | Understand the full three-node architecture | [`ARCHITECTURE.md`](../ARCHITECTURE.md) |
 | Add lore, schemas, or MCP tools | [`CONTRIBUTING.md`](../CONTRIBUTING.md) |
 | Run the React frontend | [`apps/sentinel-ui/`](../apps/sentinel-ui/) — `just dev-frontend` |
-| Start the db-vector or git-sync MCP servers | `mcp-servers/db-vector/` and `mcp-servers/git-sync/` |
-| See the full project roadmap | [`ROADMAP.md`](../ROADMAP.md) |
+| Start the git-sync MCP server | `mcp-servers/git-sync/` — `just git-sync` |
+| See what ships next vs. the long-term vision | [`docs/ROADMAP.md`](./ROADMAP.md) · [`docs/VISION.md`](./VISION.md) |
 | Export a world state as a `.spak` package | `ARCHITECTURE.md` → Sentinel Porter section |
 
 ---
