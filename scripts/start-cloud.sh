@@ -133,10 +133,7 @@ setup_env() {
   if [[ ! -f "$INFRA_DIR/.env" ]]; then
     info "No .env found — generating from .env.example"
     cp "$INFRA_DIR/.env.example" "$INFRA_DIR/.env"
-    # Set a default dev password so docker-compose doesn't fail
-    sed -i 's/POSTGRES_PASSWORD=CHANGE_ME_STRONG_PASSWORD/POSTGRES_PASSWORD=sentinel_dev_local/' \
-      "$INFRA_DIR/.env"
-    warn "Generated dev .env with default password. Edit infrastructure/.env before production use."
+    warn "Generated dev .env. Edit infrastructure/.env before production use."
   fi
   ok "infrastructure/.env ready"
 }
@@ -188,7 +185,7 @@ install_python_deps() {
 
 start_docker() {
   echo ""
-  echo -e "${BOLD}[5/6] Docker infrastructure (PostgreSQL + ChromaDB)${RESET}"
+  echo -e "${BOLD}[5/6] Docker infrastructure (ChromaDB)${RESET}"
 
   if [[ "${1:-}" == "--reset" ]]; then
     warn "Reset flag set — bringing down containers and wiping volumes"
@@ -197,14 +194,6 @@ start_docker() {
 
   info "Starting containers..."
   (cd "$INFRA_DIR" && docker compose up -d)
-
-  info "Waiting for sentinel-postgres to become healthy (up to 60s)..."
-  if wait_for_docker_healthy "sentinel-postgres" 60; then
-    ok "PostgreSQL healthy"
-  else
-    fail "PostgreSQL did not become healthy in 60s — check: docker compose logs postgres"
-    exit 1
-  fi
 
   info "Waiting for sentinel-chromadb to become healthy (up to 60s)..."
   if wait_for_docker_healthy "sentinel-chromadb" 60; then
@@ -272,10 +261,8 @@ status_report() {
   echo ""
 
   # Docker
-  local pg_status chroma_status
-  pg_status=$(docker inspect --format='{{.State.Health.Status}}' sentinel-postgres 2>/dev/null || echo "unknown")
+  local chroma_status
   chroma_status=$(docker inspect --format='{{.State.Health.Status}}' sentinel-chromadb 2>/dev/null || echo "unknown")
-  [[ "$pg_status" == "healthy" ]] && ok "PostgreSQL     healthy at 127.0.0.1:5432" || fail "PostgreSQL     $pg_status"
   [[ "$chroma_status" == "healthy" ]] && ok "ChromaDB       healthy at 127.0.0.1:8000" || fail "ChromaDB       $chroma_status"
 
   # MCP servers

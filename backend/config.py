@@ -1,19 +1,17 @@
 """Backend configuration — loads from environment, validates at startup.
 
-Replaces ``backend/sentinel/settings.py``. This module is the boundary
-between the OS environment and the rest of the backend: every ``os.environ``
-read that the app does happens here, and everything downstream takes a
-``Settings`` instance as an explicit argument. The ``engine/`` package is
-forbidden from reading env vars by its own boundary contract, so the
-backend builds an ``engine.Config`` from these settings and hands it in.
+This module is the boundary between the OS environment and the rest of
+the backend: every ``os.environ`` read that the app does happens here,
+and everything downstream takes a ``Settings`` instance as an explicit
+argument. The ``engine/`` package is forbidden from reading env vars by
+its own boundary contract, so the backend builds an ``engine.Config``
+from these settings and hands it in.
 
-The structure mirrors the Django settings the old backend used so the
-transition is one-to-one: same env var names (``OPENAI_API_KEY``,
-``DM_MODEL``, ``DATABASE_URL``, etc.), same ``infrastructure/.env``
-file, same ``SENTINEL_SKIP_ENV_CHECK`` escape hatch for CI. Postgres
-configuration is read and preserved for forward compatibility with
-Phase 2 (ADR 0001), but nothing in this backend actually queries
-Postgres.
+Reads ``OPENAI_API_KEY``, ``OPENAI_BASE_URL``, ``DM_MODEL``,
+``DM_MAX_COMPLETION_TOKENS``, ``FS_MANAGER_URL``, ``GIT_SYNC_URL``,
+``CORS_ALLOWED_ORIGINS``, and ``SENTINEL_DEBUG`` from
+``infrastructure/.env`` via python-dotenv. Set ``SENTINEL_SKIP_ENV_CHECK=1``
+to bypass the .env requirement in CI.
 """
 
 import os

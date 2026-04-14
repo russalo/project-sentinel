@@ -1,9 +1,8 @@
 """Load an engine.WorldContext from the on-disk data/ tree.
 
 Per ADR 0001, data/state/*.json is canonical. The backend reads these
-files directly rather than going through Postgres or a cache layer.
-At v1.0 scale (hundreds of entities, not millions), reading the
-relevant JSON files per turn is cheap.
+files directly. At v1.0 scale (hundreds of entities, not millions),
+reading the relevant JSON files per turn is cheap.
 
 This module is the only place in the backend that shells out the
 data/ tree. Route handlers call ``load_world_context(data_dir,

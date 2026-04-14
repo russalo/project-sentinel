@@ -37,7 +37,7 @@ class WorldContext:
 
     This is the engine's view of the world — a flat, framework-agnostic
     representation. The caller loads it from wherever ground truth lives
-    (Postgres today; possibly data/state/*.json later).
+    (``data/state/*.json`` per ADR 0001).
     """
 
     world_name: str
