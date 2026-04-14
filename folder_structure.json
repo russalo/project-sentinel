@@ -34,14 +34,9 @@
       }
     },
     "infrastructure": {
-      "description": "Node Backbone (The Brawn) — databases, network config, and migration scripts.",
-      "docker-compose.yml": "Spins up PostgreSQL 16 and ChromaDB with Tailscale mesh binding.",
+      "description": "Node Backbone (The Brawn) — ChromaDB, network config.",
+      "docker-compose.yml": "Spins up ChromaDB with Tailscale mesh binding.",
       ".env.example": "Environment variable template. Copy to .env and fill in credentials.",
-      "migrations": {
-        "description": "SQL scripts auto-executed by PostgreSQL on fresh boot (initdb.d mount).",
-        "001_init_world_state.sql": "Creates core entity, faction, and session tables.",
-        "002_community_metadata.sql": "Creates community pack registry table."
-      },
       "tailscale": {
         "description": "Tailscale ACL policies and mesh configuration for split-node deployments.",
         "acl.json": "Access control list — restricts DB ports to Tailscale mesh only."

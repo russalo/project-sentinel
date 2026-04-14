@@ -2,35 +2,6 @@ version: '3.8'
 
 services:
   # -------------------------------------------------------------------
-  # PostgreSQL: The Structured State Backbone
-  # -------------------------------------------------------------------
-  # Handles rigid relational state (entity coordinates, inventories,
-  # faction resources, and strict world rules).
-  postgres:
-    image: postgres:16-alpine
-    container_name: sentinel-postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-sentinel_admin}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?database password required}
-      POSTGRES_DB: ${POSTGRES_DB:-sentinel_world}
-    ports:
-      # Binds to Tailscale IP if specified in .env, otherwise defaults to localhost only.
-      # Set TAILSCALE_BIND_IP=100.x.y.z in .env on the Infrastructure Node for mesh access.
-      - "${TAILSCALE_BIND_IP:-127.0.0.1}:5432:5432"
-    volumes:
-      - sentinel_pg_data:/var/lib/postgresql/data
-      # Auto-executes SQL migration scripts on fresh boot
-      - ./migrations:/docker-entrypoint-initdb.d:ro
-    networks:
-      - sentinel_mesh
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sentinel_admin} -d ${POSTGRES_DB:-sentinel_world}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # -------------------------------------------------------------------
   # ChromaDB: The RAG Memory Core
   # -------------------------------------------------------------------
   # Handles semantic search over human-readable Markdown lore,
@@ -63,9 +34,6 @@ services:
 # Persistent Volumes
 # -------------------------------------------------------------------
 volumes:
-  sentinel_pg_data:
-    name: sentinel_pg_data
-    driver: local
   sentinel_chroma_data:
     name: sentinel_chroma_data
     driver: local
