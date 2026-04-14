@@ -56,6 +56,14 @@ Implemented:
 - `engine.dispatch.apply_world_update()` — synchronous HTTP client
   for `fs-manager:8010/tools/apply_world_update` with structured
   `DispatchResult` and optional `httpx.Client` injection for tests
+- `engine.dispatch.commit_snapshot()` — synchronous HTTP client for
+  `git-sync:8012/tools/commit_snapshot`. Same shape as the fs-manager
+  dispatcher: structured `DispatchResult`, client injection for tests,
+  trailing-slash URL normalization. Called by the backend after every
+  successful fs-manager write to produce the per-turn git audit trail
+  ADR 0001 Phase 1 promises. "no_changes" server responses (git has
+  nothing staged to commit) return `ok=True` — that's a normal
+  outcome, not a failure.
 - `engine.agents.fact_extractor.extract()` — parses DM `<world_update>`
   hint blocks and emits schema-valid payloads; returns
   `FactExtractResult(payload, narrative, errors)`; self-validates
@@ -76,7 +84,8 @@ Still stubbed:
   file yet; scaffolded as BACKLOG Phase 2 once the core loop is
   running against a real backend.
 
-Typical caller pattern (what the new FastAPI backend will do):
+Typical caller pattern (what the FastAPI backend does — see
+`backend/routes/stream.py`):
 
 ```python
 import engine
@@ -102,14 +111,33 @@ if result.payload is not None:
         # feed the error back to the DM for retry, per ARCHITECTURE.md
         ...
 
+# After all fs-manager writes succeed for this turn, commit the
+# snapshot to git so the turn becomes a real commit in the audit
+# trail. Separate dispatch because the failure modes are distinct —
+# a schema violation and a git failure need different responses.
+commit_result = engine.commit_snapshot(
+    config,
+    session_id=session_uuid,
+    turn_number=turn_number,
+    summary=narrative[:200],
+)
+if not commit_result.ok:
+    # Non-fatal: narrative + disk state are durable, only the audit
+    # trail missed this turn. Surface as an error event; do not roll back.
+    yield f"data: {json.dumps({'type': 'error', 'content': commit_result.error})}\n\n"
+
 yield "data: [DONE]\n\n"
 ```
 
 Wired in production: `backend/routes/session.py` and
 `backend/routes/stream.py` are the primary callers. Django has
-been retired. `backend/api/dm_ai.py` no longer exists. Every
-new turn the frontend triggers runs through this engine package
-and writes to `data/` via fs-manager.
+been retired. `backend/api/dm_ai.py` no longer exists. Every new
+turn the frontend triggers runs through this engine package,
+writes to `data/` via fs-manager, and commits to git via git-sync
+— producing the per-turn audit trail ADR 0001 describes. The
+full pipeline was verified end-to-end against a real qwen3:32b
+model on 2026-04-14 and produces real git commits like
+`[sentinel] session=3182ff9f turn=3 — <summary>`.
 
 ## Install
 

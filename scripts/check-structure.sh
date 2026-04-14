@@ -61,6 +61,7 @@ FILES=(
   "engine/requirements.txt"
   "engine/dispatch/__init__.py"
   "engine/dispatch/fs_manager.py"
+  "engine/dispatch/git_sync.py"
   "docs/adr/README.md"
   "docs/adr/0001-data-canonical-source-of-truth.md"
 )
