@@ -132,6 +132,21 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
             detail=f"Failed to persist new session: {write_result.error}",
         )
 
+    # Commit the snapshot via git-sync so the session-start state
+    # change becomes a real git commit. Per ADR 0001 Phase 1, every
+    # write that lands through the engine must be followed by a
+    # git-sync dispatch to produce the per-turn audit trail.
+    # Failure to commit is non-fatal for session creation: the
+    # session is already persisted on disk and the next turn's
+    # commit will catch up the history. Log via the response body
+    # but do not 502.
+    engine.commit_snapshot(
+        config,
+        session_id=session_id,
+        turn_number=0,
+        summary=f"Session start: {body.world_name}",
+    )
+
     return NewSessionResponse(
         session_id=session_id,
         turns=[TurnResponse(**turn_zero)],

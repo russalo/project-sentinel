@@ -183,6 +183,28 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
                     "content": f"Failed to save turn to session: {session_write.error}",
                 }
             )
+        else:
+            # All disk writes for this turn are committed to data/
+            # via fs-manager. Commit the snapshot via git-sync so
+            # the turn becomes a real git commit in the audit trail.
+            # Per ADR 0001 Phase 1, every successful write must be
+            # followed by a git-sync dispatch. On failure we surface
+            # a structured error event but still close the stream
+            # cleanly — the narrative and disk state are durable,
+            # only the audit trail missed this turn.
+            commit_result = engine.commit_snapshot(
+                config,
+                session_id=body.session_id,
+                turn_number=next_turn_number,
+                summary=narrative[:200] or f"Turn {next_turn_number} completed.",
+            )
+            if not commit_result.ok:
+                yield _sse_event(
+                    {
+                        "type": "error",
+                        "content": f"git-sync rejected commit: {commit_result.error}",
+                    }
+                )
 
         yield "data: [DONE]\n\n"
 

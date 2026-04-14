@@ -126,7 +126,7 @@ def test_stream_happy_path_emits_token_world_update_and_done(
 
 
 def test_stream_dispatches_fact_extractor_output_and_updates_session(
-    client, fake_openai, fake_dispatch_log, tmp_data_dir
+    client, fake_openai, fake_dispatch_log, fake_commit_log, tmp_data_dir
 ):
     session_id = VALID_SESSION_ID_2
     _prime_session(tmp_data_dir, session_id)
@@ -141,7 +141,7 @@ def test_stream_dispatches_fact_extractor_output_and_updates_session(
     # Consume the streaming body so all generator code runs.
     _ = response.text
 
-    # Two dispatches: Fact-Extractor payload (world + Kael) and session-file update.
+    # Two fs-manager dispatches: Fact-Extractor payload + session-file update.
     assert len(fake_dispatch_log) == 2
 
     fe_payload = fake_dispatch_log[0]["payload"]
@@ -156,6 +156,16 @@ def test_stream_dispatches_fact_extractor_output_and_updates_session(
     appended_turns = session_payload["updates"][0]["data"]["turns"]
     assert len(appended_turns) == 1
     assert appended_turns[0]["player_action"] == "scout ahead"
+
+    # One git-sync commit for the turn. Per ADR 0001 Phase 1, every
+    # successful stream turn must commit_snapshot after the session
+    # write succeeds.
+    assert len(fake_commit_log) == 1
+    commit = fake_commit_log[0]
+    assert commit["session_id"] == session_id
+    assert commit["turn_number"] == 1  # first turn after the primed turn-0 session
+    assert isinstance(commit["summary"], str)
+    assert len(commit["summary"]) > 0
 
 
 def test_stream_handles_empty_world_update_block_gracefully(
@@ -224,11 +234,12 @@ def test_stream_passes_prior_turns_as_recent_context(
 
 
 def test_stream_error_emits_error_event_then_done(
-    client, fake_openai, fake_dispatch_log, tmp_data_dir, monkeypatch
+    client, fake_openai, fake_dispatch_log, fake_commit_log, tmp_data_dir, monkeypatch
 ):
     """If the LLM call raises, the generator yields an error SSE
     event followed by [DONE]. The session file is not updated
-    (the turn never really happened)."""
+    (the turn never really happened), and no git-sync commit fires
+    because there's nothing to commit."""
     session_id = VALID_SESSION_ID_5
     _prime_session(tmp_data_dir, session_id)
 
@@ -249,8 +260,9 @@ def test_stream_error_emits_error_event_then_done(
         for e in events
     )
     assert events[-1] == "[DONE]"
-    # No dispatches on the error path.
+    # No dispatches on the error path — neither fs-manager nor git-sync.
     assert fake_dispatch_log == []
+    assert fake_commit_log == []
 
 
 # ── path traversal defense ──────────────────────────────────────────

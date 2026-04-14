@@ -62,7 +62,7 @@ def test_new_session_happy_path_returns_session_with_opening_turn(
 
 
 def test_new_session_dispatches_initial_world_state_to_fs_manager(
-    client, fake_openai, fake_dispatch_log
+    client, fake_openai, fake_dispatch_log, fake_commit_log
 ):
     fake_openai.chat.completions.set_blocking_response(_opening_response())
 
@@ -91,6 +91,35 @@ def test_new_session_dispatches_initial_world_state_to_fs_manager(
     session_target = session_payload["updates"][0]["target_file"]
     assert session_target.startswith("data/state/core/sessions/")
     assert session_target.endswith(".json")
+
+
+def test_new_session_commits_snapshot_to_git_sync(
+    client, fake_openai, fake_commit_log
+):
+    """Per ADR 0001 Phase 1, session creation must commit the
+    initial state through git-sync after the fs-manager writes
+    succeed. Verifies the commit_snapshot dispatch fires with the
+    expected session_id, turn_number=0, and a summary that names
+    the world."""
+    fake_openai.chat.completions.set_blocking_response(_opening_response())
+
+    response = client.post(
+        "/api/session/new",
+        json={
+            "worldName": "The Shattered Expanse",
+            "playerCharacterName": "Kael",
+            "playerCharacterClass": "Wanderer",
+        },
+    )
+    assert response.status_code == 200
+
+    assert len(fake_commit_log) == 1
+    commit = fake_commit_log[0]
+    assert commit["turn_number"] == 0
+    assert "The Shattered Expanse" in commit["summary"]
+    assert "Session start" in commit["summary"]
+    # session_id should match the one returned in the response body
+    assert commit["session_id"] == response.json()["sessionId"]
 
 
 def test_new_session_with_empty_dm_block_still_creates_session(
