@@ -56,13 +56,25 @@ Flagging gaps honestly so TESTING.md doesn't lie by omission:
   land alongside the Panel UX primitives (`EntityCard`, `DeltaMessage`,
   `TabbedChat`) per `docs/ROADMAP.md` step 1.
 - **The MCP servers have no unit tests at all.** `mcp-servers/fs-manager/`
-  is 299 lines of security-critical path validation and protected-field
-  enforcement, and `mcp-servers/git-sync/` is the only thing that produces
-  the per-turn git audit trail — neither has a `tests/` directory, never
-  has. The engine-side dispatch tests (`tests/engine/test_dispatch_*.py`)
-  cover the HTTP contract via `httpx.MockTransport`, which validates the
+  is 271 lines of path validation and protected-field enforcement, and
+  `mcp-servers/git-sync/` is the only thing that produces the per-turn
+  git audit trail — neither has a `tests/` directory, never has. The
+  engine-side dispatch tests (`tests/engine/test_dispatch_*.py`) cover
+  the HTTP contract via `httpx.MockTransport`, which validates the
   request/response shape the backend relies on but does not test the
   servers' internal logic. Flagged in `docs/BACKLOG.md`.
+- **`ARCHITECTURE.md` describes fs-manager enforcement that `server.py`
+  does not implement.** Specifically, the namespace gate described in
+  §2 (writes to `data/{state,lore}/core/` blocked without a
+  `"namespace": "core"` token) and the `core_faction_id` entry in the
+  §4 protected-fields table both exist in the spec but not in code.
+  `server.py`'s `PROTECTED_FIELDS` set is `{unique_id, world_seed,
+  namespace, created_at, canon}` — no `core_faction_id` — and there
+  is no namespace-token check anywhere in the file. This is a bigger
+  finding than a testing gap: the "core vs community" authorization
+  story that the project's security posture rests on is currently
+  aspirational in the code. Flagged in `docs/BACKLOG.md` as a
+  high-priority spec/code decision: implement or pare back the spec.
 - **Ruff lint scope is `mcp-servers/` only.** The CI "Lint Python" job
   runs `ruff check mcp-servers/` and `ruff format --check mcp-servers/`
   and nothing else. `engine/`, `backend/`, and `tests/` are written in
@@ -155,19 +167,27 @@ Ordered by dependency. Each links to a `docs/BACKLOG.md` item:
    test coverage of the intro and normal-turn prompt assembly paths,
    using `FakeOpenAI` and matching the style of the existing
    `test_dm.py::_build_intro_messages_*` tests.
-3. **Write the first unit tests for `mcp-servers/fs-manager/`.** The
-   server has zero test coverage today. First slice: test path
-   validation (block `../` traversal, block absolute paths outside
-   `data/`, block paths that don't match the schema), test
-   protected-field enforcement (reject any payload that mutates
-   `unique_id`, `world_seed`, `namespace`, `created_at`, `canon`,
-   `core_faction_id`), test the namespace gate (core writes require
-   a `"namespace": "core"` token). Wire into the main `pytest tests/`
-   invocation once the first tests exist. The protected-field
-   enforcement and path-validation logic in fs-manager is the
-   project's entire security boundary between the LLM and the
-   filesystem — it deserves first-class CI coverage, not "hope
-   nobody tries to break it."
+3. **Close the ARCHITECTURE.md ↔ `server.py` spec/code gap in
+   `mcp-servers/fs-manager/`, then write the first unit tests.** This
+   was originally scoped as just "write the first tests" but review
+   on PR #25 surfaced that parts of fs-manager's documented behavior
+   don't actually exist in code. Two things the spec promises but
+   server.py doesn't enforce:
+   - **Namespace gate.** ARCHITECTURE.md §2 says writes to
+     `data/{state,lore}/core/` are blocked unless the payload carries
+     a `"namespace": "core"` authorization token. `server.py` has no
+     such check.
+   - **`core_faction_id` protection.** ARCHITECTURE.md §4 lists it as
+     a protected field. `server.py`'s `PROTECTED_FIELDS` set omits it.
+
+   Before writing tests, decide whether to implement the missing
+   enforcement or pare ARCHITECTURE.md back to match the code. Then
+   the test work has a real target. First test slice once the spec
+   and code agree: path traversal rejection (`..` and absolute paths
+   outside `data/`), full protected-field blocklist, namespace gate
+   (if it lands), schema validation rejection, commit rollback on
+   partial failure. Wire into `pytest tests/` once the tests exist.
+   The tracking BACKLOG item covers both halves.
 
 ---
 
