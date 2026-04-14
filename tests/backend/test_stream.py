@@ -297,12 +297,18 @@ def test_stream_rejects_malicious_session_id(
 
 
 def test_stream_emits_error_when_session_write_fails(
-    app, fake_openai, tmp_data_dir, monkeypatch
+    app, fake_openai, fake_commit_log, tmp_data_dir, monkeypatch
 ):
     """If the session-file append fails mid-stream, the handler
     must surface a structured error event before [DONE] so the
     frontend can show a toast. Narrative tokens have already
-    streamed to the player — we don't roll those back."""
+    streamed to the player — we don't roll those back.
+
+    Also verifies that commit_snapshot STILL fires before the
+    error path — the apply_world_update dispatch succeeded and
+    wrote real state mutations to disk, so those must make it
+    into the git audit trail even when the session-file append
+    fails."""
     import engine
     import engine.dispatch.fs_manager as dispatcher_module
     from fastapi.testclient import TestClient
@@ -353,3 +359,12 @@ def test_stream_emits_error_when_session_write_fails(
 
     # Both dispatches were attempted; only the second failed.
     assert calls["count"] == 2
+
+    # Critical: commit_snapshot MUST still fire even though the
+    # session write failed. The world state from the successful
+    # first dispatch is on disk; it must land in git history
+    # despite the partial failure. Otherwise we introduce a
+    # silent audit gap exactly where Phase 1 is trying to close one.
+    assert len(fake_commit_log) == 1
+    assert fake_commit_log[0]["session_id"] == session_id
+    assert fake_commit_log[0]["turn_number"] == 1

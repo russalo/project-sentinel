@@ -26,6 +26,7 @@ Every mutation routes through the engine → fs-manager → git-sync
 pipeline. The handler itself never touches the filesystem directly.
 """
 
+import logging
 import uuid
 from datetime import datetime, timezone
 
@@ -39,6 +40,8 @@ from ..config import Settings
 from ..engine_bridge import build_engine_config
 from ..schemas import NewSessionRequest, NewSessionResponse, TurnResponse
 from ..state import sessions as session_state
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api")
 
@@ -126,26 +129,41 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
         log_entry=f"[Session Start] {body.world_name} — intro generated.",
         turn_number=0,
     )
-    if not write_result.ok:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Failed to persist new session: {write_result.error}",
-        )
 
-    # Commit the snapshot via git-sync so the session-start state
-    # change becomes a real git commit. Per ADR 0001 Phase 1, every
-    # write that lands through the engine must be followed by a
-    # git-sync dispatch to produce the per-turn audit trail.
-    # Failure to commit is non-fatal for session creation: the
-    # session is already persisted on disk and the next turn's
-    # commit will catch up the history. Log via the response body
-    # but do not 502.
-    engine.commit_snapshot(
+    # Commit the snapshot via git-sync BEFORE deciding whether to
+    # raise on session-write failure. Rationale: the preceding
+    # apply_world_update dispatch may have already written real
+    # state mutations (entities, locations, items, world state) to
+    # disk. If we 502 without committing, those mutations exist on
+    # the filesystem but are not in git history — a silent audit
+    # gap exactly in the failure mode this code is supposed to be
+    # durable against. Committing whatever is on disk before we
+    # raise captures the partial success honestly: the commit will
+    # include the world state that did land and exclude the
+    # session file that didn't.
+    commit_result = engine.commit_snapshot(
         config,
         session_id=session_id,
         turn_number=0,
         summary=f"Session start: {body.world_name}",
     )
+    if not commit_result.ok:
+        # Fire-and-log: the session is either created (on write
+        # success below) or raising (on write failure below), and
+        # in either path the commit failure is a durability concern
+        # we want visible in the backend log but not a reason to
+        # change response semantics. Observability plumbing can
+        # promote this to a metric or an alert in a later PR.
+        logger.warning(
+            "commit_snapshot failed on session creation: %s",
+            commit_result.error,
+        )
+
+    if not write_result.ok:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to persist new session: {write_result.error}",
+        )
 
     return NewSessionResponse(
         session_id=session_id,

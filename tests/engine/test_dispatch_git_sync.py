@@ -211,6 +211,61 @@ def test_trailing_slash_in_git_sync_url_is_normalized():
     assert "//tools" not in captured["url"]
 
 
+def test_summary_newlines_are_normalized_to_spaces():
+    """Summaries passed from callers are typically the first N chars
+    of DM narrative text, which usually contains newlines. Git puts
+    the summary directly into the commit subject line, so embedded
+    newlines break the git log convention (title line separated from
+    body by a blank line). The dispatcher should collapse all
+    whitespace runs to single spaces before sending to git-sync."""
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        import json
+
+        captured["body"] = json.loads(request.content.decode())
+        return httpx.Response(200, json={"status": "committed", "commit": "abcd1234"})
+
+    config = _config()
+    commit_snapshot(
+        config,
+        session_id=VALID_SESSION_ID,
+        turn_number=1,
+        summary="The fire crackles.\n\nThalia nocks an arrow.\nRussalo casts shadow.\r\n",
+        client=_client_returning(handler),
+    )
+
+    sent_summary = captured["body"]["summary"]
+    assert "\n" not in sent_summary
+    assert "\r" not in sent_summary
+    assert "\t" not in sent_summary
+    # Content preserved, whitespace runs collapsed to single spaces
+    assert sent_summary == "The fire crackles. Thalia nocks an arrow. Russalo casts shadow."
+
+
+def test_summary_tab_and_multiple_spaces_are_collapsed():
+    """str.split() with no arg handles all whitespace types uniformly,
+    so verify tabs and runs of spaces also collapse correctly."""
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        import json
+
+        captured["body"] = json.loads(request.content.decode())
+        return httpx.Response(200, json={"status": "committed", "commit": "abcd1234"})
+
+    config = _config()
+    commit_snapshot(
+        config,
+        session_id=VALID_SESSION_ID,
+        turn_number=1,
+        summary="word1\tword2    word3\n\n\nword4",
+        client=_client_returning(handler),
+    )
+
+    assert captured["body"]["summary"] == "word1 word2 word3 word4"
+
+
 def test_non_json_response_wraps_raw_text():
     """Server returning non-JSON still produces a structured result."""
     def handler(request: httpx.Request) -> httpx.Response:

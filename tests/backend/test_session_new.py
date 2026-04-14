@@ -163,12 +163,17 @@ def test_new_session_uses_defaults_when_fields_omitted(client, fake_openai):
 
 
 def test_new_session_returns_502_when_session_write_fails(
-    app, fake_openai, monkeypatch
+    app, fake_openai, fake_commit_log, monkeypatch
 ):
     """If fs-manager rejects the session-file write, the handler must
     not return a sessionId that was never persisted. It must surface
     the failure as a 502 so the frontend can react instead of
-    quietly handing back an unusable ID."""
+    quietly handing back an unusable ID.
+
+    Also verifies that commit_snapshot STILL fires before the 502 —
+    the Fact-Extractor dispatch succeeded and wrote world state to
+    disk, so that state must make it into the git audit trail even
+    though the session file itself didn't land."""
     import engine
     import engine.dispatch.fs_manager as dispatcher_module
     from fastapi.testclient import TestClient
@@ -209,3 +214,12 @@ def test_new_session_returns_502_when_session_write_fails(
     assert "fs-manager offline" in response.json()["detail"]
     # Both dispatches were attempted: fact-extractor first, then session.
     assert calls["count"] == 2
+
+    # Critical: commit_snapshot MUST still fire even though we're
+    # about to 502. Otherwise the world state mutations from the
+    # successful first dispatch exist on disk but not in git
+    # history — a silent audit gap exactly in the failure mode
+    # ADR 0001 is meant to be durable against.
+    assert len(fake_commit_log) == 1
+    assert "Session start" in fake_commit_log[0]["summary"]
+    assert "Unreliable" in fake_commit_log[0]["summary"]

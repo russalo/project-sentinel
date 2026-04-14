@@ -109,10 +109,18 @@ def commit_snapshot(
     base = config.git_sync_url.rstrip("/")
     url = f"{base}/tools/commit_snapshot"
 
+    # Normalize the summary to a single line. Callers typically pass
+    # the first N chars of DM narrative text, which contains newlines
+    # — and git-sync puts the summary directly into the commit subject
+    # line, where embedded newlines would break git's title/body
+    # convention and produce ugly `git log` output. Collapse all
+    # whitespace runs (including \r, \n, and tab) to single spaces.
+    normalized_summary = " ".join(summary.split()).strip()
+
     payload: dict[str, Any] = {
         "session_id": session_id,
         "turn_number": turn_number,
-        "summary": summary,
+        "summary": normalized_summary,
     }
 
     owns_client = client is None

@@ -168,43 +168,50 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
             log_entry=narrative[:200] or f"Turn {next_turn_number} completed.",
             turn_number=next_turn_number,
         )
-        # If the session write fails, the narrative has already been
-        # streamed to the player and the game is in a half-persisted
-        # state: the world-state dispatch (above) succeeded, but the
-        # per-session turn log and counter didn't advance. Surface
-        # this as a structured error event so the frontend can show
-        # the toast; we still emit [DONE] so the stream closes
-        # cleanly. The next turn will regenerate from whatever
-        # `recent_turns` the stale session file has.
+
+        # Commit the snapshot via git-sync regardless of whether the
+        # session-file write succeeded. The apply_world_update
+        # dispatch above may have already written real entity /
+        # location / item / world state mutations — if we skip the
+        # commit on session-write failure we silently drop those
+        # mutations out of the audit trail. Committing whatever is
+        # on disk captures the partial success honestly: the commit
+        # will include whatever fs-manager wrote (world state, etc.)
+        # and exclude whatever it didn't (the session file append).
+        # Per ADR 0001 Phase 1, every fs-manager write is supposed
+        # to produce a git commit, no exceptions.
+        commit_result = engine.commit_snapshot(
+            config,
+            session_id=body.session_id,
+            turn_number=next_turn_number,
+            summary=narrative[:200] or f"Turn {next_turn_number} completed.",
+        )
+
+        # Both failure modes surface as structured error SSE events
+        # so the frontend can show a system message. We still emit
+        # [DONE] below regardless so the stream closes cleanly.
         if not session_write.ok:
+            # If the session write fails, the narrative has already
+            # been streamed to the player and the game is in a
+            # half-persisted state: the world-state dispatch
+            # succeeded, but the per-session turn log and counter
+            # didn't advance. The next turn will regenerate from
+            # whatever `recent_turns` the stale session file has.
             yield _sse_event(
                 {
                     "type": "error",
                     "content": f"Failed to save turn to session: {session_write.error}",
                 }
             )
-        else:
-            # All disk writes for this turn are committed to data/
-            # via fs-manager. Commit the snapshot via git-sync so
-            # the turn becomes a real git commit in the audit trail.
-            # Per ADR 0001 Phase 1, every successful write must be
-            # followed by a git-sync dispatch. On failure we surface
-            # a structured error event but still close the stream
-            # cleanly — the narrative and disk state are durable,
-            # only the audit trail missed this turn.
-            commit_result = engine.commit_snapshot(
-                config,
-                session_id=body.session_id,
-                turn_number=next_turn_number,
-                summary=narrative[:200] or f"Turn {next_turn_number} completed.",
+        if not commit_result.ok:
+            # Narrative and disk state are durable; only the audit
+            # trail missed this turn. Emit the dispatcher's error
+            # directly — it already includes the "git-sync rejected
+            # commit (<status>):" prefix so wrapping it again would
+            # produce redundant double prefixes in the UI.
+            yield _sse_event(
+                {"type": "error", "content": commit_result.error}
             )
-            if not commit_result.ok:
-                yield _sse_event(
-                    {
-                        "type": "error",
-                        "content": f"git-sync rejected commit: {commit_result.error}",
-                    }
-                )
 
         yield "data: [DONE]\n\n"
 
