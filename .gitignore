@@ -56,3 +56,13 @@ __pycache__/
 
 # Secrets — never commit environment files
 infrastructure/.env
+
+# Claude Code conversation transcripts — captured locally by the
+# PreCompact hook in .claude/settings.json before compaction, so
+# the full context of past sessions is preserved as JSONL files
+# that never leave the machine.
+chatlogs/
+
+# Claude Code user-specific permission state — auto-managed by the
+# CLI as users approve tool calls. Not shared across contributors.
+.claude/settings.local.json
