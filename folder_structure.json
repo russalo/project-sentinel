@@ -45,17 +45,14 @@
     "mcp-servers": {
       "description": "The Bridge — Model Context Protocol servers connecting the Inference Node to the Infrastructure Node.",
       "fs-manager": {
-        "description": "Zero-Touch file handler. Validates all writes against JSON Schema before executing CRUD on /data.",
-        "server.py": "FastAPI MCP server exposing apply_world_update and read_state tools.",
-        "validator.py": "JSON Schema Draft 2020-12 validation layer — the gatekeeper.",
-        "requirements.txt": "Python dependencies (fastapi, jsonschema, pydantic).",
-        "tests": "Automated test suite covering schema rejection, path traversal prevention, and successful writes."
+        "description": "Zero-Touch file handler. Validates all writes against JSON Schema before executing CRUD on /data. NO tests yet — see docs/BACKLOG.md.",
+        "server.py": "FastAPI MCP server exposing apply_world_update and read_state tools. Schema validation is inlined via jsonschema, not a separate validator.py module.",
+        "requirements.txt": "Python dependencies (fastapi, jsonschema, pydantic)."
       },
       "git-sync": {
-        "description": "Automated version control — commits after each world update with session metadata.",
+        "description": "Automated version control — commits after each world update with session metadata. NO tests yet — see docs/BACKLOG.md.",
         "server.py": "MCP server exposing commit_snapshot tool.",
-        "requirements.txt": "Python dependencies (gitpython).",
-        "tests": "Test suite for commit generation and rollback recovery."
+        "requirements.txt": "Python dependencies (gitpython)."
       }
     },
     "schemas": {

@@ -55,11 +55,19 @@ Flagging gaps honestly so TESTING.md doesn't lie by omission:
   Flagged in `docs/BACKLOG.md` under Developer Experience; scheduled to
   land alongside the Panel UX primitives (`EntityCard`, `DeltaMessage`,
   `TabbedChat`) per `docs/ROADMAP.md` step 1.
-- **The MCP servers' own tests don't run in CI.** `mcp-servers/fs-manager/`
-  has a `tests/` directory; it is not wired into the `pytest tests/`
-  invocation. The engine-side dispatch tests cover the HTTP contract
-  the backend relies on, but fs-manager's internal path-validation and
-  protected-field-enforcement logic is only exercised locally.
+- **The MCP servers have no unit tests at all.** `mcp-servers/fs-manager/`
+  is 299 lines of security-critical path validation and protected-field
+  enforcement, and `mcp-servers/git-sync/` is the only thing that produces
+  the per-turn git audit trail — neither has a `tests/` directory, never
+  has. The engine-side dispatch tests (`tests/engine/test_dispatch_*.py`)
+  cover the HTTP contract via `httpx.MockTransport`, which validates the
+  request/response shape the backend relies on but does not test the
+  servers' internal logic. Flagged in `docs/BACKLOG.md`.
+- **Ruff lint scope is `mcp-servers/` only.** The CI "Lint Python" job
+  runs `ruff check mcp-servers/` and `ruff format --check mcp-servers/`
+  and nothing else. `engine/`, `backend/`, and `tests/` are written in
+  Python, have no lint enforcement, and can drift in style without CI
+  catching it. Flagged in `docs/BACKLOG.md`.
 - **No end-to-end turn loop.** We don't spin up a real fs-manager
   subprocess + real git-sync + real LLM (or a fake one) and send a
   synthetic turn through the whole pipeline. The first live smoke test
@@ -147,11 +155,19 @@ Ordered by dependency. Each links to a `docs/BACKLOG.md` item:
    test coverage of the intro and normal-turn prompt assembly paths,
    using `FakeOpenAI` and matching the style of the existing
    `test_dm.py::_build_intro_messages_*` tests.
-3. **Wire `mcp-servers/fs-manager/tests/` into CI.** Either run them
-   as a separate job or glob them into the main `pytest tests/`
-   invocation. The protected-field enforcement and path-validation
-   logic in fs-manager is load-bearing; it deserves first-class CI
-   coverage, not "hope someone ran it locally."
+3. **Write the first unit tests for `mcp-servers/fs-manager/`.** The
+   server has zero test coverage today. First slice: test path
+   validation (block `../` traversal, block absolute paths outside
+   `data/`, block paths that don't match the schema), test
+   protected-field enforcement (reject any payload that mutates
+   `unique_id`, `world_seed`, `namespace`, `created_at`, `canon`,
+   `core_faction_id`), test the namespace gate (core writes require
+   a `"namespace": "core"` token). Wire into the main `pytest tests/`
+   invocation once the first tests exist. The protected-field
+   enforcement and path-validation logic in fs-manager is the
+   project's entire security boundary between the LLM and the
+   filesystem — it deserves first-class CI coverage, not "hope
+   nobody tries to break it."
 
 ---
 
