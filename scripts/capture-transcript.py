@@ -78,6 +78,12 @@ _STDIN_READ_TIMEOUT_SECONDS = 5.0
 # filesystem name limits.
 _SESSION_ID_MAX_LEN = 64
 
+# Upper bound on the stdin payload. Claude Code's hook JSON is a handful of
+# fields (session_id, transcript_path, cwd, hook_event_name) totaling well
+# under a kilobyte; 1 MiB is orders of magnitude beyond plausible and keeps
+# a misbehaving or hostile caller from exhausting memory.
+_STDIN_MAX_BYTES = 1024 * 1024
+
 
 def _log(msg: str) -> None:
     print(f"capture-transcript: {msg}", file=sys.stderr)
@@ -104,7 +110,7 @@ def _read_hook_input() -> dict:
 
     def _reader() -> None:
         try:
-            result["raw"] = sys.stdin.read()
+            result["raw"] = sys.stdin.read(_STDIN_MAX_BYTES)
         except (OSError, ValueError):
             pass
 
