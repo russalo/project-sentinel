@@ -55,4 +55,4 @@ assignees: ""
 - [ ] **No Contradiction:** I have checked that this lore does not contradict any Core lore in `data/lore/core/`. If it does, I have framed it explicitly as a rumor or alternative legend.
 - [ ] **community.json:** I have updated (or created) my pack's `community.json` manifest to include this file in `lore_files`.
 - [ ] **State Link:** If this lore introduces a physical entity (NPC, location, item), I have also opened a Schema-Architect issue to create its JSON state entry (if applicable).
-- [ ] **Vector DB Ingestion:** I have tested local indexing by running the db-vector MCP server and confirming the document appears in ChromaDB queries.
+- [ ] **ChromaDB Ingestion:** _(Deferred — the RAG / Lorekeeper indexing path is not yet wired up. Leave unchecked for now; a dedicated indexing step will ship with the Lorekeeper agent.)_

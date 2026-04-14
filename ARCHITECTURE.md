@@ -1,20 +1,5 @@
 # Project Sentinel — Architecture Reference
 
-> **Status — 2026-04-13:** this document describes the target
-> architecture, which currently diverges from running code in one
-> important way. The code today (`backend/api/dm_ai.py`) writes directly
-> to Postgres via Django ORM and does not route per-turn writes through
-> `fs-manager`. Per **[ADR 0001](docs/adr/0001-data-canonical-source-of-truth.md)**,
-> this divergence is being closed by rewriting the code — not the docs.
-> The per-turn write path (§7 Full Update Pipeline) and the Node Roles
-> table (§5) reflect the intended architecture and the direction the
-> code is moving toward. Sections 1–4 (Core vs. Community, namespace
-> separation, override hierarchy, protected fields) are accurate today
-> because the new `engine/` package and `fs-manager` both honor them
-> already. This document will be rewritten against running code once
-> ADR 0001 Phase 1 ships; until then, when code and docs disagree,
-> prefer ADR 0001's framing.
-
 ## The Core vs. Community Framework
 
 Sentinel is designed to ingest community content without ever risking corruption of the primary world state. This document defines the exact rules that govern how Core and Community content coexist.
@@ -100,7 +85,7 @@ Every community content pack must include a `community.json` manifest at its roo
 - What core entities it references (but does not modify)
 - What it is explicitly *not* allowed to touch
 
-The `fs-manager` reads this manifest on pack initialization and registers the content in both the ChromaDB index and the PostgreSQL metadata table.
+The `fs-manager` reads this manifest on pack initialization and registers the content in the ChromaDB index (and, eventually, whatever metadata store the Lorekeeper agent ends up using).
 
 ### `community.json` Schema
 
@@ -234,10 +219,10 @@ The `fs-manager` reads `x-sentinel-protected: true` and adds those keys to a blo
 | Node | Role | Can Write To | Cannot Write To |
 |---|---|---|---|
 | Inference Node (`engine/`) | Generates narrative + `<world_update>` tags | Via MCP servers only | Filesystem directly |
-| fs-manager MCP | Executes validated file writes | `data/state/community/`, `data/lore/community/`, `data/lore/core/sessions/` | `data/state/core/entities/`, `data/lore/core/codex/` (without core token) |
-| db-vector MCP | Reads/writes PostgreSQL + ChromaDB | All DB tables for reads; `community` namespace for writes | Core namespace records |
-| git-sync MCP | Commits after each world update | Git history | N/A |
-| Core Team | Maintains Core namespace | All directories | N/A |
+| FastAPI backend (`backend/`) | Serves frontend HTTP + SSE; reads `data/state/*.json` directly; calls engine for turns and dispatches writes through it | Never writes to `data/` directly — all writes route through `engine.dispatch` → fs-manager | `data/` (direct) |
+| fs-manager MCP (`:8010`) | Executes validated file writes | `data/state/community/`, `data/lore/community/`, `data/lore/core/sessions/` (and core paths with a `"namespace": "core"` token) | Anywhere outside `data/` |
+| git-sync MCP (`:8012`) | Commits after each world update | Git history only | N/A |
+| Core Team | Maintains Core namespace | All directories (human-gated PRs) | N/A |
 
 ---
 
@@ -247,12 +232,16 @@ How the Inference Node communicates with the Infrastructure Node through the Tai
 
 ```mermaid
 graph TB
+    subgraph CLIENT["Client"]
+        UI["🎮 Frontend\napps/sentinel-ui"]
+    end
+
     subgraph INFERENCE["Inference Node"]
-        Client["🎮 Client\n(User Interface)"]
-        Orch["⚙️ Orchestrator\n(Core Loop)"]
+        BE["⚡ FastAPI backend\nbackend/ (:8001)"]
         DM["🧙 DM Agent\n(Storyteller)"]
         FE["🔍 Fact-Extractor Agent\n(State Parser)"]
-        LK["📚 Lorekeeper Agent\n(RAG Context)"]
+        LK["📚 Lorekeeper Agent\n(future RAG context)"]
+        DISP["engine.dispatch\n(httpx clients)"]
     end
 
     subgraph NET["Tailscale Mesh Network"]
@@ -262,60 +251,57 @@ graph TB
     subgraph INFRA["Infrastructure Node"]
         subgraph MCP["MCP Bridge"]
             FSM["fs-manager\n:8010"]
-            DBV["db-vector\n:8011"]
             GS["git-sync\n:8012"]
         end
         subgraph STORAGE["Storage Layer"]
-            PG["PostgreSQL\n+ pgvector"]
-            CB["ChromaDB\n(Vector Store)"]
+            CB["ChromaDB\n(future Lorekeeper RAG)"]
             FS["/data/\n├── lore/*.md\n└── state/*.json"]
-            GIT["Git Repository\n(Version Snapshots)"]
+            GIT["Git Repository\n(per-turn snapshots)"]
         end
     end
 
-    Client --> Orch
-    Orch --> DM
-    LK -->|injects context| DM
+    UI -->|fetch + SSE| BE
+    BE --> DM
+    LK -.->|injects context| DM
     DM --> FE
-    FE -->|world_update payload| Orch
-    Orch -->|validated MCP calls| TS
-    TS --> FSM & DBV & GS
+    FE -->|world_update payload| DISP
+    DISP -->|validated MCP calls| TS
+    TS --> FSM & GS
     FSM --> FS
-    DBV --> PG & CB
     GS --> GIT
-    CB -.->|RAG query response| TS
-    TS -.->|lore context| LK
+    CB -.->|RAG query response| LK
+    BE -->|direct reads| FS
 ```
 
 ---
 
 ## 7. Diagram: The Full Update Pipeline
 
+Per-turn flow from a player action to a committed world snapshot. Canonical state is `data/state/*.json` + `data/lore/*.md` + git (ADR 0001); the backend reads it directly on the next turn, no cache layer.
+
 ```mermaid
 flowchart TD
-    A["🎮 Player Action\n(Client Node)"] --> B
+    A["🎮 Player Action\n(apps/sentinel-ui)"] --> BE["⚡ FastAPI /api/stream\n(backend/)"]
 
-    subgraph INFERENCE["Inference Node"]
-        B["🧙 DM Agent\nGenerates narrative response"]
-        B --> C["📖 Story Response\n(human-readable text)"]
-        C --> D["🔍 Fact-Extractor Agent\nParses &lt;world_update&gt; JSON tags"]
+    subgraph INFERENCE["Inference Node (engine/)"]
+        BE --> B["🧙 DM Agent\nStreams narrative response"]
+        B --> C["📖 Story tokens\n(streamed to UI as SSE)"]
+        C --> D["🔍 Fact-Extractor\nParses &lt;world_update&gt; JSON"]
     end
 
     D --> E{"⚙️ JSON Schema Validation\napply_world_update.schema.json"}
     E -->|"❌ Invalid payload"| ERR["🚫 Reject & Log\nError fed back to DM"]
     ERR --> B
 
-    E -->|"✅ Valid payload"| G["🔀 MCP Server Router"]
+    E -->|"✅ Valid payload"| DISPATCH["🔀 engine.dispatch"]
 
     subgraph MCP["MCP Bridge (Infrastructure Node)"]
-        G --> H["fs-manager :8010\nEntity / faction state mutations\n→ /data/state/*.json"]
-        G --> I["fs-manager :8010\nSession log appends\n→ /data/lore/*.md"]
-        G --> J["db-vector :8011\nStructured queries + vector upserts\n→ PostgreSQL + ChromaDB"]
-        G --> K["git-sync :8012\nAtomic commit\n→ Git version snapshot"]
+        DISPATCH --> H["fs-manager :8010\nState + lore writes\n→ data/state/*.json\n→ data/lore/*.md"]
+        H --> K["git-sync :8012\nAtomic per-turn commit\n→ Git history"]
     end
 
-    H & I & J & K --> L["✅ World State Updated"]
-    L --> M["📚 Lorekeeper Agent\nInjects fresh context into\nnext DM context window"]
+    K --> L["✅ Turn committed"]
+    L --> M["📚 Next turn re-reads\ndata/state/*.json directly"]
     M --> B
 ```
 
@@ -360,7 +346,7 @@ flowchart TD
 
     subgraph AIRLOCK["🔒 The Airlock  —  Import Validator"]
         G["📂 Isolated Extraction\n→ /tmp/sentinel_airlock/"]
-        G --> H["📋 Version Handshake\nRead manifest.json schema_version\nRun /infrastructure/migrations/ scripts\nif host version &gt; package version"]
+        G --> H["📋 Version Handshake\nRead manifest.json schema_version\nRun package migration scripts\nif host version &gt; package version"]
         H --> I["✅ JSON Schema Validation\nEvery .json validated against\nDraft 2020-12 schemas\nOversized or malformed → REJECT"]
         I --> J["🛣️ Path Sanitization\nBlock ../ traversal attempts\nBlock symlinks outside /data"]
         J --> K["🔄 Vector Re-Embedding\nDiscard imported ChromaDB vectors\nRe-generate locally from Markdown\n(prevents Poisoned RAG attacks)"]
