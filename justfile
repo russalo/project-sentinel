@@ -9,6 +9,14 @@
 #
 # Usage: just <recipe>   •   just --list
 
+# Python interpreter name. Cross-OS: Windows installers typically
+# expose `python`, while macOS/Linux expose `python3` (and often
+# both). Overridable via the PYTHON_BIN environment variable for
+# unusual setups (e.g. pyenv shims, virtualenvs). Used by every
+# recipe that invokes a Python script directly.
+default_python_bin := if os_family() == "windows" { "python" } else { "python3" }
+python_bin := env_var_or_default("PYTHON_BIN", default_python_bin)
+
 # Show all available recipes (default when you run `just` with no args)
 default:
     @just --list --unsorted
@@ -69,15 +77,15 @@ logs service="":
 
 # Start the filesystem manager MCP server on :8010 (verbose dev mode)
 fs-manager:
-    python3 mcp-servers/fs-manager/server.py --port 8010 --dev
+    {{ python_bin }} mcp-servers/fs-manager/server.py --port 8010 --dev
 
 # Start the vector DB interface MCP server on :8011 (verbose dev mode)
 db-vector:
-    python3 mcp-servers/db-vector/server.py --port 8011 --dev
+    {{ python_bin }} mcp-servers/db-vector/server.py --port 8011 --dev
 
 # Start the git-sync MCP server on :8012 (verbose dev mode)
 git-sync:
-    python3 mcp-servers/git-sync/server.py --port 8012 --dev
+    {{ python_bin }} mcp-servers/git-sync/server.py --port 8012 --dev
 
 # ─── Build & Type Checks ──────────────────────────────────────────────────────
 
@@ -127,7 +135,7 @@ test: test-schemas
 # Cross-OS: delegates to a Python script that parses the hook's
 # JSON-on-stdin contract and anchors output to $CLAUDE_PROJECT_DIR.
 capture-transcript:
-    python3 scripts/capture-transcript.py
+    {{ python_bin }} scripts/capture-transcript.py
 
 # ─── Session Lifecycle ────────────────────────────────────────────────────────
 

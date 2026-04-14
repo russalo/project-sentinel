@@ -64,7 +64,19 @@ import json
 import os
 import shutil
 import sys
+import threading
 from pathlib import Path
+
+# Maximum time to wait for stdin to close when reading the hook payload.
+# Claude Code writes a small JSON blob and closes the stream immediately, so
+# anything beyond a couple seconds means the caller is misbehaving and we'd
+# rather no-op than block the PreCompact hook indefinitely.
+_STDIN_READ_TIMEOUT_SECONDS = 5.0
+
+# Session id is used unescaped in a filename. Cap length and restrict to a
+# safe charset so a malformed id can't traverse directories or blow past
+# filesystem name limits.
+_SESSION_ID_MAX_LEN = 64
 
 
 def _log(msg: str) -> None:
@@ -81,9 +93,29 @@ def _read_hook_input() -> dict:
         if sys.stdin.isatty():
             # Running interactively with no piped input — skip stdin.
             return {}
-        raw = sys.stdin.read()
     except (OSError, ValueError):
         return {}
+
+    # Read stdin on a background thread so a misbehaving caller that never
+    # closes the stream can't block the PreCompact hook. signal.alarm is
+    # Unix-only and select() on stdin isn't reliable cross-OS, so a thread
+    # with a join timeout is the portable option.
+    result: dict = {"raw": None}
+
+    def _reader() -> None:
+        try:
+            result["raw"] = sys.stdin.read()
+        except (OSError, ValueError):
+            pass
+
+    thread = threading.Thread(target=_reader, daemon=True)
+    thread.start()
+    thread.join(timeout=_STDIN_READ_TIMEOUT_SECONDS)
+    if thread.is_alive():
+        _log(f"stdin read exceeded {_STDIN_READ_TIMEOUT_SECONDS}s; ignoring")
+        return {}
+
+    raw = result["raw"]
     if not raw or not raw.strip():
         return {}
     try:
@@ -127,12 +159,27 @@ def _resolve_session_id(hook_input: dict) -> str:
     1. ``session_id`` field from the hook-input JSON
     2. ``CLAUDE_SESSION_ID`` env var
     3. Fallback constant ``'session'`` so the filename is still valid
+
+    The result is sanitized to ``[A-Za-z0-9_-]`` and capped at
+    ``_SESSION_ID_MAX_LEN`` characters. Session ids land in a filename
+    unescaped, so a malformed value (path separators, null bytes,
+    excessive length) could otherwise traverse directories or trip
+    filesystem name limits. If sanitization empties the string, fall
+    back to ``'session'``.
     """
-    return (
+    raw = (
         hook_input.get("session_id")
         or os.environ.get("CLAUDE_SESSION_ID")
         or "session"
     )
+    cleaned = "".join(c for c in str(raw) if c.isalnum() or c in "-_")[
+        :_SESSION_ID_MAX_LEN
+    ]
+    if not cleaned:
+        cleaned = "session"
+    if cleaned != raw:
+        _log(f"sanitized session_id {raw!r} → {cleaned!r}")
+    return cleaned
 
 
 def _resolve_project_dir() -> Path:
