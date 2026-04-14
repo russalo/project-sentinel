@@ -56,19 +56,3 @@ __pycache__/
 
 # Secrets — never commit environment files
 infrastructure/.env
-
-# Session-generated runtime game state — produced by fs-manager at play
-# time and updated every turn. Tracked directories are preserved via
-# .gitkeep files (per ADR 0001, data/ is the canonical store for world
-# state, but the specific per-session JSON files and Markdown transcripts
-# are runtime artifacts, not contributor-authored content). Core and
-# community pre-seeded content is authored into data/lore/core/codex/
-# and data/state/community/<pack>/ and is NOT ignored.
-data/state/core/entities/*.json
-data/state/core/locations/*.json
-data/state/core/factions/*.json
-data/state/core/items/*.json
-data/state/core/sessions/*.json
-data/state/core/world/*.json
-data/lore/core/sessions/*.md
-!data/**/.gitkeep

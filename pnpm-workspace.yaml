@@ -8,7 +8,7 @@ catalog:
   '@types/node': ^25.3.3
   framer-motion: ^12.38.0
   lucide-react: ^0.545.0
-  tailwindcss: ^3.4.0
+  tailwindcss: 3.4.13
   tsx: ^4.21.0
 
 minimumReleaseAge: 1440
