@@ -52,7 +52,6 @@ def test_settings(tmp_data_dir: Path):
         dm_model="test-model",
         max_completion_tokens=1234,
         fs_manager_url="http://fs-manager.test",
-        db_vector_url="http://db-vector.test",
         git_sync_url="http://git-sync.test",
         data_dir=tmp_data_dir,
         cors_allowed_origins=("*",),

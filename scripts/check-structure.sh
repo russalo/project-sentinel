@@ -21,7 +21,6 @@ DIRS=(
   "data/lore"
   "data/state"
   "mcp-servers/fs-manager"
-  "mcp-servers/db-vector"
   "mcp-servers/git-sync"
   "infrastructure"
   "schemas"

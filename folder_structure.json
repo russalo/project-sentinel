@@ -56,12 +56,6 @@
         "requirements.txt": "Python dependencies (fastapi, jsonschema, pydantic).",
         "tests": "Automated test suite covering schema rejection, path traversal prevention, and successful writes."
       },
-      "db-vector": {
-        "description": "RAG/DB interface — routes semantic queries to ChromaDB and structured queries to PostgreSQL.",
-        "server.py": "MCP server exposing query_lore, upsert_entity, and search_context tools.",
-        "requirements.txt": "Python dependencies (chromadb, psycopg2, sentence-transformers).",
-        "tests": "Test suite for vector query accuracy and DB connection resilience."
-      },
       "git-sync": {
         "description": "Automated version control — commits after each world update with session metadata.",
         "server.py": "MCP server exposing commit_snapshot tool.",

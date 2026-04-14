@@ -61,7 +61,6 @@ class Settings:
     max_completion_tokens: int
 
     fs_manager_url: str
-    db_vector_url: str
     git_sync_url: str
 
     data_dir: Path
@@ -89,7 +88,6 @@ class Settings:
             dm_model=_env("DM_MODEL", "gpt-4o-mini") or "gpt-4o-mini",
             max_completion_tokens=int(_env("DM_MAX_COMPLETION_TOKENS", "2000") or "2000"),
             fs_manager_url=_env("FS_MANAGER_URL", "http://127.0.0.1:8010") or "http://127.0.0.1:8010",
-            db_vector_url=_env("DB_VECTOR_URL", "http://127.0.0.1:8011") or "http://127.0.0.1:8011",
             git_sync_url=_env("GIT_SYNC_URL", "http://127.0.0.1:8012") or "http://127.0.0.1:8012",
             data_dir=DATA_DIR,
             cors_allowed_origins=tuple(

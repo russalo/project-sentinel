@@ -80,7 +80,7 @@ fi
 echo ""
 
 # MCP servers
-for server_port in "fs-manager:8010" "db-vector:8011" "git-sync:8012"; do
+for server_port in "fs-manager:8010" "git-sync:8012"; do
   name="${server_port%%:*}"
   port="${server_port##*:}"
   result=$(http_check "http://127.0.0.1:${port}/health")
