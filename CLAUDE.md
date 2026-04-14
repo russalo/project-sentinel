@@ -98,8 +98,10 @@ Workflow for each unit of work:
 
 1. `git checkout master && git pull --ff-only`
 2. `git checkout -b <prefix>/<short-description>`
-3. Make the changes and commit them (multiple commits are fine; they
-   get squashed on merge anyway)
+3. Make the changes and commit them with DCO sign-off
+   (`git commit -s`). Multiple commits are fine; they get squashed
+   on merge anyway. `CONTRIBUTING.md` § "DCO Sign-off (Required)"
+   is the canonical rule — every commit needs `Signed-off-by:`.
 4. Push with `git push -u origin <branch>`
 5. Open a PR with `gh pr create` — title + body formatted to match
    recent PRs on this repo
@@ -107,8 +109,10 @@ Workflow for each unit of work:
    commits on the same branch
 7. Squash-merge with `gh pr merge <N> --squash --delete-branch` once
    CI is green and comments are addressed
-8. Stop at equilibrium — don't chain into the next unit of work
-   without checking in with the user first
+8. Run `just end-session` before stopping at equilibrium — it
+   re-checks the backlog and structure so drift from the PR is
+   caught before the session closes. Then stop; don't chain into
+   the next unit of work without checking in with the user first.
 
 Multiple logically-separate units of work should go to separate PRs
 — but "logically separate" is judged by the user's "solo repo, bigger
