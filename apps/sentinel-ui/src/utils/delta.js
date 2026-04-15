@@ -23,18 +23,34 @@ const TRACKED_FIELDS = {
 };
 
 // Field aliases — read via a single canonical name even if the entity
-// carries the alternate spelling. Mirrors the defensive `ownedBy ??
-// owned_by` pattern in InventoryPanel.jsx (PR #32) so the diff sees
-// the same logical field regardless of casing. Without this, a
-// payload that switches casing on the same item would either drop
-// the change entirely (if the canonical key is missing) or report
-// it as a removal+addition pair on different fields. The backend's
-// canonical casing today is `ownedBy`, but the InventoryPanel's
-// defensive code implies a non-zero risk that won't always hold —
-// the diff layer matches that posture rather than diverging from it.
+// carries an alternate spelling. The first key in each list is the
+// canonical name (matched against TRACKED_FIELDS); the rest are
+// fallbacks the diff will accept if the canonical is absent.
+//
+// Mirrors the defensive `ownedBy ?? owned_by` pattern in
+// InventoryPanel.jsx (PR #32) so the diff sees the same logical
+// field regardless of which spelling a payload happens to use.
+// Without this, a payload that switches casing on the same item
+// would either drop the change entirely (if the canonical key is
+// missing) or report it as a removal+addition pair on different
+// fields. The backend's canonical casing today is `ownedBy`, but
+// the InventoryPanel's defensive code implies a non-zero risk
+// that won't always hold — the diff layer matches that posture
+// rather than diverging from it.
+//
+// Adding a new alias: just append an entry like
+//   newCanonical: ['newCanonical', 'snake_case_alias'],
+// — no other code needs to change.
+const FIELD_ALIASES = {
+  ownedBy: ['ownedBy', 'owned_by'],
+};
+
 function fieldValue(entity, field) {
-  if (field === 'ownedBy') return entity.ownedBy ?? entity.owned_by;
-  return entity[field];
+  for (const key of FIELD_ALIASES[field] ?? [field]) {
+    const value = entity[key];
+    if (value != null) return value;
+  }
+  return undefined;
 }
 
 function diffEntities(before, after, type) {

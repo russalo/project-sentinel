@@ -67,15 +67,18 @@ async def commit_snapshot(body: dict):
         if not repo.index.diff("HEAD"):
             return {"status": "no_changes", "message": "No changes to commit."}
 
-        # `datetime.now(timezone.utc).isoformat()` emits an explicit
-        # `+00:00` offset (e.g. `2026-04-15T14:35:42.123456+00:00`),
-        # so the previous trailing `Z` shorthand is dropped — both
-        # are valid RFC 3339, and the new form is timezone-aware
-        # rather than the deprecated naive-utcnow form.
+        # `datetime.now(timezone.utc).isoformat(timespec='seconds')`
+        # emits a fixed-length, second-precision timestamp with an
+        # explicit `+00:00` offset (e.g. `2026-04-15T14:35:42+00:00`).
+        # The previous trailing `Z` shorthand is dropped — both are
+        # valid RFC 3339. `timespec='seconds'` keeps the format
+        # consistent across logs (the default microseconds resolution
+        # produces variable-length strings depending on whether
+        # microseconds happen to be zero).
         commit_message = (
             f"[sentinel] session={session_id[:8]} turn={turn_number} — {summary}\n\n"
             f"Full session_id: {session_id}\n"
-            f"Timestamp: {datetime.now(timezone.utc).isoformat()}"
+            f"Timestamp: {datetime.now(timezone.utc).isoformat(timespec='seconds')}"
         )
 
         repo.index.commit(commit_message)
