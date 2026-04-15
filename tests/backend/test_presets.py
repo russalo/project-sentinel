@@ -197,12 +197,8 @@ def test_get_prompt_fragment_threads_genre_through_for_regions(
         'name = "The Breach"\nprompt_fragment = "A thin place between worlds."\n',
     )
     # Same region slug, different genres, distinct content.
-    fantasy = get_prompt_fragment(
-        tmp_path, "regions", "The Breach", genre="fantasy"
-    )
-    horror = get_prompt_fragment(
-        tmp_path, "regions", "The Breach", genre="horror"
-    )
+    fantasy = get_prompt_fragment(tmp_path, "regions", "The Breach", genre="fantasy")
+    horror = get_prompt_fragment(tmp_path, "regions", "The Breach", genre="horror")
     assert fantasy == "A crater in the land."
     assert horror == "A thin place between worlds."
 
@@ -282,7 +278,5 @@ def test_shipped_mood_presets_load_with_prompt_fragments(
 def test_shipped_region_presets_load_with_prompt_fragments(
     real_preset_root: Path, genre: str, region: str
 ) -> None:
-    fragment = get_prompt_fragment(
-        real_preset_root, "regions", region, genre=genre
-    )
+    fragment = get_prompt_fragment(real_preset_root, "regions", region, genre=genre)
     assert fragment is not None and len(fragment) > 50
