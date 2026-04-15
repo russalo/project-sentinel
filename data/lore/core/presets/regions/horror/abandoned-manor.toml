@@ -1,0 +1,30 @@
+name = "Abandoned Manor"
+slug = "abandoned-manor"
+genre = "horror"
+
+prompt_fragment = """
+Hallowshade Manor has been empty for nineteen years — ever
+since the last of the Hallowshade line, an old woman named
+Iris, died in the east wing and was not discovered for
+almost a month. The manor sits a mile outside a village
+named Cope's End whose residents do not speak of the house
+by name. It is large, partly collapsed at one end, and
+surrounded by an overgrown garden whose hedges are still
+shaped the way Iris kept them, though no one has pruned
+them since she died.
+
+Canonical fixtures for the opening scene:
+- Father Cren, the village priest, who knows more than he
+  will admit and whose face changes colour if the manor
+  is mentioned within certain hours of the day.
+- The Servant's Stair, a back staircase inside the manor
+  that connects floors which, according to the surviving
+  architectural plans, should not connect.
+- The Unsigned Portrait in the main parlour — a framed
+  likeness of a woman nobody in the village recognises,
+  dated three years after Iris Hallowshade's death.
+
+Open the player arriving at the manor for a reason: an
+inheritance claim, a scholarly commission, a debt called in
+by someone they owe. The manor has been waiting.
+"""

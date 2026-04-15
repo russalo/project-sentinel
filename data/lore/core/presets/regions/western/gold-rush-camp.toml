@@ -1,0 +1,31 @@
+name = "Gold Rush Camp"
+slug = "gold-rush-camp"
+genre = "western"
+
+prompt_fragment = """
+Jimson's Rise is six months old. Eight months ago it was an
+empty meadow at the confluence of two creeks on the flank
+of a mountain nobody had thought much about. Then a
+prospector found colour in the west fork and wrote a letter
+home, and the letter was read in three separate saloons in
+three separate towns, and now Jimson's Rise is four
+thousand people in canvas and sawn pine, with three
+saloons, a bank that opened last week, a doctor who is not
+actually a doctor, and a problem of its own making.
+
+Canonical fixtures for the opening scene:
+- The Assay Office, run out of a tent by a man named
+  Kalish who has been threatened three times this week
+  and is beginning to understand that the threats are
+  going to get worse before they get better.
+- The Big Dipper, the newest and largest saloon, built in
+  ten days out of green lumber that is still weeping sap.
+  Its owner is already looking to sell.
+- Sally Carn, a prospector who made a modest strike six
+  weeks ago and has refused every buyout offer since.
+  The offers have gotten creative.
+
+Open the player arriving in Jimson's Rise with no fixed
+plans — a trunk, a little stake, and whatever they are
+running toward or away from.
+"""

@@ -172,11 +172,12 @@ work will.
 
   **Order of operations when this becomes work:**
   1. ✅ Layer 1 (wire all fields end-to-end, pass as free-form context) — fully landed. PR #20 wired initial fields; PR #33 completed Layer 1.5 (persona resolved to name + description) and wired genre/tone/startingRegion/mood/sandbox/permadeath through the frontend → backend → engine chain.
-  2. Then define the preset file layout (maybe an ADR — how do presets live under `data/`? how do they compose with community packs?)
-  3. Then author a minimum viable set of preset content (probably one entry per category to prove the pattern)
-  4. Then build the generation pipeline that consumes it
-  5. Finally expand preset coverage to the full form
-      _Discovered: 2026-04-14 | Context: user observed during smoke test that the WorldCreation form asks a lot of questions but none of them actually shape the generated world — the DM's intro is identical regardless of what you pick for tone, genre, region, etc. First issue filed under a fresh "World Generation" BACKLOG section because this area is clearly going to accumulate more items_
+  2. ✅ Preset file layout defined and authored — `data/lore/core/presets/{genres,personas,moods,regions}/` under TOML. Regions are genre-scoped (`regions/<genre>/<slug>.toml`). Schema is minimal (`name`, `slug`, optional `compatible_*`, required `prompt_fragment`). No ADR written — layout is small enough to self-document via the shipped files and `backend/presets.py` docstring. Community pack composition is deferred to the DM Personas & Content Framework item.
+  3. ✅ Minimum viable preset content authored for every current WorldCreation selector: 5 genres, 3 personas, 6 moods, 20 regions (4 per genre).
+  4. ✅ Generation pipeline built — `backend/presets.py` loads presets, `backend/routes/session.py` resolves genre/persona/mood/region fragments on `POST /api/session/new` and threads them to `engine.IntroInput.{genre,persona,mood,region}_prompt`. Engine's `_build_intro_messages` injects them as a "WORLD FOUNDATIONS" paragraph block; `_creation_context_lines` suppresses the redundant bare label lines when a matching `*_prompt` is set.
+  5. Next: **programmatic seed-entity population.** Region preset files currently describe their canonical NPCs, locations, and opening situations in prose inside `prompt_fragment`, which the LLM reads and typically honors — but there is no structured guarantee. Add an optional `seed_entities` TOML block to region files (characters, locations, factions, items with schema-valid fields), have the backend merge them into the initial `apply_world_update` payload *before* dispatching to fs-manager, so the canonical region fixtures land regardless of whether the DM mentions them. Depends on the "World identity, world_seed persistence, and multi-session semantics" ADR to settle whether regions are keyed per world or globally shared.
+  6. Then expand preset coverage as the form grows — new tones, new personas beyond the three shipped, new genres (cosmic horror, post-apocalyptic, historical fiction), additional regions per genre.
+      _Discovered: 2026-04-14 | Updated: 2026-04-15 | Context: Layer 2 steps 2–4 landed in the WorldCreation Layer 2 PR. The remaining seed-entity step is a structured-content step gated on the world identity ADR; preset coverage expansion is an ongoing worldbuilding task_
 
 ---
 

@@ -1,0 +1,31 @@
+name = "Cursed Village"
+slug = "cursed-village"
+genre = "horror"
+
+prompt_fragment = """
+Hallowrun is a village of about two hundred people in a
+narrow river valley. Seven years ago, everyone in Hallowrun
+began to share a dream. Nobody has described it out loud.
+Nobody needs to — the villagers know which other villagers
+have had it by looking at them, and the whole village has
+had it. The outside world knows Hallowrun as the place with
+the good rye harvest and the strange quiet. The villagers
+know Hallowrun as the place where something is in the
+process of happening to them. Slowly. In order.
+
+Canonical fixtures for the opening scene:
+- The Innkeeper, Mir Halder, who will serve the player
+  food and a room and will answer direct questions with
+  precise, unhelpful honesty.
+- The old church, whose bell has not rung since the
+  dreams started. The rope is gone. The priest does not
+  know where the rope is.
+- The mill on the river, run by a family named Pell, who
+  are the most visibly affected — their eyes track
+  slightly wrong, their sentences end a beat late — and
+  who run the most prosperous business in town.
+
+Open the player arriving in Hallowrun at nightfall, looking
+for a bed. The village will give them one. The village
+wants them to stay long enough to notice.
+"""

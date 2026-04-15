@@ -20,6 +20,8 @@ from engine.agents import dm as dm_agent
 from engine.agents.dm import (
     _build_intro_messages,
     _build_messages,
+    _creation_context_lines,
+    _format_preset_block,
     _strip_world_update,
     generate_intro,
     run_turn,
@@ -595,6 +597,175 @@ def test_generate_intro_result_round_trips_through_fact_extractor():
     assert "data/state/core/world/state.json" in targets
     assert "data/state/core/entities/old_maren.json" in targets
     assert "data/state/core/locations/trog_tavern.json" in targets
+
+
+# ── Layer 2: preset prompt blocks ──────────────────────────────────
+
+
+def test_format_preset_block_empty_when_no_prompt_fields():
+    intro = _make_intro_input()
+    assert _format_preset_block(intro) == ""
+
+
+def test_format_preset_block_includes_each_set_fragment_as_paragraph():
+    intro = IntroInput(
+        world_name="The Shattered Expanse",
+        player_name="Kael",
+        player_class="Wanderer",
+        genre_prompt="A dark fantasy world of ruin and rumor.",
+        region_prompt="The Breach is a wound in the land where the sky bleeds salt.",
+        persona_prompt="The Oracle speaks in fragments of futures half-seen.",
+        mood_prompt="Ominous stillness. Every silence means something is watching.",
+    )
+    block = _format_preset_block(intro)
+    assert "GENRE:\nA dark fantasy world" in block
+    assert "STARTING REGION:\nThe Breach is a wound" in block
+    assert "DM PERSONA:\nThe Oracle speaks" in block
+    assert "MOOD:\nOminous stillness" in block
+    # Ordering: genre → region → persona → mood
+    assert block.index("GENRE:") < block.index("STARTING REGION:")
+    assert block.index("STARTING REGION:") < block.index("DM PERSONA:")
+    assert block.index("DM PERSONA:") < block.index("MOOD:")
+
+
+def test_format_preset_block_skips_unset_fields():
+    intro = IntroInput(
+        world_name="W",
+        player_name="P",
+        player_class="C",
+        genre_prompt="A dark fantasy world.",
+        # persona_prompt / region_prompt / mood_prompt all None
+    )
+    block = _format_preset_block(intro)
+    assert "GENRE:" in block
+    assert "STARTING REGION:" not in block
+    assert "DM PERSONA:" not in block
+    assert "MOOD:" not in block
+
+
+def test_format_preset_block_strips_surrounding_whitespace():
+    intro = IntroInput(
+        world_name="W",
+        player_name="P",
+        player_class="C",
+        genre_prompt="  \n\nA dark fantasy world.\n\n  ",
+    )
+    block = _format_preset_block(intro)
+    # Stripped — the GENRE: header should be followed directly by the
+    # content with no leading whitespace line.
+    assert block == "GENRE:\nA dark fantasy world."
+
+
+def test_build_intro_messages_includes_world_foundations_when_preset_set():
+    intro = IntroInput(
+        world_name="The Shattered Expanse",
+        player_name="Kael",
+        player_class="Wanderer",
+        genre="fantasy",
+        genre_prompt=(
+            "A dark fantasy setting of ruin and ancient magic. "
+            "Medieval technology, feudal structures, ley lines gone wrong."
+        ),
+    )
+    messages = _build_intro_messages(intro)
+    user = messages[1]["content"]
+    assert "WORLD FOUNDATIONS" in user
+    assert "GENRE:\nA dark fantasy setting" in user
+    # The bare "Genre: fantasy" bullet must NOT appear — when the prompt
+    # field is set, the label is suppressed to avoid redundancy.
+    assert "Genre: fantasy" not in user
+
+
+def test_build_intro_messages_omits_world_foundations_when_no_presets():
+    # All Layer 2 fields None → no WORLD FOUNDATIONS block.
+    intro = IntroInput(
+        world_name="W",
+        player_name="P",
+        player_class="C",
+        genre="fantasy",
+        tone="grimdark",
+    )
+    messages = _build_intro_messages(intro)
+    user = messages[1]["content"]
+    assert "WORLD FOUNDATIONS" not in user
+    # Layer 1 bullets still work normally.
+    assert "CREATION CONTEXT" in user
+    assert "Genre: fantasy" in user
+    assert "Tone: grimdark" in user
+
+
+def test_creation_context_lines_omits_genre_when_genre_prompt_set():
+    intro = IntroInput(
+        world_name="W",
+        player_name="P",
+        player_class="C",
+        genre="fantasy",
+        genre_prompt="A dark fantasy setting.",
+    )
+    lines = _creation_context_lines(intro)
+    assert not any(line.startswith("Genre:") for line in lines)
+
+
+def test_creation_context_lines_omits_region_when_region_prompt_set():
+    intro = IntroInput(
+        world_name="W",
+        player_name="P",
+        player_class="C",
+        starting_region="The Breach",
+        region_prompt="The Breach is a wound in the land.",
+    )
+    lines = _creation_context_lines(intro)
+    assert not any(line.startswith("Starting region:") for line in lines)
+
+
+def test_creation_context_lines_omits_persona_when_persona_prompt_set():
+    # Even with persona_name + persona_description set, the bare label
+    # line is suppressed when persona_prompt is present — the WORLD
+    # FOUNDATIONS paragraph carries the voice definition instead.
+    intro = IntroInput(
+        world_name="W",
+        player_name="P",
+        player_class="C",
+        persona_id="oracle",
+        persona_name="Oracle",
+        persona_description="Prophetic and detached.",
+        persona_prompt="The Oracle speaks in fragments of futures half-seen.",
+    )
+    lines = _creation_context_lines(intro)
+    assert not any(line.startswith("DM persona:") for line in lines)
+
+
+def test_creation_context_lines_omits_mood_when_mood_prompt_set():
+    intro = IntroInput(
+        world_name="W",
+        player_name="P",
+        player_class="C",
+        mood="ominous",
+        mood_prompt="Ominous stillness. Every silence means something is watching.",
+    )
+    lines = _creation_context_lines(intro)
+    assert not any(line.startswith("DM mood:") for line in lines)
+
+
+def test_creation_context_lines_keeps_tone_sandbox_permadeath_always():
+    # These three have no preset counterpart — they should always land
+    # as bare bullets when set, even when every other field has a
+    # *_prompt set (which would otherwise empty the creation block).
+    intro = IntroInput(
+        world_name="W",
+        player_name="P",
+        player_class="C",
+        tone="grimdark",
+        sandbox=True,
+        permadeath=True,
+        genre="fantasy",
+        genre_prompt="A dark fantasy setting.",
+    )
+    lines = _creation_context_lines(intro)
+    assert any(line == "Tone: grimdark" for line in lines)
+    assert any("Sandbox mode" in line for line in lines)
+    assert any("Permadeath mode" in line for line in lines)
+    assert not any(line.startswith("Genre:") for line in lines)
 
 
 if __name__ == "__main__":  # pragma: no cover

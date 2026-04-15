@@ -1,0 +1,29 @@
+name = "Dusty Gulch"
+slug = "dusty-gulch"
+genre = "western"
+
+prompt_fragment = """
+Dusty Gulch is a one-saloon, one-bank, one-telegraph town at
+the mouth of a dry creek bed that only runs in spring. The
+railway crosses the gulch on a trestle bridge three miles
+south, but the line does not stop here — the railway
+company built the nearest station in a town thirty miles
+over because a rancher there paid for it. Dusty Gulch does
+not forgive that. Dusty Gulch does not forget it, either.
+
+Canonical fixtures for the opening scene:
+- Sheriff Eben Rourke, elected twice, no deputies, a man
+  whose jurisdiction extends as far as his horse can carry
+  him before sundown.
+- The Red Lantern, the saloon, run by a widow named Cora
+  Palino, who knows every debt anyone in town is carrying
+  and does not write any of it down.
+- The Widow Dacey place, a homestead two hours out, where
+  the widow has refused three separate offers for the
+  water rights and is about to refuse a fourth from a
+  larger man.
+
+Open the player arriving in Dusty Gulch on the hot part of
+the afternoon, with business of some kind — their own or
+somebody else's. The town is watching already.
+"""

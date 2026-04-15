@@ -1,0 +1,29 @@
+name = "The Wastes"
+slug = "the-wastes"
+genre = "fantasy"
+
+prompt_fragment = """
+The Wastes are what the maps call the dry plateau north of
+the old kingdom — a month's ride of salt flat, scrub, and
+stone where almost nothing grows and the few who live here
+do so by agreement with things older than the land's name.
+It was fertile once; the histories disagree about whether
+a god was killed here or merely left. What is certain is
+that rivers no longer cross it, that the wind here speaks
+in multiple voices, and that footprints sometimes fill
+themselves in behind a traveller walking alone.
+
+Canonical fixtures for the opening scene:
+- The Salt Riders, a confederation of caravan clans who
+  know the safe crossings and sell passage in units of
+  favour, not coin.
+- The Broken Well at Hiddel, the only reliable water
+  source for seven days' ride in any direction, and
+  therefore the only real town in the Wastes.
+- The voice on the wind, which is not always the same
+  voice, and which occasionally knows the traveller's
+  name before the traveller has offered it.
+
+Open the player at Hiddel, with a reason to continue into
+the Wastes that outweighs the ordinary reasons not to.
+"""

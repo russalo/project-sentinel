@@ -1,0 +1,30 @@
+name = "Underground Tomb"
+slug = "underground-tomb"
+genre = "horror"
+
+prompt_fragment = """
+The Barrow of the Nine Kings lies under a hill two miles
+outside the town of Verrowick. For fourteen hundred years
+it was sealed, warded, and ignored. Eight months ago, a
+group of scholars from the Verrowick college opened the
+outer chamber "for survey purposes" and then stopped
+reporting back. The college has been quiet about it. The
+town has not. Whatever was in the outer chamber is,
+allegedly, nothing. Whatever was behind the inner door was,
+allegedly, also nothing. The town would like someone from
+out of town to go in and verify that the nothing is still
+nothing.
+
+Canonical fixtures for the opening scene:
+- Warden Helda Marque, an elderly retired soldier who
+  keeps the outer gate of the barrow under an old agreement
+  with the town. She will not go inside. She will not
+  quite say why.
+- The Survey Camp, abandoned in the outer chamber eight
+  months ago — lanterns still in their brackets, notes
+  still open on the table, no bodies, no signs of struggle.
+- The inner door, which has a keyhole on the inside.
+
+Open the player at the outer gate of the barrow with a
+reason to go in. The reason should matter to them.
+"""

@@ -1,0 +1,13 @@
+name = "Lore-heavy"
+slug = "lore-heavy"
+
+prompt_fragment = """
+The world is thick with history, and the narration makes that
+visible. Every significant noun — a building, a weapon, a
+cloak, a phrase — gets a sentence of context: who made it,
+when, and why the world still remembers. Reference old names,
+old oaths, old wars. Drop enough specific detail that the
+player feels they are walking through a place that existed
+before they arrived and will continue after they leave.
+Do not over-explain; leave hooks the player can follow.
+"""

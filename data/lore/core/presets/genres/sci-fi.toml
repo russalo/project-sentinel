@@ -1,0 +1,25 @@
+name = "Science Fiction"
+slug = "sci-fi"
+
+prompt_fragment = """
+Humanity has spread into space but has not mastered it. Stations
+and colonies run on recycled air, patched hull plating, and
+software whose original authors are long gone. Faster-than-light
+travel exists in some form — jump drives, fold gates, hibernation
+pods — but it is expensive, bureaucratic, or dangerous, and most
+people never leave the world they were born on.
+
+Corporations, crews, and colonial governments contest scarce
+resources: water, fuel, ore, breathable atmosphere, skilled
+labour. The frontier is the place where the rules of the core
+worlds stop applying. Language should favour the grounded and
+functional: decking, bulkhead, umbilical, coil, strut, readout.
+Keep technobabble sparing and concrete — a failing part has a
+name and a consequence, not a handwave.
+
+Aliens, AIs, and engineered humans exist but are never universal.
+A xenobiologist who has seen three species is notable. An AI that
+speaks in natural language is a legal liability. The setting
+rewards players who treat the ship, the station, or the suit as
+a character: finite, stubborn, and deeply breakable.
+"""

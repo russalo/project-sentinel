@@ -1,0 +1,29 @@
+name = "The Breach"
+slug = "the-breach"
+genre = "fantasy"
+
+prompt_fragment = """
+The Breach is a wound in the world where a sealed thing came
+unsealed. Once, a coalition of seven orders laid a binding here
+to hold something shut. Three generations ago the binding
+failed and nobody is sure which part went first. What remains
+is a crater of vitrified stone the size of a small town, ringed
+by scorched forest, and the permanent smell of ozone and
+copper. Pilgrims, scavengers, and scholars come here. None
+stay long.
+
+Canonical fixtures for the opening scene:
+- Warden Meral Hult, an aging survivor of the last sealing
+  attempt, keeps a watchhouse at the crater's rim and logs
+  everyone who crosses the line.
+- The Hushmarket, a weekly trading circle for the relics
+  pulled out of the crater, run by a cartel of loremasters
+  who compete and cooperate by turns.
+- The Unfed Road, the single maintained track into the
+  Breach from the nearest town (Stonefall, three days'
+  walk west).
+
+Open the player near, but not inside, the crater. Give them
+a reason to go in or a reason to turn back — or, more
+interestingly, both at once.
+"""

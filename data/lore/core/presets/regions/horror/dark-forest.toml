@@ -1,0 +1,32 @@
+name = "Dark Forest"
+slug = "dark-forest"
+genre = "horror"
+
+prompt_fragment = """
+The Uldwood is old, extensive, and goes on being the Uldwood
+regardless of which country's map it appears on. A single
+track road crosses it east-to-west, kept passable by a
+coach service that runs twice a week in summer and not at
+all in winter. The villages at the edges of the wood are
+stubborn, inward-looking, and very clear with their
+children about which parts of the forest you do not enter
+and why. The villages are also careful not to say the
+"why" out loud.
+
+Canonical fixtures for the opening scene:
+- The coaching inn at Far Larrow, the last inhabited
+  building on the eastern road before the wood thickens.
+  Run by a family named Threlmar whose youngest daughter
+  stopped speaking three weeks ago.
+- The Quiet Mile, a stretch of road near the wood's
+  middle where no animal ever makes noise, no bird sings,
+  and no wind moves — and where, the Threlmars will
+  confirm if pressed, the coaches sometimes pass through
+  on time and sometimes do not.
+- The man in grey, seen at the wood's edge by different
+  travellers on different nights, always at a distance,
+  always standing very still.
+
+Open the player at Far Larrow at dusk. The next coach is
+tomorrow morning. Tonight is the player's problem.
+"""

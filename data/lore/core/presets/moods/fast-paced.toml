@@ -1,0 +1,13 @@
+name = "Fast-paced"
+slug = "fast-paced"
+
+prompt_fragment = """
+Keep scenes moving. Short paragraphs, short sentences, few
+adjectives. Cut transitions where you can — open inside the
+action, end before the aftermath is finished. Prefer verbs
+over description. Do not linger over setting details unless
+they matter to what happens next. Give the player the sense
+that the world is leaning forward, that something is always
+about to happen, and that pausing is itself a decision with
+a cost.
+"""

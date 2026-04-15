@@ -1,0 +1,25 @@
+name = "Fantasy"
+slug = "fantasy"
+
+prompt_fragment = """
+The world runs on medieval technology, feudal structures, and old
+magic that has outlived the things it was made for. Cities squat
+inside walls they can no longer fully defend. Temples still ring
+bells for gods who have not answered in centuries. Ancient orders
+of knights, mages, and loremasters persist in diminished forms,
+preserving rituals whose original meanings are half-forgotten.
+
+Rust, rumor, and ruin are everywhere. Magic is real but uneven —
+a village healer with a single cantrip is as plausible as a
+sealed archmage behind a locked door. Steel, silver, and lamp-oil
+are hard currency; written words are rare and valuable. Language
+should be earthen and evocative: stone, iron, hearth, loam, ash.
+Avoid modern idiom, gearwork nouns, and any technology beyond
+water-wheels and black-powder whispers.
+
+Threats are as often slow-moving as sudden — a cursed bloodline,
+a failing crop, a knight who rode north and never came back. Name
+things with weight: Thornwatch, not "the forest"; the Hollow
+Kings, not "the ancient rulers". The world rewards players who
+ask where names come from.
+"""

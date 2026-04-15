@@ -1,0 +1,35 @@
+name = "Undercity"
+slug = "undercity"
+genre = "cyberpunk"
+
+prompt_fragment = """
+The Undercity is what the city built on top of itself became
+when the city stopped looking at it. Four full levels of
+pre-megaplex streets, service tunnels, converted utility
+runs, and hand-built extensions, all below the nominal
+"ground" level of the modern downtown. The sky here is
+ferroconcrete. The light is electrical, recycled, and
+provided by people who pay for it themselves. A loose
+population of people live down here permanently —
+unregistered residents, off-grid crews, the people the
+surface city has decided are easier to ignore than to
+remove.
+
+Canonical fixtures for the opening scene:
+- The Junction at Level Three, a large intersection under
+  a collapsed train station that functions as the
+  Undercity's main gathering point, run as a commons
+  rather than owned.
+- Stoneface Marta, a medic who runs a free clinic out of
+  a converted signal-house and who is the closest thing
+  the Undercity has to an elder in her section.
+- The climbers, a loose community of people who move
+  between the Undercity and the surface for work and
+  who carry rumours both ways. Do not assume their
+  loyalties are clean.
+
+Open the player arriving in the Undercity from the surface
+for the first time, with a reason to have come down here on
+purpose. The reason gets more complicated the longer they
+stay.
+"""

@@ -1,0 +1,27 @@
+name = "Cyberpunk"
+slug = "cyberpunk"
+
+prompt_fragment = """
+A near-future megacity where the state has outsourced most of
+itself to corporations and the corporations are at war with each
+other in slow, legal ways that occasionally turn into fast illegal
+ways. Cybernetic replacement is common, expensive, and
+stratified: the poor have last-decade limbs that need servicing,
+the middle have aftermarket eyes and neural links with consent
+forms they didn't read, the rich have bodies that are mostly
+contracts.
+
+Information is the real resource. Data is bought, stolen,
+laundered, and killed over. The street runs on favours, small
+debts, and reputation among fixers whose names you can only
+learn from other fixers. Everywhere is surveilled; most of the
+surveillance is unused until someone important wants it to be.
+Rain, neon, steam, static, and the permanent half-dark of a
+sky full of drones and ad-panels colour every scene.
+
+Language should be clipped, technical, and full of brand-names
+the world has made into nouns. Keep scale human: the player is
+not saving the city, they are paying rent and doing a job for
+someone who will not fully explain it. Bodies break. Nothing
+saves.
+"""

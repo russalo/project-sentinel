@@ -38,6 +38,7 @@ from engine.agents import fact_extractor
 
 from ..config import Settings
 from ..engine_bridge import build_engine_config
+from ..presets import get_prompt_fragment
 from ..schemas import NewSessionRequest, NewSessionResponse, TurnResponse
 from ..state import sessions as session_state
 
@@ -63,6 +64,23 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
     session_id = str(uuid.uuid4())
     started_at = datetime.now(timezone.utc).isoformat()
 
+    # Layer 2: resolve rich preset content for the four preset-backed
+    # fields. Each call silently returns None when no preset file is
+    # found, which lets the engine fall through to the Layer 1 bare-
+    # label handling without the frontend needing to know which
+    # presets exist on disk. Regions are genre-scoped (the same slug
+    # can legally exist under different genres).
+    preset_root = settings.data_dir / "lore" / "core" / "presets"
+    genre_prompt = get_prompt_fragment(preset_root, "genres", body.genre)
+    persona_prompt = get_prompt_fragment(preset_root, "personas", body.persona_id)
+    mood_prompt = get_prompt_fragment(preset_root, "moods", body.mood)
+    region_prompt = get_prompt_fragment(
+        preset_root,
+        "regions",
+        body.starting_region,
+        genre=body.genre,
+    )
+
     intro_input = engine.IntroInput(
         world_name=body.world_name,
         player_name=body.player_character_name,
@@ -77,6 +95,10 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
         mood=body.mood,
         sandbox=body.sandbox,
         permadeath=body.permadeath,
+        genre_prompt=genre_prompt,
+        persona_prompt=persona_prompt,
+        mood_prompt=mood_prompt,
+        region_prompt=region_prompt,
     )
 
     # 1. Run the intro through the engine.

@@ -1,0 +1,35 @@
+name = "Neural Net"
+slug = "neural-net"
+genre = "cyberpunk"
+
+prompt_fragment = """
+The Net is not one place. It is the consensus-hallucinated
+space that a specific subculture of runners, operators, and
+data-handlers inhabit when jacked in through a neural link.
+Most of it is boring — financial floors, corporate archives,
+municipal routing. The interesting parts are the custom
+spaces that runners and groups of runners have built in
+deliberate defiance of the commercial consensus: the Markets,
+the old Bulletin Halls, the half-dozen pirate libraries that
+keep reinventing themselves, and the deep drift — the parts
+of the Net that nobody in authority will fully map because
+what lives there has not been fully identified.
+
+Canonical fixtures for the opening scene:
+- The Chapel, a runner-built gathering space shaped like
+  a cathedral, where a few dozen regulars meet and debate
+  and trade favours. Its hosts are known only by handles.
+- Bellringer, one of the Chapel's longest-serving hosts,
+  whose real-world identity nobody knows and who has
+  been there longer than most of the regulars have been
+  alive.
+- The deep drift vector — a known path from the Chapel's
+  lowest basement into the less-mapped parts of the Net,
+  sealed behind a handshake protocol that only a few
+  people still know.
+
+Open the player in the Chapel's main hall, just arrived,
+with a question they need to ask one of the hosts. The
+question is the kind the Chapel is good at answering. It is
+also the kind that gets remembered.
+"""

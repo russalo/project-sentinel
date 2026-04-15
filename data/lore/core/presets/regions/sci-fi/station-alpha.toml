@@ -1,0 +1,30 @@
+name = "Station Alpha"
+slug = "station-alpha"
+genre = "sci-fi"
+
+prompt_fragment = """
+Station Alpha is a forty-year-old orbital platform in
+decaying synchronous orbit over a world that was evacuated
+twenty-two years ago and is still there. The station was
+never built to outlive the colony below. It has outlived
+six of its original department heads, three commercial
+operators, and two plans for demolition. It is now operated
+under a shared arrangement between a skeleton corporate
+crew, a salvage consortium, and whoever happens to be
+aboard when the maintenance rotation rolls.
+
+Canonical fixtures for the opening scene:
+- Duty Officer Rehn, whose contract expired four years ago
+  and who is still the only person on the station who can
+  authorise airlock overrides.
+- The long corridor on Deck 6, blocked by a collapsed
+  bulkhead nobody has the budget to clear — and behind
+  which something still draws power.
+- The Pilots' Mess, the only bar on the station, where
+  three pinned departure rosters remain unchanged because
+  no one in them came back.
+
+Open the player on a rotation day, when the station's small
+population turns over by a quarter. Someone has just
+arrived with a job and not enough context.
+"""

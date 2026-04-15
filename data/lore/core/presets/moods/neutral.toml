@@ -1,0 +1,10 @@
+name = "Neutral"
+slug = "neutral"
+
+prompt_fragment = """
+Keep the emotional register even. Neither hopeful nor grim —
+the world simply is what it is. Give threats and comforts
+similar weight in the narration. Do not telegraph whether a
+scene is safe or dangerous until the fiction earns it. The
+player should have to read the room themselves.
+"""
