@@ -13,7 +13,7 @@
  * helper that's already covered in delta.test.js.
  */
 
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { DeltaMessage } from './DeltaMessage'
 
@@ -95,9 +95,12 @@ describe('DeltaMessage — inline mode (default)', () => {
 
   it('renders nothing visible when the delta is empty', () => {
     const { container } = render(<DeltaMessage delta={emptyDelta()} />)
-    // Container has the wrapper div, but no entity or world rows
-    // because each collection is empty.
-    expect(container.querySelectorAll('[class*="text-ether"]')).toHaveLength(0)
+    // The wrapper div is still in the DOM, but with no inner rows
+    // (no world fields, no entity lines) it has no text content.
+    // Asserting against rendered text instead of a CSS class keeps
+    // the test honest from the user's perspective and decouples it
+    // from styling changes.
+    expect(container.textContent).toBe('')
   })
 
   it('does NOT render a turn header in inline mode', () => {
@@ -115,20 +118,20 @@ describe('DeltaMessage — log mode', () => {
     const delta = emptyDelta({
       world: [{ field: 'weather', from: 'clear', to: 'storm' }],
     })
-    // Use a fixed time so the test is deterministic across timezones.
-    // toLocaleTimeString with hour: '2-digit' + minute: '2-digit'
-    // produces something like "14:35" — match on the prefix only
-    // because the exact format depends on the test runner's locale.
+    // Mock toLocaleTimeString on this specific Date instance so the
+    // test asserts the exact rendered header regardless of the test
+    // runner's locale. Without the mock the format depends on
+    // Intl + locale (12-hour with AM/PM in en-US, 24-hour in en-GB,
+    // different number formatting elsewhere).
     const ts = new Date('2026-04-15T14:35:00Z')
+    vi.spyOn(ts, 'toLocaleTimeString').mockReturnValue('14:35')
+
     render(
       <DeltaMessage delta={delta} mode="log" turnIdx={7} timestamp={ts} />,
     )
 
-    // The header contains "Turn 7 · <time>". The time portion is
-    // locale-dependent so we check for the parts we know about.
-    const header = screen.getByText(/Turn 7/)
-    expect(header).toBeInTheDocument()
-    expect(header.textContent).toContain('·')
+    // Exact match — no fuzzy "contains separator" check.
+    expect(screen.getByText('Turn 7 · 14:35')).toBeInTheDocument()
   })
 
   it('renders the body content the same way as inline mode', () => {

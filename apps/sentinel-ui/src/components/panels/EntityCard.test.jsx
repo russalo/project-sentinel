@@ -17,6 +17,19 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { EntityCard } from './EntityCard'
 
+// Helper: assert that a value is rendered inside the row labeled
+// `label`, not just somewhere on the screen. The Row component
+// renders the label and value as sibling spans inside a flex div,
+// so `getByText(label).parentElement` is that row container.
+//
+// This catches the bug class where a value renders next to the
+// wrong label — `getByText('fighter')` alone would pass even if
+// "fighter" landed in the Description row.
+function expectRowValue(label, expectedValue) {
+  const labelEl = screen.getByText(label)
+  expect(labelEl.parentElement).toHaveTextContent(expectedValue)
+}
+
 describe('EntityCard — header', () => {
   it('renders the entity name and type label', () => {
     render(
@@ -87,16 +100,19 @@ describe('EntityCard — character body', () => {
       />,
     )
 
-    expect(screen.getByText('fighter')).toBeInTheDocument()
-    expect(screen.getByText('paladin')).toBeInTheDocument()
-    expect(screen.getByText('human')).toBeInTheDocument()
+    // Each assertion verifies the value lands in its labeled row,
+    // not just somewhere on the screen — see expectRowValue helper.
+    expectRowValue('Role', 'fighter')
+    expectRowValue('Class', 'paladin')
+    expectRowValue('Race', 'human')
+    expectRowValue('Level', '5')
     // Health renders as "current / max"
-    expect(screen.getByText('80 / 100')).toBeInTheDocument()
-    expect(screen.getByText('alive')).toBeInTheDocument()
-    expect(screen.getByText('Trog Tavern')).toBeInTheDocument()
+    expectRowValue('Health', '80 / 100')
+    expectRowValue('Status', 'alive')
+    expectRowValue('Location', 'Trog Tavern')
     // Array fields are joined with ", "
-    expect(screen.getByText('brave, reckless')).toBeInTheDocument()
-    expect(screen.getByText('A weathered warrior.')).toBeInTheDocument()
+    expectRowValue('Traits', 'brave, reckless')
+    expectRowValue('Description', 'A weathered warrior.')
   })
 
   it('hides empty rows', () => {
@@ -129,9 +145,9 @@ describe('EntityCard — character body', () => {
       />,
     )
 
-    expect(screen.getByText('paladin')).toBeInTheDocument()
-    expect(screen.getByText('80 / 100')).toBeInTheDocument()
-    expect(screen.getByText('Trog Tavern')).toBeInTheDocument()
+    expectRowValue('Class', 'paladin')
+    expectRowValue('Health', '80 / 100')
+    expectRowValue('Location', 'Trog Tavern')
   })
 })
 
@@ -140,13 +156,18 @@ describe('EntityCard — item body', () => {
     // Two renders, one for each casing — both should produce the
     // same visible "Owned by" row. Mirrors the diff-layer
     // normalization landed in PR #36.
+    //
+    // Asserting via the Owned-by row (not just `getByText('Kael')`)
+    // catches the bug class where the right value lands in the
+    // wrong row — e.g. if a future refactor accidentally bound the
+    // owner string to the Description field.
     const { rerender } = render(
       <EntityCard
         entity={{ name: 'Iron Sword', type: 'weapon', ownedBy: 'Kael' }}
         type="item"
       />,
     )
-    expect(screen.getByText('Kael')).toBeInTheDocument()
+    expectRowValue('Owned by', 'Kael')
 
     rerender(
       <EntityCard
@@ -154,7 +175,7 @@ describe('EntityCard — item body', () => {
         type="item"
       />,
     )
-    expect(screen.getByText('Kael')).toBeInTheDocument()
+    expectRowValue('Owned by', 'Kael')
   })
 
   it('renders item-specific fields (rarity, magical, type)', () => {
@@ -171,9 +192,9 @@ describe('EntityCard — item body', () => {
       />,
     )
 
-    expect(screen.getByText('weapon')).toBeInTheDocument()
-    expect(screen.getByText('rare')).toBeInTheDocument()
-    expect(screen.getByText('Yes')).toBeInTheDocument() // magical: true → "Yes"
-    expect(screen.getByText('Hollowed Temple')).toBeInTheDocument()
+    expectRowValue('Type', 'weapon')
+    expectRowValue('Rarity', 'rare')
+    expectRowValue('Magical', 'Yes') // magical: true → "Yes"
+    expectRowValue('Location', 'Hollowed Temple')
   })
 })
