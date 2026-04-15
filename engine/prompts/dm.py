@@ -1,8 +1,10 @@
 """DM agent system prompt.
 
-Ported verbatim from backend/api/dm_ai.py to keep behavior identical
-during the migration. Any prompt changes should happen here once the
-engine is in the call path — not in dm_ai.py, which will be retired.
+Originally ported verbatim from the retired ``backend/api/dm_ai.py``
+during the ADR 0001 Phase 1 migration, so prompt behavior stayed
+identical across the boundary. ``dm_ai.py`` no longer exists; this
+file is now the single source of truth for the DM system prompt and
+any future prompt changes happen here.
 """
 
 DM_SYSTEM_PROMPT = """You are the Dungeon Master (DM) of a persistent, living RPG world. Your role is to:

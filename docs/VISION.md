@@ -158,11 +158,13 @@ relevant lore from `data/lore/core/codex/` and `data/lore/community/`
 and inject the top-K results into the DM's context window.
 
 The open question isn't whether this should happen — it obviously
-should — it's *when*. Until the DM agent is migrated out of
-`backend/api/dm_ai.py` into `engine/agents/dm.py`, there's no clean
-place for the Lorekeeper to hook in. Until there's enough lore to
-query, the RAG doesn't earn its complexity. Both preconditions need
-to happen before this becomes actionable.
+should — it's *when*. The DM agent is already running out of
+`engine/agents/dm.py` (PR #12 landed that migration), so the
+"hook-in point" precondition is already satisfied. The real remaining
+precondition is "enough lore to query to make the RAG earn its
+complexity" — today the `data/lore/core/codex/` tree is sparse, so
+even a perfect Lorekeeper wouldn't return much useful context. When
+that changes, Lorekeeper becomes actionable.
 
 ### Community packs and the gateway
 
