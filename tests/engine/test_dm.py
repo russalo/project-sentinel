@@ -474,6 +474,56 @@ def test_build_intro_messages_only_lists_creation_fields_that_are_set():
     assert "Permadeath mode" not in user
 
 
+def test_build_intro_messages_renders_persona_name_and_description_when_set():
+    # Layer 1.5: when the caller provides persona_name and
+    # persona_description, the prompt line is "Name — Description"
+    # instead of the opaque id. This is what gives the LLM real
+    # voice/tone anchoring.
+    intro = IntroInput(
+        world_name="The Shattered Expanse",
+        player_name="Kael",
+        player_class="Wanderer",
+        persona_id="oracle",
+        persona_name="Oracle",
+        persona_description=(
+            "Prophetic and detached. Speaks in fragments and portents; "
+            "favors mystery over explanation."
+        ),
+    )
+    messages = _build_intro_messages(intro)
+    user = messages[1]["content"]
+
+    assert "CREATION CONTEXT" in user
+    # The persona line must include both the name and the description,
+    # separated by the em-dash the formatter uses.
+    assert (
+        "DM persona: Oracle — Prophetic and detached. "
+        "Speaks in fragments and portents; favors mystery over explanation."
+    ) in user
+    # The opaque id must NOT leak through on its own — the descriptive
+    # form supersedes it completely so the prompt doesn't carry both.
+    assert "DM persona: oracle" not in user
+
+
+def test_build_intro_messages_falls_back_to_persona_id_when_name_missing():
+    # Pre-Layer-1.5 callers (and any test that only sets persona_id)
+    # get the old id-only format. This is the backward-compat path
+    # that keeps existing _creation_context tests honest.
+    intro = IntroInput(
+        world_name="The Shattered Expanse",
+        player_name="Kael",
+        player_class="Wanderer",
+        persona_id="oracle",
+    )
+    messages = _build_intro_messages(intro)
+    user = messages[1]["content"]
+
+    assert "CREATION CONTEXT" in user
+    assert "DM persona: oracle" in user
+    # No descriptive form possible — the test doesn't supply one.
+    assert " — " not in user.split("DM persona:")[1].split("\n")[0]
+
+
 def test_generate_intro_returns_dm_turn_result_with_stripped_narrative():
     client = _FakeOpenAI()
     client.chat.completions.set_blocking_response(

@@ -350,6 +350,13 @@ def _creation_context_lines(intro: IntroInput) -> list[str]:
     terse for callers that pre-date Layer 1. Booleans are only
     emitted when True — the default (False) means "player didn't
     opt into this mode."
+
+    Persona formatting (Layer 1.5): when ``persona_name`` is present,
+    the line reads ``"DM persona: <name> — <description>"`` (or just
+    ``"DM persona: <name>"`` when no description is supplied). When
+    only ``persona_id`` is present, falls back to ``"DM persona: <id>"``
+    so pre-Layer-1.5 callers and tests continue to work. Delegated
+    to the ``_format_persona_line`` helper.
     """
     lines: list[str] = []
     if intro.genre:
@@ -358,8 +365,9 @@ def _creation_context_lines(intro: IntroInput) -> list[str]:
         lines.append(f"Tone: {intro.tone}")
     if intro.starting_region:
         lines.append(f"Starting region: {intro.starting_region}")
-    if intro.persona_id:
-        lines.append(f"DM persona: {intro.persona_id}")
+    persona_line = _format_persona_line(intro)
+    if persona_line:
+        lines.append(persona_line)
     if intro.mood:
         lines.append(f"DM mood: {intro.mood}")
     if intro.sandbox:
@@ -369,3 +377,37 @@ def _creation_context_lines(intro: IntroInput) -> list[str]:
             "Permadeath mode: the player has opted into permanent character death — consequences are real"
         )
     return lines
+
+
+def _format_persona_line(intro: IntroInput) -> str | None:
+    """Compose the DM persona line from whatever persona fields are set.
+
+    Cases (in priority order — `persona_name` wins over `persona_id`
+    so a Layer-1.5 caller never gets stuck on the bare-id fallback):
+
+    1. ``persona_name`` and ``persona_description`` both set →
+       ``"DM persona: <name> — <description>"``. The full description
+       is passed through unchanged — frontend descriptions are
+       single-sentence today (see ``MOCK_PERSONAS`` in
+       ``WorldCreation.jsx``) so there is no truncation.
+    2. ``persona_name`` set, ``persona_description`` missing →
+       ``"DM persona: <name>"``. Less ideal than case 1 but still
+       better than the opaque id, since at least the LLM gets a
+       human-readable label.
+    3. Only ``persona_id`` set → ``"DM persona: <id>"``. The
+       pre-Layer-1.5 fallback. Pre-existing tests and any caller
+       that hasn't been updated to send the descriptive fields land
+       here.
+    4. Neither ``persona_name`` nor ``persona_id`` set → return
+       ``None`` so the caller skips the persona line entirely.
+       (Note: this fires even if ``persona_description`` happens to
+       be set on its own — a description without a name has nothing
+       to anchor to, so it's treated the same as nothing being set.)
+    """
+    if intro.persona_name:
+        if intro.persona_description:
+            return f"DM persona: {intro.persona_name} — {intro.persona_description}"
+        return f"DM persona: {intro.persona_name}"
+    if intro.persona_id:
+        return f"DM persona: {intro.persona_id}"
+    return None

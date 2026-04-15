@@ -53,6 +53,17 @@ class NewSessionRequest(_CamelModel):
     tone: str | None = None
     starting_region: str | None = None
     persona_id: str | None = None
+    # Layer 1.5: persona_name + persona_description let the frontend
+    # resolve its mock persona catalog to descriptive text the DM
+    # intro prompt can actually use. Without these, the LLM sees only
+    # the opaque persona_id string and doesn't know what "oracle"
+    # means. When the real preset system lands (BACKLOG: DM Personas
+    # & Content Framework), the backend will resolve from
+    # data/lore/core/presets/personas/ directly and these two fields
+    # drop out of the request contract. Optional so legacy/test
+    # payloads still validate.
+    persona_name: str | None = None
+    persona_description: str | None = None
     mood: str | None = None
     sandbox: bool = False
     permadeath: bool = False

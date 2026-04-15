@@ -88,6 +88,15 @@ class IntroInput:
     tone: str | None = None
     starting_region: str | None = None
     persona_id: str | None = None
+    # Layer 1.5 (persona resolution): the backend receives persona_name
+    # and persona_description alongside persona_id and threads them
+    # through to the intro prompt. When both are present,
+    # _creation_context_lines formats the persona line as
+    # ``"DM persona: <name> — <description>"`` instead of the opaque id.
+    # Optional so callers that only have an id still work — they get
+    # the ``"DM persona: <id>"`` fallback.
+    persona_name: str | None = None
+    persona_description: str | None = None
     mood: str | None = None
     sandbox: bool = False
     permadeath: bool = False

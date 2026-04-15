@@ -12,11 +12,34 @@ import { MoodSelector } from '../components/world-creation/MoodSelector';
 import { WorldModifiers } from '../components/world-creation/WorldModifiers';
 import { LiveSeedPreview } from '../components/world-creation/LiveSeedPreview';
 
-// Mock personas
+// Mock personas. The `description` field is consumed by the backend
+// (Layer 1.5 persona resolution) to give the DM a meaningful voice/tone
+// anchor instead of just an opaque ID. When the full preset system
+// lands (see BACKLOG "DM Personas & Content Framework"), these will
+// move to data/lore/core/presets/personas/<id>.md and the frontend
+// will fetch them from the backend instead of hardcoding.
 const MOCK_PERSONAS = [
-  { id: 'oracle', name: 'Oracle', compatibleGenres: ['fantasy', 'sci-fi', 'horror'], moods: ['neutral', 'ominous', 'lore-heavy'] },
-  { id: 'chronicler', name: 'The Chronicler', compatibleGenres: ['fantasy', 'historical'], moods: ['neutral', 'gritty', 'lore-heavy'] },
-  { id: 'cowboy', name: 'Cowboy Bob', compatibleGenres: ['western'], moods: ['gritty', 'humorous', 'fast-paced'] },
+  {
+    id: 'oracle',
+    name: 'Oracle',
+    description: 'Prophetic and detached. Speaks in fragments and portents; favors mystery over explanation. Unsettles rather than comforts.',
+    compatibleGenres: ['fantasy', 'sci-fi', 'horror'],
+    moods: ['neutral', 'ominous', 'lore-heavy'],
+  },
+  {
+    id: 'chronicler',
+    name: 'The Chronicler',
+    description: "A precise historian's voice. Reverent of detail, grounded in lore, favors long causal chains over raw drama. Treats the world as a real place with documented weight.",
+    compatibleGenres: ['fantasy', 'historical'],
+    moods: ['neutral', 'gritty', 'lore-heavy'],
+  },
+  {
+    id: 'cowboy',
+    name: 'Cowboy Bob',
+    description: 'Drawling, laconic, dry-humored. Grounds scenes in weather, terrain, and hard-edged pragmatism. Lets silence do work.',
+    compatibleGenres: ['western'],
+    moods: ['gritty', 'humorous', 'fast-paced'],
+  },
 ];
 
 const GENRES = ['fantasy', 'sci-fi', 'western', 'horror', 'cyberpunk'];
@@ -86,6 +109,15 @@ export default function WorldCreation() {
     if (!canBegin || isStarting) return;
     setIsStarting(true);
     setStartError(null);
+
+    // Resolve the selected persona so the backend can inject real
+    // voice/tone text into the DM intro prompt instead of the opaque
+    // `personaId` string (the Layer 1.5 fix for Gemini's PR #20 flag).
+    // When MOCK_PERSONAS becomes a real backend preset system, this
+    // lookup moves server-side and `personaName` / `personaDescription`
+    // drop out of the request body.
+    const selectedPersona = MOCK_PERSONAS.find(p => p.id === creation.personaId);
+
     try {
       const data = await apiClient.post('/session/new', {
         worldName: creation.worldName,
@@ -95,6 +127,8 @@ export default function WorldCreation() {
         tone: creation.tone,
         startingRegion: creation.startingRegion,
         personaId: creation.personaId,
+        personaName: selectedPersona?.name,
+        personaDescription: selectedPersona?.description,
         mood: creation.mood,
         sandbox: creation.sandbox,
         permadeath: creation.permadeath,
