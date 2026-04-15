@@ -22,14 +22,14 @@ const COLLECTIONS = {
 
 export function PanelRouter() {
   const { activeTab, setActiveTab, selectedEntity, clearSelectedEntity } = useUIStore();
-  const worldStore = useWorldStore();
 
-  // Resolve live entity from worldStore so the card stays current after world_update
-  const liveEntity = selectedEntity
-    ? (COLLECTIONS[selectedEntity.type]?.(worldStore) ?? []).find(e => e.name === selectedEntity.name)
-    : null;
+  // Selector resolves only the specific entity needed — avoids full worldStore subscription
+  const liveEntity = useWorldStore((s) => {
+    if (!selectedEntity) return null;
+    const collection = COLLECTIONS[selectedEntity.type]?.(s) ?? [];
+    return collection.find(e => e.name === selectedEntity.name) ?? null;
+  });
 
-  // Entity detail view overrides normal tab content
   if (selectedEntity) {
     return (
       <div className="flex flex-col h-full">

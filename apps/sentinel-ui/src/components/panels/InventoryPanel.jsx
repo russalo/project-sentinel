@@ -10,14 +10,34 @@ const RARITY_COLOUR = {
   artifact:  'text-purple-400',
 };
 
+function ItemRow({ item, onSelect }) {
+  return (
+    <li
+      className={`hover:text-amber cursor-pointer transition-colors text-xs flex gap-1.5 items-baseline ${RARITY_COLOUR[item.rarity] ?? 'text-ink'}`}
+      onClick={() => onSelect(item, 'item')}
+    >
+      <span className="text-ether">◆</span>
+      <span>{item.name}</span>
+      {item.magical && <span className="text-ether ml-1">✦</span>}
+      <span className="text-ether ml-auto shrink-0">{item.type}</span>
+    </li>
+  );
+}
+
 export function InventoryPanel() {
   const items = useWorldStore((s) => s.items);
   const { setSelectedEntity } = useUIStore();
   const playerName = usePlayerStore((s) => s.characterName);
 
-  // Player-owned items first, then world items (unowned / location-placed)
-  const carried = items.filter(i => i.ownedBy && i.ownedBy === playerName);
-  const world   = items.filter(i => !i.ownedBy || i.ownedBy !== playerName);
+  // Normalize mixed key styles from backend payloads
+  const carried = items.filter(i => {
+    const owner = i.ownedBy ?? i.owned_by;
+    return owner && owner === playerName;
+  });
+  const world = items.filter(i => {
+    const owner = i.ownedBy ?? i.owned_by;
+    return !owner || owner !== playerName;
+  });
 
   if (items.length === 0) {
     return (
@@ -29,18 +49,6 @@ export function InventoryPanel() {
     );
   }
 
-  const ItemRow = ({ item }) => (
-    <li
-      className={`hover:text-amber cursor-pointer transition-colors text-xs flex gap-1.5 items-baseline ${RARITY_COLOUR[item.rarity] ?? 'text-ink'}`}
-      onClick={() => setSelectedEntity(item, 'item')}
-    >
-      <span className="text-ether">◆</span>
-      <span>{item.name}</span>
-      {item.magical && <span className="text-ether ml-1">✦</span>}
-      <span className="text-ether ml-auto shrink-0">{item.type}</span>
-    </li>
-  );
-
   return (
     <div className="p-4 text-sm">
       <div className="text-amber font-cinzel text-xs mb-3">INVENTORY</div>
@@ -49,7 +57,9 @@ export function InventoryPanel() {
         <div className="mb-4">
           <div className="text-ether text-xs mb-1.5 uppercase tracking-wide">Carried</div>
           <ul className="space-y-1.5">
-            {carried.map((item, i) => <ItemRow key={item.name ?? i} item={item} />)}
+            {carried.map((item, i) => (
+              <ItemRow key={item.unique_id ?? item.name ?? i} item={item} onSelect={setSelectedEntity} />
+            ))}
           </ul>
         </div>
       )}
@@ -58,7 +68,9 @@ export function InventoryPanel() {
         <div className="mb-4">
           <div className="text-ether text-xs mb-1.5 uppercase tracking-wide">In the World</div>
           <ul className="space-y-1.5">
-            {world.map((item, i) => <ItemRow key={item.name ?? i} item={item} />)}
+            {world.map((item, i) => (
+              <ItemRow key={item.unique_id ?? item.name ?? i} item={item} onSelect={setSelectedEntity} />
+            ))}
           </ul>
         </div>
       )}

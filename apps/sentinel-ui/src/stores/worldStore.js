@@ -113,10 +113,14 @@ export const useWorldStore = create((set) => ({
     if (worldUpdate.items?.length) {
       let its = [...state.items];
       for (const item of worldUpdate.items) {
+        // Match on unique_id when present, fall back to name for payloads without it
+        const match = (i) => item.unique_id
+          ? i.unique_id === item.unique_id
+          : i.name === item.name;
         if (item.action === 'remove') {
-          its = its.filter(i => i.name !== item.name);
+          its = its.filter(i => !match(i));
         } else {
-          const idx = its.findIndex(i => i.name === item.name);
+          const idx = its.findIndex(match);
           if (idx >= 0) {
             its = its.map((i, n) => n === idx ? { ...i, ...item } : i);
           } else {
