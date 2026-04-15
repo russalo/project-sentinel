@@ -3,15 +3,13 @@ import { newId } from '../utils/id';
 
 // Strip the DM's <world_update>...</world_update> block from a raw
 // streamed response. The block is a machine-readable hint meant for
-// the Fact-Extractor on the backend, not for the player. Currently
-// unused — during the 2026-04-14 smoke test the user asked to keep
-// the block visible in the narrative as a debugging aid, since it
-// makes it easy to see exactly what the DM is emitting without
-// having to dig through backend logs. To re-enable clean narrative
-// display later, change the `content` assignment inside
-// commitStreamMessage from `state.streamBuffer` to
-// `stripWorldUpdate(state.streamBuffer)` — it's a one-line flip.
-// eslint-disable-next-line no-unused-vars
+// the Fact-Extractor on the backend, not for the player. Was
+// temporarily disabled during the 2026-04-14 smoke test as a
+// debugging aid (so the user could see exactly what the DM was
+// emitting without digging through backend logs); re-enabled
+// 2026-04-15 once the dispatch path was confirmed working
+// end-to-end and the visible block became distracting noise during
+// real walkthroughs.
 function stripWorldUpdate(text) {
   return text.replace(/<world_update>[\s\S]*?<\/world_update>/g, '').trim();
 }
@@ -54,8 +52,11 @@ export const useChatStore = create((set) => ({
 
   // Commit current stream to messages
   commitStreamMessage: (dmName = 'DM') => set((state) => {
-    const content = state.streamBuffer;
-    if (content.trim()) {
+    // Strip the <world_update> block before showing the narrative
+    // to the player. The block is internal state for the Fact-
+    // Extractor, not story beat content.
+    const content = stripWorldUpdate(state.streamBuffer);
+    if (content) {
       return {
         messages: [...state.messages, {
           id: newId(),

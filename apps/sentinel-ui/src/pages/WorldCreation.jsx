@@ -4,6 +4,8 @@ import { apiClient } from '../api/client';
 import { useWorldCreationStore } from '../stores/worldCreationStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { useChatStore } from '../stores/chatStore';
+import { useWorldStore } from '../stores/worldStore';
+import { usePersonaStore } from '../stores/personaStore';
 import { GenreSelector } from '../components/world-creation/GenreSelector';
 import { ToneSelector } from '../components/world-creation/ToneSelector';
 import { RegionSelector } from '../components/world-creation/RegionSelector';
@@ -137,6 +139,23 @@ export default function WorldCreation() {
       setSessionId(data.sessionId);
       setCharacter(creation.characterName || 'Traveler', creation.characterClass || 'Adventurer');
 
+      // Sync the persona display store from the player's selection.
+      // The backend gets persona_id + mood from the POST body and
+      // resolves the preset content server-side; the frontend
+      // personaStore is a separate display-only source of truth
+      // that powers TopBar / PersonaSheet, and it would otherwise
+      // stay on its hardcoded 'Oracle' / 'neutral' defaults
+      // regardless of what the player picked.
+      if (creation.personaId) {
+        usePersonaStore.getState().setPersona(
+          creation.personaId,
+          selectedPersona?.name ?? creation.personaId,
+        );
+      }
+      if (creation.mood) {
+        usePersonaStore.getState().setMood(creation.mood);
+      }
+
       // Seed the chat with the opening DM narrative
       clearMessages();
       if (data.turns?.length > 0) {
@@ -147,6 +166,18 @@ export default function WorldCreation() {
           author: 'DM',
           timestamp: new Date(),
         });
+
+        // Apply the intro turn's world updates to the frontend store
+        // so the left-panel cards (Characters / Locations / Factions)
+        // and the right-panel tabs (Codex / Inventory) populate from
+        // the entities the DM emitted in turn 0. Without this, every
+        // session opens with the empty-state messages even though
+        // the entities exist on disk under data/state/core/ and in
+        // the session response. Mirrors the per-turn applyUpdate
+        // call in useDMStream.js for the streaming path.
+        if (opening.worldUpdates) {
+          useWorldStore.getState().applyUpdate(opening.worldUpdates);
+        }
       }
 
       creation.reset();

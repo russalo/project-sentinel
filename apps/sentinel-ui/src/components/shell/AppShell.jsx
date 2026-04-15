@@ -11,9 +11,27 @@ export function AppShell() {
   const { focusMode, toggleFocusMode, leftPanelCollapsed, rightPanelCollapsed } = useUIStore();
   const { messages, addMessage } = useChatStore();
 
-  // Focus mode keyboard shortcut (F key)
+  // Focus mode keyboard shortcut (F key).
+  //
+  // The handler ignores keydown events whose target is a form
+  // control — without that guard, typing the literal letter "f"
+  // inside the command bar (e.g. "I follow Kael") fires the
+  // shortcut and collapses both side panels mid-action. The user
+  // has to hit f again to restore them, which feels like the panels
+  // are randomly disappearing. The form-control guard makes the
+  // shortcut only fire when the user explicitly intends it (i.e.
+  // not while typing into an input/textarea/contenteditable).
   useEffect(() => {
     const handleKeyDown = (e) => {
+      const target = e.target;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
       if (e.key === 'f' && !e.ctrlKey && !e.metaKey && !e.altKey) {
         toggleFocusMode();
       }
