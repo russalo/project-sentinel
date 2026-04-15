@@ -171,15 +171,12 @@ work will.
   **Content needed (substantial):** every preset above needs written content — the Markdown definitions, the JSON metadata files, and the seed entities for each region. This is real worldbuilding work, probably a Lore-Smith contributor pathway activity rather than an engineer task.
 
   **Order of operations when this becomes work:**
-  1. ✅ Start with just Layer 1 (wire the fields end-to-end, pass everything as free-form context) — landed in PR #20
+  1. ✅ Layer 1 (wire all fields end-to-end, pass as free-form context) — fully landed. PR #20 wired initial fields; PR #33 completed Layer 1.5 (persona resolved to name + description) and wired genre/tone/startingRegion/mood/sandbox/permadeath through the frontend → backend → engine chain.
   2. Then define the preset file layout (maybe an ADR — how do presets live under `data/`? how do they compose with community packs?)
   3. Then author a minimum viable set of preset content (probably one entry per category to prove the pattern)
   4. Then build the generation pipeline that consumes it
   5. Finally expand preset coverage to the full form
       _Discovered: 2026-04-14 | Context: user observed during smoke test that the WorldCreation form asks a lot of questions but none of them actually shape the generated world — the DM's intro is identical regardless of what you pick for tone, genre, region, etc. First issue filed under a fresh "World Generation" BACKLOG section because this area is clearly going to accumulate more items_
-
-- [ ] **Persona ID resolution (Layer 1.5).** PR #20 wired `persona_id` through to the DM intro prompt as a raw string — the LLM sees `"DM persona: oracle"` with no context about what "oracle" means. Gemini flagged this on review: an opaque ID is unlikely to make the LLM actually adopt the persona's voice, tone, or narrative style. Minimum viable fix (before the full preset system): either (a) have the frontend send `personaName` + a one-line `personaDescription` alongside `personaId`, or (b) have the backend resolve the ID against a small in-memory catalog of known personas and inject the descriptive version into the intro prompt. (a) is lower coupling but puts descriptive content in the frontend; (b) is higher coupling but keeps the source of truth on the backend. Either unblocks meaningful persona selection without waiting for the full preset file layout. Supersedes the "just pass the raw string" simplification that Layer 1 shipped.
-      _Discovered: 2026-04-14 | Context: Gemini Code Assist flagged on PR #20 — persona_id as an opaque string is unlikely to make the DM actually adopt the persona. Out of scope for Layer 1 intentionally, but worth fixing before the full DM Personas & Content Framework item ships_
 
 ---
 
@@ -312,18 +309,14 @@ turn-finalization code path and share the same visual primitives.
 
   2. **Narrative scroll — "what is the DM saying right now?"** Existing, mostly works. `NarrativeScroll.jsx` + `DMMessage.jsx` handle the DM stream with a typewriter cursor. No changes required except making the chat area *tabbed* (see view 3).
 
-  3. **System log tab — "what has happened across the whole session?"** **New.** The chat area becomes a tabbed container: `Narrative | System Log`. The System Log tab is a scrollable historical archive of state-change events — every turn's delta, every new entity, every removed entity, every world metric change — rendered in chronological order. When a new turn lands and the Narrative tab shows the DM's prose, the System Log tab silently accumulates a structured log entry describing what changed; the player can swap tabs at any time to review history. Probably a badge indicator on the System Log tab when new entries arrive and the user is on the Narrative tab.
+  3. **System log tab — "what has happened across the whole session?"** ✅ **Phase 1 landed in PR #34.** `Narrative | System Log` tabs built. chatStore gains `systemLog[]`. `DeltaMessage` component in both inline (narrative) and log modes. Unread badge on System Log tab. Phase 2 (backend hydration across reloads) and Phase 3 (git-history-backed) remain open.
 
      Source of truth options:
      - **Frontend-only (Phase 1):** chatStore gains a `systemLog: []` array that accumulates delta messages as they arrive via the `world_update` SSE event. Lost on page reload.
      - **Backend-backed (Phase 2):** new `GET /api/session/<session_id>` endpoint returns the full session with `turns[]`, each turn containing its `world_updates` hint block. Frontend hydrates the system log from that on session load. Survives reloads.
      - **git-history-backed (Phase 3 / far future):** since git-sync now produces per-turn commits (PR #14), a new `GET /api/session/<id>/history` endpoint could read git log filtered by session_id and expose the commit history directly. Makes "view world at turn N" possible via `git show`. Overkill for v1.0.
 
-  4. **Turn-delta feedback — "what just happened at the end of this turn?"** Ephemeral, at turn boundary. When the `world_update` SSE event arrives at `[DONE]`, diff the incoming payload against the previous world state and render the changes in two places:
-     - A styled system message at the bottom of the Narrative scroll — e.g. "Tension: 9 → 10. The Shadowbeast appeared. Russalo: wounded (100 → 85). New item: Shadow Blade (Russalo)." Fades in, stays visible until the next turn, or is implicitly dismissed by scroll.
-     - An animated pulse + before/after indicator on the affected panel cards. When the player clicks the pulsing entity, its detail card opens in **diff mode** showing the specific fields that changed highlighted with before/after values.
-
-     The same turn-delta event also writes an entry into view 3 (System Log tab), where it persists as a log line the player can scroll back to.
+  4. **Turn-delta feedback — "what just happened at the end of this turn?"** ✅ **Core landed in PR #34.** Inline `DeltaMessage` after each turn in the Narrative scroll. Pending: animated pulse on affected panel cards + EntityCard `diff` mode (before/after highlights on click-to-inspect). Those are lower priority — the textual delta is the primary signal.
 
   **Shared primitives — build once, consume everywhere:**
 
