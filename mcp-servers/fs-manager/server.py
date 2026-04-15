@@ -33,13 +33,33 @@ DATA_DIR = REPO_ROOT / "data"
 SCHEMA_DIR = REPO_ROOT / "schemas"
 SCHEMA_PATH = SCHEMA_DIR / "apply_world_update.schema.json"
 
-# Protected fields that can never be modified by community payloads
-PROTECTED_FIELDS = {"unique_id", "world_seed", "namespace", "created_at", "canon"}
+# Protected fields that can never be modified by any payload.
+# Enforced on BOTH create and update operations — see check_protected_fields
+# and its call sites in execute_update. The check cannot be disabled by
+# the caller; the previous `protected_check` opt-out has been removed.
+PROTECTED_FIELDS = {
+    "unique_id",
+    "world_seed",
+    "namespace",
+    "created_at",
+    "canon",
+    "core_faction_id",
+}
 
 # Allowed write paths (regex must match target_file)
 ALLOWED_PATH_PATTERN = re.compile(
     r"^(data/state/(core|community)/[a-zA-Z0-9_-]+/[a-zA-Z0-9_-]+\.json"
     r"|data/lore/(core/sessions|community/[a-zA-Z0-9_-]+/[a-zA-Z0-9_-]+)/[a-zA-Z0-9_-]+\.md)$"
+)
+
+# Paths that require payload-level `"namespace": "core"` authorization.
+# Per ARCHITECTURE.md §2, writes to data/state/core/ and data/lore/core/
+# are restricted to core-authorized payloads. The one exception is
+# data/lore/core/sessions/*, which every session needs to write regardless
+# of namespace — that's how community callers log their own play sessions
+# to disk. The negative lookahead `(?!sessions/)` encodes that exemption.
+CORE_GATED_PATH_PATTERN = re.compile(
+    r"^(data/state/core/|data/lore/core/(?!sessions/))"
 )
 
 logging.basicConfig(
@@ -59,6 +79,15 @@ def load_schema() -> dict:
 
 SCHEMA = load_schema()
 
+# jsonschema does NOT enforce `format` keywords unless you pass it a
+# FormatChecker explicitly. Without this, schema-declared constraints
+# like `"format": "uuid"` on session_id were silently unchecked, and
+# a crafted non-UUID session_id could pass validation and reach the
+# session-log append where it's interpolated into a filesystem path.
+# The checker catches malformed session_ids at the schema layer — the
+# _resolve_session_log_path() helper below is the second layer.
+_FORMAT_CHECKER = jsonschema.FormatChecker()
+
 # -------------------------------------------------------------------
 # FastAPI App
 # -------------------------------------------------------------------
@@ -75,9 +104,20 @@ app = FastAPI(
 
 
 def validate_payload(payload: dict) -> None:
-    """Validate payload against JSON Schema. Raises HTTPException on failure."""
+    """Validate payload against JSON Schema. Raises HTTPException on failure.
+
+    Uses ``_FORMAT_CHECKER`` so ``format`` keywords in the schema (notably
+    ``"format": "uuid"`` on ``session_id``) are actually enforced. Without
+    this, a caller could supply any string as ``session_id`` and have it
+    interpolated into the session-log filesystem path — directory traversal
+    waiting to happen.
+    """
     try:
-        jsonschema.validate(instance=payload, schema=SCHEMA)
+        jsonschema.validate(
+            instance=payload,
+            schema=SCHEMA,
+            format_checker=_FORMAT_CHECKER,
+        )
     except jsonschema.ValidationError as e:
         raise HTTPException(
             status_code=422,
@@ -92,6 +132,42 @@ def validate_payload(payload: dict) -> None:
             status_code=500,
             detail={"code": "SCHEMA_ERROR", "detail": str(e)},
         )
+
+
+def _resolve_session_log_path(session_id: str) -> Path:
+    """Resolve the session log path and confirm it stays inside sessions/.
+
+    Builds ``data/lore/core/sessions/<session_id>.md`` under ``REPO_ROOT``,
+    resolves it (which canonicalizes any ``..`` segments), and asserts the
+    parent directory is exactly the sessions directory. Any traversal
+    attempt — even one that somehow bypassed the schema's format check —
+    raises 403 PATH_VIOLATION here before the file is ever opened.
+
+    This is defense-in-depth on top of ``validate_payload``'s format
+    checker: if the schema-level UUID enforcement ever regresses (or if
+    a future schema change relaxes the format), the filesystem boundary
+    still holds.
+
+    Computes ``sessions_dir`` at call time rather than module load so
+    tests that monkeypatch ``REPO_ROOT`` to a tmp tree pick up the new
+    location automatically.
+    """
+    sessions_dir = (REPO_ROOT / "data" / "lore" / "core" / "sessions").resolve()
+    candidate = (
+        REPO_ROOT / "data" / "lore" / "core" / "sessions" / f"{session_id}.md"
+    ).resolve()
+    if candidate.parent != sessions_dir:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "PATH_VIOLATION",
+                "detail": (
+                    f"Resolved session log path {candidate!s} escapes "
+                    f"sessions directory {sessions_dir!s}."
+                ),
+            },
+        )
+    return candidate
 
 
 def check_protected_fields(data: Any, target_file: str) -> None:
@@ -121,15 +197,47 @@ def validate_path(target_file: str) -> None:
         )
 
 
+def validate_namespace(payload_namespace: str, target_file: str) -> None:
+    """Enforce payload-level namespace authorization for core-gated paths.
+
+    Per ARCHITECTURE.md §2, writes to data/state/core/ or data/lore/core/
+    (excluding data/lore/core/sessions/, which every session must write)
+    require the payload to declare `"namespace": "core"` at the root.
+    Community payloads — those with `namespace` omitted or set to
+    "community" — are sandboxed to community paths.
+
+    Raises 403 NAMESPACE_VIOLATION if a non-core payload targets a
+    core-gated path.
+    """
+    if not CORE_GATED_PATH_PATTERN.match(target_file):
+        return
+    if payload_namespace != "core":
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "NAMESPACE_VIOLATION",
+                "detail": (
+                    f"Write to core-gated path '{target_file}' "
+                    f"requires payload-level 'namespace': 'core'. "
+                    f"Got: {payload_namespace!r}"
+                ),
+            },
+        )
+
+
 # -------------------------------------------------------------------
 # File Operations
 # -------------------------------------------------------------------
 
 
-def execute_update(
-    target_file: str, operation: str, data: Any, protected_check: bool = True
-) -> dict:
-    """Execute a single file operation after all validation passes."""
+def execute_update(target_file: str, operation: str, data: Any) -> dict:
+    """Execute a single file operation after all validation passes.
+
+    Protected-field enforcement runs unconditionally on both `create`
+    and `update` operations (the previous per-update `protected_check`
+    opt-out has been removed — protection is mandatory). `append` only
+    takes string data, so there's no dict to check.
+    """
     abs_path = REPO_ROOT / target_file
     abs_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -142,6 +250,7 @@ def execute_update(
                     "detail": f"{target_file} already exists. Use 'update' to modify.",
                 },
             )
+        check_protected_fields(data, target_file)
         content = (
             json.dumps(data, indent=2) if isinstance(data, (dict, list)) else str(data)
         )
@@ -149,8 +258,7 @@ def execute_update(
         return {"status": "created", "path": target_file}
 
     elif operation == "update":
-        if protected_check and isinstance(data, dict):
-            check_protected_fields(data, target_file)
+        check_protected_fields(data, target_file)
 
         if abs_path.exists() and target_file.endswith(".json"):
             existing = json.loads(abs_path.read_text())
@@ -203,25 +311,35 @@ async def apply_world_update(request: Request):
     """
     payload = await request.json()
     logger.info(
-        f"apply_world_update — session_id={payload.get('session_id')}, updates={len(payload.get('updates', []))}"
+        f"apply_world_update — session_id={payload.get('session_id')}, "
+        f"namespace={payload.get('namespace', 'community')}, "
+        f"updates={len(payload.get('updates', []))}"
     )
 
     validate_payload(payload)
+
+    # Payload-level namespace authorization. Default to "community" when
+    # the field is absent — community is the least-privileged posture,
+    # so unauthenticated or legacy payloads get the sandboxed behavior.
+    payload_namespace = payload.get("namespace", "community")
 
     results = []
     for update in payload["updates"]:
         target_file = update["target_file"]
         operation = update["operation"]
         data = update["data"]
-        protected_check = update.get("protected_check", True)
 
         validate_path(target_file)
-        result = execute_update(target_file, operation, data, protected_check)
+        validate_namespace(payload_namespace, target_file)
+        result = execute_update(target_file, operation, data)
         results.append(result)
 
-    # Append narrative to session log
-    session_log_path = f"data/lore/core/sessions/{payload['session_id']}.md"
-    abs_log = REPO_ROOT / session_log_path
+    # Append narrative to session log. The session_id has already been
+    # format-checked as a UUID by validate_payload, and _resolve_session_log_path
+    # canonicalizes the path and re-verifies the parent is sessions/ —
+    # a belt-and-suspenders pair so a malformed session_id can't escape
+    # the sessions directory even if the schema-level check regresses.
+    abs_log = _resolve_session_log_path(payload["session_id"])
     abs_log.parent.mkdir(parents=True, exist_ok=True)
     with open(abs_log, "a") as f:
         f.write(f"\n\n---\n\n{payload['log_entry']}")
