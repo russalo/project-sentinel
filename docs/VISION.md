@@ -5,7 +5,7 @@
 > final, and directions that may never ship in their current form.
 > For the "what ships next" commitment, see [`ROADMAP.md`](./ROADMAP.md).
 
-_Last updated: 2026-04-14_
+_Last updated: 2026-04-15_
 
 ---
 
@@ -181,6 +181,19 @@ git branch to fork" — lower complexity, higher ceremony.
 An ADR should settle this before the Panel UX work ships, because the
 system-log tab's backend endpoint needs to know what it's filtering by.
 
+**2026-04-15 update — this is no longer just a design question.** The
+2026-04-15 live smoke test confirmed that starting a "new world" in
+the UI does not wipe `data/state/core/`: entities, items, and
+locations authored in prior sessions are still on disk and still in
+the DM's context on the next run. Referencing "AR15" mapped onto a
+`Ray Gun` the player had authored in an earlier session. The urgency
+tier on this question is now **prerequisite for the minimum-viable-
+structure research loop below** — isolated smoke-test runs require
+session → world isolation, and today there is no code path that
+provides it. See also the `docs/BACKLOG.md` Smoke-Test Findings
+section for the cross-session bleed entry and the `just reset-world`
+recipe proposed as the minimum-viable unblocker ahead of the full ADR.
+
 ### Mechanical resolution (dice, probability, rules)
 
 During the first live smoke test, the player observed they could type
@@ -205,6 +218,116 @@ preset's TOML could declare "this genre uses the dice subsystem" or
 "this genre is pure-narrative." Implementation deferred until either
 a real session needs it or someone writes a content pack that depends
 on it.
+
+**2026-04-15 reframe.** Mechanical resolution is one point on a
+larger curve, not an isolated feature. The 2026-04-15 smoke test
+showed that `tension`, `level`, `hp`, and `danger` are already moving
+on narrative vibes with no rules — not because the DM is broken, but
+because there is no wall telling it *which* numeric deltas require
+grounding. The question "should we have dice" is really a sub-
+question of "what is the minimum wall that prevents ungrounded
+numeric deltas" — which belongs under the minimum-viable-structure
+research loop below. Treat this section as a pointer to that one,
+not as a standalone open question.
+
+### The minimum-viable-structure research loop
+
+This is the frame the 2026-04-15 smoke test surfaced — it was hiding
+inside the other open questions until the walkthrough revealed that
+every "should we have X" debate on this list is secretly the same
+question: *how much structure does an autonomous LLM-driven world
+need before it stops going off the rails, and no more?*
+
+**The thesis.** Sentinel's interesting contribution isn't "ships with
+N rules." It's a methodology and an evidence base: *"here is the
+minimum viable rule set for a coherent autonomous world, and here is
+the curve of coherence gain per added wall."* Nobody in this space
+has published that curve. Pure-LLM-freeform (AI Dungeon) and pure-
+TTRPG-port (D&D Beyond bots) are the two degenerate endpoints.
+Everything in between is unexplored.
+
+**Why this is a research program, not a feature.** Every individual
+wall that shows up on the BACKLOG (mechanical resolution, player
+authority, action catalogs, entity singularity, class compatibility,
+PC ownership, character ownership) is debated on this project as if
+it were a design question with a right answer. The 2026-04-15 smoke
+test changed the frame: these are empirical questions, and the answer
+depends on running the same scenario against progressively stricter
+schemas and watching what happens. The floor is the rules you can't
+live without. The ceiling is the rules that start making the DM feel
+like a rules lawyer. Both ends are discoverable; nobody has looked.
+
+**The shape of the loop.**
+
+1. Start with the current near-zero-constraint baseline. The
+   2026-04-15 transcript at `docs/smoke-tests/2026-04-15-baseline.md`
+   is the first data point — the "turn 0, no walls" run. Twelve
+   distinct failure classes in six turns.
+2. Run a scripted smoke scenario. Same inputs every time, so
+   regressions and gains are visible. This is why the harness
+   prerequisite matters — manual walkthroughs don't compose.
+3. Add one constraint layer. Candidates in rough order of expected
+   leverage: (a) entity singularity DM system prompt rule, (b)
+   player-authority gate on mechanically-significant entities, (c)
+   PC ownership schema flags, (d) schema enum enforcement on
+   `status` / `type`, (e) ungrounded-delta rule for numeric stats,
+   (f) DM refusal authority rule, (g) class/genre compatibility at
+   WorldCreation, (h) action catalogs per genre, (i) mechanical
+   resolution system per genre. Order isn't fixed — the harness
+   measures it.
+4. Measure coherence. Qualitative first (does the transcript read
+   as sane, does the DM still feel alive, does the player still
+   have agency?), eventually measurable (schema-valid entity
+   references / total entity references, contradictions per 100
+   turns, player-authored entity count, ungrounded-stat-delta
+   count, lazy-fabrication count).
+5. Find the knee of the curve. The point where adding more schema
+   stops improving coherence and starts making the DM feel like a
+   rules lawyer. That's the minimum viable structure.
+
+**Prerequisites.** This is not a deliverable today — it's a frame for
+deciding what to build. Two concrete enablers need to land first
+before any of the loop is measurable:
+
+- **Session → world isolation.** The research loop needs clean runs;
+  clean runs need a reset path. See the "World identity and multi-
+  session support" question above — this is why its urgency tier was
+  promoted on 2026-04-15, and why the `just reset-world` BACKLOG
+  enabler exists as the minimum-viable unblocker ahead of the full
+  ADR.
+- **A repeatable smoke harness.** Scripted player inputs, pinned LLM
+  sampler config, captured transcripts, diff tool. See the
+  corresponding BACKLOG enabler. Probably lives in `tests/smoke/`
+  and depends on (a) world reset and (b) a "headless session"
+  backend mode that doesn't need a browser.
+
+**What this does NOT commit to.** It does not commit to shipping a
+specific set of walls. It does not commit to publishing the curve.
+It does not commit to mechanical resolution, or dice, or PbtA. It
+commits to the *methodology* — that from here on, decisions about
+walls are made by running the harness, not by debating them in
+planning docs. The debate still happens; the debate just has
+evidence to lean on.
+
+**How this changes the BACKLOG.** The individual wall items
+(entity singularity, player authority, PC ownership, schema enum,
+ungrounded deltas, etc.) stay where they are. They become candidate
+wall-additions on the research loop. Each time one is implemented,
+the harness runs and a new transcript is captured at
+`docs/smoke-tests/YYYY-MM-DD-<wall-name>.md`, and the VISION doc
+gets a one-line retrospective naming what the wall moved. Over time
+the smoke-tests directory becomes the empirical log; the BACKLOG
+becomes the candidate queue; and this section becomes the frame that
+ties them together.
+
+**Connection to the architectural commitments.** This research loop
+does not threaten ADR 0001 or the Inference/Infrastructure split.
+Every wall on the list above is either a schema change, a prompt
+change, or a validation rule at the engine boundary — all things that
+live on the Inference Node side and flow through the fs-manager →
+git-sync path the ADR already defines. The loop is *about* finding
+the right shapes for the payloads that flow through the bridge, not
+about rerouting the bridge.
 
 ### Background simulation
 
