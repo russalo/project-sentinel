@@ -377,8 +377,8 @@ turn-finalization code path and share the same visual primitives.
 
 ## Developer Experience
 
-- [ ] Add unit and integration tests for `apps/sentinel-ui/` — Zustand stores, API client, and key components. See `docs/TESTING.md` "Near-term test work" item #1: vitest + @testing-library/react land alongside the Panel UX primitives (`EntityCard`, `DeltaMessage`, `TabbedChat`) from ROADMAP item #1. The fixture-based primitive tests are the smallest possible unlock for frontend CI coverage.
-      _Discovered: 2026-03-26 | Updated: 2026-04-14 | Context: flagged in PR #5 review; no tests exist for any of the 8 frontend phases; scoped to land with the Panel UX rewrite rather than as a standalone effort_
+- [ ] **Expand `apps/sentinel-ui/` test coverage to stores and hooks.** vitest + @testing-library/react infrastructure landed with the first 34 tests covering `utils/delta.js` and the `EntityCard` + `DeltaMessage` primitives. The next slice is the Zustand stores (`chatStore`, `worldStore`, `uiStore`, `personaStore`) and the `useDMStream` hook — the latter is the trickiest because it touches `fetch` and the SSE event parser, but it's also the highest value for catching turn-loop regressions. Tests should mock `fetch` with a small SSE-event-emitting fake. Defer until either a regression makes one of these load-bearing or someone wants to spend a focused session expanding coverage. See `docs/TESTING.md` "Near-term test work" for the full framing.
+      _Discovered: 2026-03-26 | Updated: 2026-04-15 | Context: original "no frontend tests" gap closed by the vitest infrastructure PR; this is the followup item for the rest of the surface_
 
 
 
