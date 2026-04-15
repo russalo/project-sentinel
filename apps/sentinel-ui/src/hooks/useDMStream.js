@@ -12,6 +12,7 @@ export function useDMStream() {
     async (action, sessionId) => {
       setIsStreaming(true);
       let buffer = '';
+      const pendingDeltas = [];
 
       try {
         const response = await fetch(`${API_BASE}/stream`, {
@@ -41,6 +42,9 @@ export function useDMStream() {
             const raw = line.slice(6).trim();
             if (raw === '[DONE]') {
               commitStreamMessage();
+              for (const pd of pendingDeltas) {
+                addMessage({ type: 'delta', delta: pd.delta, timestamp: pd.timestamp });
+              }
               receivedDone = true;
               break;
             }
@@ -59,7 +63,7 @@ export function useDMStream() {
               if (hasDelta(delta)) {
                 const ts = new Date();
                 addSystemLogEntry({ delta, timestamp: ts });
-                addMessage({ type: 'delta', delta, timestamp: ts });
+                pendingDeltas.push({ delta, timestamp: ts });
               }
             }
             if (event.type === 'system') addMessage({ type: 'system', content: event.content, timestamp: new Date() });
@@ -67,8 +71,13 @@ export function useDMStream() {
           }
           if (receivedDone) break;
         }
-        // Stream ended without [DONE] — commit what we have
-        if (!receivedDone) commitStreamMessage();
+        // Stream ended without [DONE] — commit what we have, then flush deltas
+        if (!receivedDone) {
+          commitStreamMessage();
+          for (const pd of pendingDeltas) {
+            addMessage({ type: 'delta', delta: pd.delta, timestamp: pd.timestamp });
+          }
+        }
       } catch (err) {
         commitStreamMessage(); // finalize any partial buffer before showing error
         addMessage({ type: 'system', content: `[Connection error: ${err.message}]`, timestamp: new Date() });

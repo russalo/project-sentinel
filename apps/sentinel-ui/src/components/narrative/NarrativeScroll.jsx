@@ -5,13 +5,21 @@ import { DeltaMessage } from './DeltaMessage';
 export function NarrativeScroll() {
   const { messages, streamBuffer, systemLog, activeView, setActiveView, unreadSystemLog } = useChatStore();
   const scrollRef = useRef(null);
+  const scrollLogRef = useRef(null);
 
-  // Auto-scroll to bottom when narrative view gains new content
+  // Auto-scroll narrative to bottom when new content arrives
   useEffect(() => {
-    if (activeView === 'narrative' && scrollRef.current) {
+    if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, streamBuffer, activeView]);
+  }, [messages, streamBuffer]);
+
+  // Auto-scroll system log to bottom when new entries arrive
+  useEffect(() => {
+    if (scrollLogRef.current) {
+      scrollLogRef.current.scrollTop = scrollLogRef.current.scrollHeight;
+    }
+  }, [systemLog]);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -44,69 +52,65 @@ export function NarrativeScroll() {
         </button>
       </div>
 
-      {/* Narrative view */}
-      {activeView === 'narrative' && (
-        <div ref={scrollRef} className="flex flex-col p-6 gap-4 overflow-y-auto flex-1">
-          {messages.length === 0 && (
-            <div className="flex items-center justify-center h-full text-center text-dust">
-              <div>
-                <p className="text-2xl font-crimson mb-2">The world awaits.</p>
-                <p className="text-sm">Start your adventure by typing an action.</p>
+      {/* Narrative view — always mounted to preserve scroll position */}
+      <div ref={scrollRef} className={`flex flex-col p-6 gap-4 overflow-y-auto flex-1 ${activeView !== 'narrative' ? 'hidden' : ''}`}>
+        {messages.length === 0 && (
+          <div className="flex items-center justify-center h-full text-center text-dust">
+            <div>
+              <p className="text-2xl font-crimson mb-2">The world awaits.</p>
+              <p className="text-sm">Start your adventure by typing an action.</p>
+            </div>
+          </div>
+        )}
+
+        {messages.map((msg) => (
+          <div key={msg.id} className="animate-fade-in">
+            {msg.type === 'dm' && (
+              <div className="text-ink font-crimson leading-relaxed prose-narrative">{msg.content}</div>
+            )}
+            {msg.type === 'player' && (
+              <div className="text-amber/80 text-sm italic">&gt; {msg.content}</div>
+            )}
+            {msg.type === 'system' && (
+              <div className="text-ether text-xs font-mono">[{msg.content}]</div>
+            )}
+            {msg.type === 'delta' && (
+              <div className="border-l-2 border-border pl-3 ml-1">
+                <DeltaMessage delta={msg.delta} mode="inline" />
               </div>
-            </div>
-          )}
+            )}
+          </div>
+        ))}
 
-          {messages.map((msg) => (
-            <div key={msg.id} className="animate-fade-in">
-              {msg.type === 'dm' && (
-                <div className="text-ink font-crimson leading-relaxed prose-narrative">{msg.content}</div>
-              )}
-              {msg.type === 'player' && (
-                <div className="text-amber/80 text-sm italic">&gt; {msg.content}</div>
-              )}
-              {msg.type === 'system' && (
-                <div className="text-ether text-xs font-mono">[{msg.content}]</div>
-              )}
-              {msg.type === 'delta' && (
-                <div className="border-l-2 border-border pl-3 ml-1">
-                  <DeltaMessage delta={msg.delta} mode="inline" />
-                </div>
-              )}
-            </div>
-          ))}
+        {streamBuffer && (
+          <div className="text-ink font-crimson leading-relaxed prose-narrative animate-fade-in">
+            {streamBuffer}
+            <span className="cursor"></span>
+          </div>
+        )}
+      </div>
 
-          {streamBuffer && (
-            <div className="text-ink font-crimson leading-relaxed prose-narrative animate-fade-in">
-              {streamBuffer}
-              <span className="cursor"></span>
+      {/* System log view — always mounted to preserve scroll position */}
+      <div ref={scrollLogRef} className={`flex flex-col p-4 gap-0 overflow-y-auto flex-1 ${activeView !== 'system-log' ? 'hidden' : ''}`}>
+        {systemLog.length === 0 ? (
+          <div className="flex items-center justify-center h-full text-center text-dust">
+            <div>
+              <p className="text-sm font-crimson mb-1">No events yet.</p>
+              <p className="text-xs text-ether">World state changes will appear here after each turn.</p>
             </div>
-          )}
-        </div>
-      )}
-
-      {/* System log view */}
-      {activeView === 'system-log' && (
-        <div className="flex flex-col p-4 gap-0 overflow-y-auto flex-1">
-          {systemLog.length === 0 ? (
-            <div className="flex items-center justify-center h-full text-center text-dust">
-              <div>
-                <p className="text-sm font-crimson mb-1">No events yet.</p>
-                <p className="text-xs text-ether">World state changes will appear here after each turn.</p>
-              </div>
-            </div>
-          ) : (
-            systemLog.map((entry, i) => (
-              <DeltaMessage
-                key={entry.id}
-                delta={entry.delta}
-                mode="log"
-                turnIdx={i + 1}
-                timestamp={entry.timestamp}
-              />
-            ))
-          )}
-        </div>
-      )}
+          </div>
+        ) : (
+          systemLog.map((entry, i) => (
+            <DeltaMessage
+              key={entry.id}
+              delta={entry.delta}
+              mode="log"
+              turnIdx={i + 1}
+              timestamp={entry.timestamp}
+            />
+          ))
+        )}
+      </div>
     </div>
   );
 }

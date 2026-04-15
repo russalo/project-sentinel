@@ -8,6 +8,8 @@
  *   timestamp {Date}   — optional, shown in log mode
  */
 
+const TYPE_LABEL = { characters: 'character', locations: 'location', factions: 'faction', items: 'item' };
+
 const ACTION_ICON = { added: '+', removed: '−', changed: '~' };
 const ACTION_COLOUR = {
   added:   'text-green-400',
@@ -49,7 +51,7 @@ function ChangeRow({ icon, colour, label, detail }) {
 function EntityLine({ entry, type }) {
   const icon   = ACTION_ICON[entry.action];
   const colour = ACTION_COLOUR[entry.action];
-  const typeLabel = type.slice(0, 3); // 'cha', 'loc', 'fac', 'ite'
+  const typeLabel = TYPE_LABEL[type] ?? type;
 
   if (entry.action === 'added') {
     const sub = entry.entity?.role ?? entry.entity?.type ?? entry.entity?.alignment ?? '';

@@ -19,19 +19,22 @@ const TRACKED_FIELDS = {
   character: ['health', 'status', 'currentLocation', 'level', 'role'],
   location:  ['discovered', 'danger', 'type'],
   faction:   ['power', 'playerRelation', 'alignment'],
-  item:      ['ownedBy', 'owned_by', 'location', 'rarity'],
+  item:      ['ownedBy', 'location', 'rarity'],
 };
 
 function diffEntities(before, after, type) {
   const deltas = [];
-  const beforeMap = new Map(before.map(e => [e.name, e]));
-  const afterMap  = new Map(after.map(e => [e.name, e]));
+  const keyOf = type === 'item'
+    ? (e) => e.unique_id ?? e.name
+    : (e) => e.name;
+  const beforeMap = new Map(before.map(e => [keyOf(e), e]));
+  const afterMap  = new Map(after.map(e => [keyOf(e), e]));
 
-  for (const [name, entity] of afterMap) {
-    if (!beforeMap.has(name)) {
-      deltas.push({ action: 'added', name, entity });
+  for (const [key, entity] of afterMap) {
+    if (!beforeMap.has(key)) {
+      deltas.push({ action: 'added', name: entity.name, entity });
     } else {
-      const prev = beforeMap.get(name);
+      const prev = beforeMap.get(key);
       const changes = [];
       for (const field of TRACKED_FIELDS[type] ?? []) {
         const from = prev[field];
@@ -40,12 +43,12 @@ function diffEntities(before, after, type) {
           changes.push({ field, from, to });
         }
       }
-      if (changes.length) deltas.push({ action: 'changed', name, changes });
+      if (changes.length) deltas.push({ action: 'changed', name: entity.name, changes });
     }
   }
 
-  for (const name of beforeMap.keys()) {
-    if (!afterMap.has(name)) deltas.push({ action: 'removed', name });
+  for (const [key, entity] of beforeMap) {
+    if (!afterMap.has(key)) deltas.push({ action: 'removed', name: entity.name });
   }
 
   return deltas;
