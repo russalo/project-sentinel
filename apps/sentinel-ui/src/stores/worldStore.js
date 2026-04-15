@@ -31,6 +31,13 @@ export const useWorldStore = create((set) => ({
     factions: state.factions.map(f => f.id === id ? { ...f, ...updates } : f),
   })),
 
+  // Items
+  items: [],
+  addItem: (item) => set((state) => ({ items: [...state.items, item] })),
+  updateItem: (id, updates) => set((state) => ({
+    items: state.items.map(i => i.id === id ? { ...i, ...updates } : i),
+  })),
+
   // World metrics
   day: 1,
   tension: 'calm', // calm, moderate, high, critical
@@ -103,6 +110,27 @@ export const useWorldStore = create((set) => ({
       next.factions = facs;
     }
 
+    if (worldUpdate.items?.length) {
+      let its = [...state.items];
+      for (const item of worldUpdate.items) {
+        // Match on unique_id when present, fall back to name for payloads without it
+        const match = (i) => item.unique_id
+          ? i.unique_id === item.unique_id
+          : i.name === item.name;
+        if (item.action === 'remove') {
+          its = its.filter(i => !match(i));
+        } else {
+          const idx = its.findIndex(match);
+          if (idx >= 0) {
+            its = its.map((i, n) => n === idx ? { ...i, ...item } : i);
+          } else {
+            its = [...its, item];
+          }
+        }
+      }
+      next.items = its;
+    }
+
     return next;
   }),
 
@@ -117,6 +145,7 @@ export const useWorldStore = create((set) => ({
     locations: worldState.locations || [],
     characters: worldState.characters || [],
     factions: worldState.factions || [],
+    items: worldState.items || [],
     day: worldState.day || 1,
     tension: worldState.tension || 'calm',
   }),
