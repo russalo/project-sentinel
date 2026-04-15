@@ -13,13 +13,14 @@ _Last updated: 2026-04-14_
 
 ### What runs in CI
 
-Every push and pull request runs three jobs from `.github/workflows/ci.yml`:
+Every push and pull request runs four jobs from `.github/workflows/ci.yml`:
 
 | Job | What it runs | Runtime |
 |-----|--------------|---------|
 | **Validate Schemas** | The full Python test suite: `pytest tests/` | ~20s |
 | **Lint Python** | `ruff check` + `ruff format --check` across `engine/`, `backend/`, `tests/`, `scripts/`, `mcp-servers/` | ~10s |
 | **Typecheck TypeScript** | `pnpm run typecheck` across the pnpm workspace | ~20s |
+| **Frontend Tests** | `pnpm --filter @sentinel/ui run test` — vitest + @testing-library/react against `apps/sentinel-ui/src/**/*.{test,spec}.{js,jsx}` | ~25s |
 
 "Validate Schemas" is kept as the job's display name for branch-protection
 continuity; as of PR #23 it actually runs every test under `tests/`, not just
@@ -50,20 +51,15 @@ continuity; as of PR #23 it actually runs every test under `tests/`, not just
 
 Flagging gaps honestly so TESTING.md doesn't lie by omission:
 
-- **`apps/sentinel-ui/` has zero tests.** No vitest, no
-  `@testing-library/react`, no component or store tests. Typecheck only.
-  Flagged in `docs/BACKLOG.md` under Developer Experience; scheduled to
-  land alongside the Panel UX primitives (`EntityCard`, `DeltaMessage`,
-  `TabbedChat`) per `docs/ROADMAP.md` step 1.
-- **`mcp-servers/git-sync/` has no unit tests.** `fs-manager/` got its
-  first 16-test suite in PR #29 as part of the security-gap closure,
-  but `git-sync/` — the only thing that produces the per-turn git
-  audit trail — still has no `tests/` directory. The engine-side
-  dispatch tests (`tests/engine/test_dispatch_git_sync.py`) cover the
-  HTTP contract via `httpx.MockTransport`, which validates the
-  request/response shape the backend relies on but does not test the
-  server's internal commit logic or rollback behavior. Flagged in
-  `docs/BACKLOG.md`.
+- **`apps/sentinel-ui/` test coverage is the first 34 tests, not zero.**
+  vitest + @testing-library/react infrastructure landed; first three
+  test files cover `utils/delta.js` (14 pure-function tests) and the
+  Panel UX primitives `EntityCard` (10 component tests) + `DeltaMessage`
+  (10 component tests). Stores, hooks (especially `useDMStream`), and
+  the rest of the components still have no coverage. Listed in
+  `docs/BACKLOG.md` Developer Experience as the next vitest target
+  set, but no longer load-bearing — the infrastructure is in place
+  and adding more tests is mechanical.
 - **No end-to-end turn loop.** We don't spin up a real fs-manager
   subprocess + real git-sync + real LLM (or a fake one) and send a
   synthetic turn through the whole pipeline. The first live smoke test
@@ -135,43 +131,50 @@ reviewer first.
 
 ### Near-term test work (next 1–3 PRs)
 
-Ordered by dependency. Each links to a `docs/BACKLOG.md` item:
+Most of the "near-term" work that was originally queued has shipped
+(see "Resolved" below for what landed). What's left, ordered by
+dependency:
 
-1. **vitest + `@testing-library/react` wiring for `apps/sentinel-ui/`.**
-   Scaffold the frontend test infrastructure when the Panel UX primitives
-   (`EntityCard`, `DeltaMessage`, `TabbedChat`) land. These are pure
-   components — fixture-based unit tests against rendered output, no
-   store wiring — which is the smallest possible unlock for
-   frontend CI coverage. Wire the resulting `pnpm --filter @sentinel/ui
-   test` invocation into the Typecheck TypeScript job (or a new
-   "Frontend Tests" job).
-2. **Engine agent tests for DM + Fact-Extractor once they land in
-   `engine/agents/`.** The migration from `backend/api/dm_ai.py` to
-   `engine/agents/dm.py` (ROADMAP item #2) should ship with full unit
-   test coverage of the intro and normal-turn prompt assembly paths,
-   using `FakeOpenAI` and matching the style of the existing
-   `test_dm.py::_build_intro_messages_*` tests.
-3. **Close the ARCHITECTURE.md ↔ `server.py` spec/code gap in
-   `mcp-servers/fs-manager/`, then write the first unit tests.** This
-   was originally scoped as just "write the first tests" but review
-   on PR #25 surfaced that parts of fs-manager's documented behavior
-   don't actually exist in code. Two things the spec promises but
-   server.py doesn't enforce:
-   - **Namespace gate.** ARCHITECTURE.md §2 says writes to
-     `data/{state,lore}/core/` are blocked unless the payload carries
-     a `"namespace": "core"` authorization token. `server.py` has no
-     such check.
-   - **`core_faction_id` protection.** ARCHITECTURE.md §4 lists it as
-     a protected field. `server.py`'s `PROTECTED_FIELDS` set omits it.
+1. **Expand frontend test coverage to stores and hooks.** vitest +
+   @testing-library/react infrastructure landed with the first 34
+   tests covering `utils/delta.js` + the `EntityCard` and
+   `DeltaMessage` primitives. The next slice is the Zustand stores
+   (`chatStore`, `worldStore`, `uiStore`, `personaStore`) and the
+   `useDMStream` hook — the latter is the trickiest because it
+   touches `fetch` and the stream parser, but it's also the highest
+   value for catching turn-loop regressions. Tests should mock
+   `fetch` with a small SSE-event-emitting fake.
 
-   Before writing tests, decide whether to implement the missing
-   enforcement or pare ARCHITECTURE.md back to match the code. Then
-   the test work has a real target. First test slice once the spec
-   and code agree: path traversal rejection (`..` and absolute paths
-   outside `data/`), full protected-field blocklist, namespace gate
-   (if it lands), schema validation rejection, commit rollback on
-   partial failure. Wire into `pytest tests/` once the tests exist.
-   The tracking BACKLOG item covers both halves.
+2. **Component tests for the rest of `apps/sentinel-ui/`.** The
+   Panel UX primitives are covered, but `NarrativeScroll`,
+   `WorldCreation`, `PersonaSheet`, `LiveSeedPreview`, the
+   left-panel lists, etc. all have zero coverage. Mechanical work
+   that benefits from the existing test patterns — defer until a
+   regression makes one of them load-bearing.
+
+### Resolved (recent)
+
+- **vitest + @testing-library/react infrastructure + first 34 tests**
+  — landed with this doc's most recent revision (the PR that touched
+  this file). Pure-function tests for `utils/delta.js`, component
+  tests for `EntityCard` and `DeltaMessage`. CI runs them as the
+  "Frontend Tests" job.
+- **fs-manager spec/code gap closure + 16 unit tests** — landed in
+  PR #29. Closed the ARCHITECTURE.md ↔ `server.py` divergence
+  (namespace gate, `core_faction_id` protection, `protected_check`
+  opt-out removal, create-path enforcement) and shipped the first
+  unit tests against a real tmp git repo.
+- **git-sync first unit-test suite (10 tests)** — landed in PR #35.
+  Same shape as the fs-manager tests: TestClient + tmp git repo
+  fixture, end-to-end coverage of the commit / no_changes / error
+  paths.
+- **Engine agent tests for DM + Fact-Extractor** — actually landed
+  long before any of the recent work; `tests/engine/test_dm.py` and
+  `tests/engine/test_fact_extractor.py` have always covered the
+  prompt assembly and parsing paths. The previous version of this
+  doc described them as pending because of stale planning-doc
+  drift, not because they were actually missing. Verified during
+  the engine migration recon (PR #31).
 
 ---
 

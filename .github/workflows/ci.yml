@@ -97,3 +97,34 @@ jobs:
 
       - name: Run TypeScript type checks
         run: pnpm run typecheck
+
+  # ----------------------------------------------------------------
+  # Job 4: Frontend tests (vitest + @testing-library/react)
+  # ----------------------------------------------------------------
+  # Runs the apps/sentinel-ui test suite. Vitest piggybacks on the
+  # existing vite.config.js — see apps/sentinel-ui/vite.config.js
+  # for the test-specific config block. Test files live alongside
+  # the source as src/**/*.{test,spec}.{js,jsx}.
+  #
+  # This job is separate from "Typecheck TypeScript" so PR check
+  # listings show frontend tests as their own line item.
+  frontend-tests:
+    name: Frontend Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run frontend tests
+        run: pnpm --filter @sentinel/ui run test
