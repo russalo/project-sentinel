@@ -244,25 +244,22 @@ def test_commit_snapshot_missing_session_id_returns_422(client):
 
 
 def test_commit_snapshot_invalid_repository_returns_500_git_error(
-    monkeypatch, git_sync_module, session_uuid, tmp_path
+    monkeypatch, git_sync_module, client, session_uuid, tmp_path
 ):
     """If REPO_ROOT points at a directory that is not a git repo,
     the server's commit_snapshot must return 500 GIT_ERROR — not
     crash, not return 200. The dispatcher relies on this being a
     structured failure so the backend can log and continue.
+
+    The existing ``client`` fixture works after we monkeypatch
+    REPO_ROOT because ``server.get_repo()`` reads the constant at
+    request time, not at module import time, so the next request
+    through the same client picks up the new value.
     """
     # Create a sibling tmp dir that is NOT a git repo — no .git/.
     not_a_repo = tmp_path / "not-a-repo"
     not_a_repo.mkdir()
     monkeypatch.setattr(git_sync_module, "REPO_ROOT", not_a_repo)
-
-    # Need to rebuild the TestClient because git_sync_module was
-    # mutated after the original `client` fixture instantiated it.
-    # The app object is the same; reusing it is fine, but we use
-    # a fresh TestClient for clarity.
-    from fastapi.testclient import TestClient
-
-    client = TestClient(git_sync_module.app)
 
     response = client.post(
         "/tools/commit_snapshot",
