@@ -377,8 +377,11 @@ turn-finalization code path and share the same visual primitives.
 
 ## Developer Experience
 
-- [ ] Add unit and integration tests for `apps/sentinel-ui/` — Zustand stores, API client, and key components. See `docs/TESTING.md` "Near-term test work" item #1: vitest + @testing-library/react land alongside the Panel UX primitives (`EntityCard`, `DeltaMessage`, `TabbedChat`) from ROADMAP item #1. The fixture-based primitive tests are the smallest possible unlock for frontend CI coverage.
-      _Discovered: 2026-03-26 | Updated: 2026-04-14 | Context: flagged in PR #5 review; no tests exist for any of the 8 frontend phases; scoped to land with the Panel UX rewrite rather than as a standalone effort_
+- [ ] **Expand frontend test coverage beyond the pure-component primitives.** Phase 1 landed: vitest + @testing-library/react installed, `delta.js`, `EntityCard`, and `DeltaMessage` covered (47 tests). Still missing: Zustand store tests (`chatStore`, `worldStore`, `uiStore`) — especially the selector patterns used by `PanelRouter`. API client tests for `useDMStream` (SSE parsing, pending delta ordering, `[DONE]` handling). Component tests for `NarrativeScroll` (tab switching preserves scroll position, unread badge). Pure primitive coverage is the smallest useful unit; these store/hook tests are the next layer up.
+      _Discovered: 2026-03-26 | Updated: 2026-04-15 | Context: Phase 1 pure-component tests landed in the frontend-tests PR; store/hook coverage deferred to a follow-up since it requires more infrastructure (fake fetch, fake SSE streams)_
+
+- [ ] **StatusIndicator.jsx has two unused-var lint errors** — `useEffect` imported but not used, `setConnected` assigned but not used. The component currently hardcodes `connected: true` with no real connectivity check, so both are dead code. Either wire up real SSE/fetch health polling (uses both) or drop them (`import { useState }` and `const [connected] = useState(true)`). Surfaced during the frontend-tests PR by a first clean `pnpm lint` run.
+      _Discovered: 2026-04-15 | Context: frontend-tests PR's `pnpm --filter @sentinel/ui lint` exposed these pre-existing errors. Out of scope for a tests-only PR_
 
 
 

@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run"
   },
   "dependencies": {
     "react": "^19.2.4",
@@ -15,6 +16,10 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.1.0",
+    "@testing-library/user-event": "^14.5.2",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
@@ -24,10 +29,12 @@
     "eslint-plugin-react-refresh": "^0.5.2",
     "framer-motion": "catalog:",
     "globals": "^17.4.0",
+    "jsdom": "^25.0.1",
     "lucide-react": "catalog:",
     "postcss": "^8.5.8",
     "tailwindcss": "catalog:",
     "vite": "^8.0.1",
+    "vitest": "^2.1.8",
     "wouter": "^3.9.0",
     "zustand": "^5.0.12"
   }
