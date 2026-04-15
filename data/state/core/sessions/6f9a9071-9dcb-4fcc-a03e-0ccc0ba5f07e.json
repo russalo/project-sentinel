@@ -1,0 +1,122 @@
+{
+  "session_id": "6f9a9071-9dcb-4fcc-a03e-0ccc0ba5f07e",
+  "world_name": "simcity 2.0",
+  "started_at": "2026-04-15T20:49:46.095579+00:00",
+  "turns": [
+    {
+      "id": 1,
+      "session_id": "6f9a9071-9dcb-4fcc-a03e-0ccc0ba5f07e",
+      "turn_number": 0,
+      "player_action": "[Session Start] chez the chaingang boss begins their journey in simcity 2.0.",
+      "narrative": "The road to Hallowrun narrows as the last light bleeds from the sky. You count seven chimneys in the village square, though the map in your pocket names six. The river glints like broken glass where it should be black. At the inn\u2019s threshold, the air thickens\u2014a pressure that makes your teeth ache. Mir Halder\u2019s hands, when they set your mug on the table, do not pass through the wood. The firelight shows her face only in fragments: a scar like a misplaced parenthesis, the hollow where a pupil should be. She says, \u201cThree pennies for the straw mattress. The dreams are free,\u201d and you notice the bell rope is missing from the church steeple outside, though the bell itself is there, rusted shut.  \n\nUpstairs, the Pell family\u2019s laughter rises from the mill, syncopated, as if each syllable is borrowed and must be returned. Their millstones grind something that smells of iron and old names. The inn\u2019s floorboards creak when no one treads them. You find a letter on your pillow, sealed with wax the color of a fresh bruise. The handwriting is yours.",
+      "world_updates": {
+        "world": {
+          "tension": 6
+        },
+        "characters": [
+          {
+            "name": "Mir Halder",
+            "action": "upsert",
+            "status": "alive",
+            "currentLocation": "Hallowrun Inn",
+            "description": "Innkeeper with a face like a closed ledger",
+            "role": "ally",
+            "traits": [
+              "honest",
+              "cryptic"
+            ]
+          },
+          {
+            "name": "Pell Family",
+            "action": "upsert",
+            "status": "alive",
+            "currentLocation": "Hallowrun Mill",
+            "description": "Mill operators with delayed speech and wrong-eyed stares",
+            "role": "neutral",
+            "traits": [
+              "affected by dreams",
+              "prosperous"
+            ]
+          },
+          {
+            "name": "Chez",
+            "action": "upsert",
+            "status": "alive",
+            "currentLocation": "Hallowrun Inn",
+            "description": "Chaingang boss with a head full of unspoken questions",
+            "role": "player",
+            "class": "chaingang boss",
+            "race": "human",
+            "level": 1
+          }
+        ],
+        "locations": [
+          {
+            "name": "Hallowrun Inn",
+            "action": "upsert",
+            "type": "tavern",
+            "description": "Smells of damp straw and unasked questions",
+            "region": "Hallowrun",
+            "discovered": true,
+            "danger": 4
+          },
+          {
+            "name": "Hallowrun Mill",
+            "action": "upsert",
+            "type": "wilderness",
+            "description": "Grinds something that should not be ground",
+            "region": "Hallowrun",
+            "discovered": true,
+            "danger": 6
+          }
+        ]
+      },
+      "created_at": "2026-04-15T20:49:46.095579+00:00"
+    },
+    {
+      "id": 2,
+      "session_id": "6f9a9071-9dcb-4fcc-a03e-0ccc0ba5f07e",
+      "turn_number": 1,
+      "player_action": "read the letter",
+      "narrative": "The letter\u2019s wax seal cracks like a scab. The paper is thick, too thick\u2014pulp ground from something fibrous, maybe bone. Your handwriting says: *\u201cThey\u2019re not the first. The millstones remember. Ask about the third son. The debt must be paid in full.\u201d* Your name is signed at the bottom, but the ink bleeds into the fibers, as if the page is digesting it. The room\u2019s shadows deepen, pooling in the corners like spilled oil. Outside, the Pell family\u2019s laughter sharpens into a single, sustained note\u2014the whine of a taut bowstring.  \n\nYou notice the straw mattress beneath you is damp, not with sweat or mildew, but something that hardens as it dries. The letter\u2019s final line is smudged, though you\u2019re certain it read *\u201cthe bell must toll again.\u201d* Mir Halder\u2019s voice echoes from downstairs, but her words are muffled, as if she\u2019s speaking through water. The floorboards above the mill creak in rhythm with the grinding stones.",
+      "world_updates": {
+        "world": {
+          "currentLocation": "Hallowrun Inn",
+          "tension": 8
+        },
+        "items": [
+          {
+            "name": "Bruise-Wax Letter",
+            "action": "upsert",
+            "type": "misc",
+            "description": "A letter written in your own hand, sealed with wax the color of a fresh bruise. The paper reeks of iron and old parchment.",
+            "rarity": "uncommon",
+            "ownedBy": "Chez",
+            "location": "Hallowrun Inn",
+            "magical": true
+          }
+        ],
+        "characters": [
+          {
+            "name": "Pell Family",
+            "action": "upsert",
+            "traits": [
+              "suspicious",
+              "connected to ancient ritual"
+            ],
+            "currentLocation": "Hallowrun Mill"
+          }
+        ],
+        "locations": [
+          {
+            "name": "Hallowrun Mill",
+            "action": "upsert",
+            "danger": 7
+          }
+        ]
+      },
+      "created_at": ""
+    }
+  ],
+  "active": true
+}
