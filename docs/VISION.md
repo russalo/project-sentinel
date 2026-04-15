@@ -103,7 +103,7 @@ now real:
   - 5 genres: cyberpunk, fantasy, horror, sci-fi, western
   - 3 personas: chronicler, cowboy, oracle
   - 6 moods: fast-paced, gritty, humorous, lore-heavy, neutral, ominous
-  - 16 regions, genre-scoped under `regions/<genre>/<slug>.toml`
+  - 20 regions, genre-scoped under `regions/<genre>/<slug>.toml`
     (4 regions per genre)
 - **`backend/presets.py`** — minimal loader (`load_preset` +
   `get_prompt_fragment`). Lenient by design: missing files return

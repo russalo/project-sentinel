@@ -41,8 +41,8 @@ _Last updated: 2026-04-15_
   the rationale and `CLAUDE.md` for the updated agent guidance.
 - **World Generation Layer 2 shipped (PR #39).** The preset content +
   generation pipeline that was previously vision-level work is now real:
-  5 genres, 3 personas, 6 moods, and 16 regions live as TOML files
-  under `data/lore/core/presets/`. `backend/presets.py` loads them on
+  5 genres, 3 personas, 6 moods, and 20 regions (4 per genre) live as
+  TOML files under `data/lore/core/presets/`. `backend/presets.py` loads them on
   `POST /api/session/new`, and the engine's `_build_intro_messages`
   injects the resolved fragments as a "WORLD FOUNDATIONS" paragraph
   block above the existing one-line "CREATION CONTEXT" block.
