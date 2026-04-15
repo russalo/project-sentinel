@@ -79,6 +79,15 @@ def load_schema() -> dict:
 
 SCHEMA = load_schema()
 
+# jsonschema does NOT enforce `format` keywords unless you pass it a
+# FormatChecker explicitly. Without this, schema-declared constraints
+# like `"format": "uuid"` on session_id were silently unchecked, and
+# a crafted non-UUID session_id could pass validation and reach the
+# session-log append where it's interpolated into a filesystem path.
+# The checker catches malformed session_ids at the schema layer — the
+# _resolve_session_log_path() helper below is the second layer.
+_FORMAT_CHECKER = jsonschema.FormatChecker()
+
 # -------------------------------------------------------------------
 # FastAPI App
 # -------------------------------------------------------------------
@@ -95,9 +104,20 @@ app = FastAPI(
 
 
 def validate_payload(payload: dict) -> None:
-    """Validate payload against JSON Schema. Raises HTTPException on failure."""
+    """Validate payload against JSON Schema. Raises HTTPException on failure.
+
+    Uses ``_FORMAT_CHECKER`` so ``format`` keywords in the schema (notably
+    ``"format": "uuid"`` on ``session_id``) are actually enforced. Without
+    this, a caller could supply any string as ``session_id`` and have it
+    interpolated into the session-log filesystem path — directory traversal
+    waiting to happen.
+    """
     try:
-        jsonschema.validate(instance=payload, schema=SCHEMA)
+        jsonschema.validate(
+            instance=payload,
+            schema=SCHEMA,
+            format_checker=_FORMAT_CHECKER,
+        )
     except jsonschema.ValidationError as e:
         raise HTTPException(
             status_code=422,
@@ -112,6 +132,40 @@ def validate_payload(payload: dict) -> None:
             status_code=500,
             detail={"code": "SCHEMA_ERROR", "detail": str(e)},
         )
+
+
+def _resolve_session_log_path(session_id: str) -> Path:
+    """Resolve the session log path and confirm it stays inside sessions/.
+
+    Builds ``data/lore/core/sessions/<session_id>.md`` under ``REPO_ROOT``,
+    resolves it (which canonicalizes any ``..`` segments), and asserts the
+    parent directory is exactly the sessions directory. Any traversal
+    attempt — even one that somehow bypassed the schema's format check —
+    raises 403 PATH_VIOLATION here before the file is ever opened.
+
+    This is defense-in-depth on top of ``validate_payload``'s format
+    checker: if the schema-level UUID enforcement ever regresses (or if
+    a future schema change relaxes the format), the filesystem boundary
+    still holds.
+
+    Computes ``sessions_dir`` at call time rather than module load so
+    tests that monkeypatch ``REPO_ROOT`` to a tmp tree pick up the new
+    location automatically.
+    """
+    sessions_dir = (REPO_ROOT / "data" / "lore" / "core" / "sessions").resolve()
+    candidate = (REPO_ROOT / "data" / "lore" / "core" / "sessions" / f"{session_id}.md").resolve()
+    if candidate.parent != sessions_dir:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "PATH_VIOLATION",
+                "detail": (
+                    f"Resolved session log path {candidate!s} escapes "
+                    f"sessions directory {sessions_dir!s}."
+                ),
+            },
+        )
+    return candidate
 
 
 def check_protected_fields(data: Any, target_file: str) -> None:
@@ -278,9 +332,12 @@ async def apply_world_update(request: Request):
         result = execute_update(target_file, operation, data)
         results.append(result)
 
-    # Append narrative to session log
-    session_log_path = f"data/lore/core/sessions/{payload['session_id']}.md"
-    abs_log = REPO_ROOT / session_log_path
+    # Append narrative to session log. The session_id has already been
+    # format-checked as a UUID by validate_payload, and _resolve_session_log_path
+    # canonicalizes the path and re-verifies the parent is sessions/ —
+    # a belt-and-suspenders pair so a malformed session_id can't escape
+    # the sessions directory even if the schema-level check regresses.
+    abs_log = _resolve_session_log_path(payload["session_id"])
     abs_log.parent.mkdir(parents=True, exist_ok=True)
     with open(abs_log, "a") as f:
         f.write(f"\n\n---\n\n{payload['log_entry']}")

@@ -38,8 +38,10 @@ def fs_manager_module(monkeypatch, tmp_path):
     exercise.
     """
     # Prime sys.path so `import server` resolves to mcp-servers/fs-manager/server.py.
-    # Put it at the front to beat any cached stale module.
-    sys.path.insert(0, str(FS_MANAGER_DIR))
+    # ``monkeypatch.syspath_prepend`` auto-restores sys.path after the
+    # test, so unrelated tests that import other ``server`` modules
+    # (there aren't any today, but forward-compat) stay isolated.
+    monkeypatch.syspath_prepend(str(FS_MANAGER_DIR))
 
     # Fresh import each test — fs-manager's module-level state
     # (PROTECTED_FIELDS, PATH regexes, SCHEMA) must match the current

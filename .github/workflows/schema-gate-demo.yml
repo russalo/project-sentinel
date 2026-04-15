@@ -1,7 +1,7 @@
 name: Schema Gate Demo
 
 # Fires on PRs that touch the MCP servers or JSON Schema contracts.
-# Starts the fs-manager server live and proves the four enforcement
+# Starts the fs-manager server live and proves the five enforcement
 # behaviours that define Project Sentinel's security model.
 
 on:
@@ -118,4 +118,4 @@ jobs:
           [[ "$STATUS" == "403" ]] || (echo "FAIL: expected 403, got $STATUS" && exit 1)
 
       - name: All gate tests passed
-        run: echo "Schema gate is holding. All four enforcement behaviours verified."
+        run: echo "Schema gate is holding. All five enforcement behaviours verified."
