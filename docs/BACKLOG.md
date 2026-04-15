@@ -304,14 +304,11 @@ output into playable game UI. They should ship as one or two
 coordinated PRs because they all touch the frontend's
 turn-finalization code path and share the same visual primitives.
 
-- [ ] **Panel UX system — unified state rendering across four views.** The session UI has four distinct views onto the same session state, each answering a different temporal question. Today all four are either missing entirely, hardcoded empty-state placeholders, or render name-only summaries that drop every field the DM emits. This item designs them together because they share data sources, visual primitives, and user flows — splitting them produces divergent renderers for the same data and inconsistent visual languages for "this is what you should look at."
+- [ ] **Panel UX system — unified state rendering across four views.** The session UI has four distinct views onto the same session state, each answering a different temporal question. This item designs them together because they share data sources, visual primitives, and user flows — splitting them produces divergent renderers for the same data and inconsistent visual languages for "this is what you should look at."
 
   **The four views and what each answers:**
 
-  1. **Panel cards — "what is this right now?"** Current state display. Left panel (Characters, Locations, Factions) and right panel tabs (Codex, Inventory, QuestLog). Today:
-     - Left-panel lists render one-line `<li>` items with `cursor-pointer` and a `hover:text-amber` effect, but NO click handler — they look interactive, they're not. Every field (`description`, `traits`, `role`, `class`, `race`, `level`, `health`, `status`, `currentLocation`) is silently dropped by the UI even though worldStore has the full dict.
-     - Right-panel tabs (`CodexPanel`, `InventoryPanel`, `QuestLogPanel`) are hardcoded static text — they don't import `useWorldStore`, don't consume props, don't react to anything. When the DM has generated 50 entities the Codex tab still says "No discoveries yet." They're promise-ware from an earlier phase of FRONTEND_PLAN.md that never got built.
-     - **Target:** click any entity in the left panel → detail card opens in a right-panel drawer (replaces the Codex/Inv/Quest tabs temporarily, preserves narrative real estate). The right-panel tabs become real — wired to worldStore, rendering live lists of all discovered entities via the shared `EntityCard` primitive (below). Hover reveals summary; click reveals full card.
+  1. **Panel cards — "what is this right now?"** ✅ **Landed in PR #32.** `EntityCard` primitive built. Left-panel click handlers wired. Right-panel tabs (Codex, Inventory) live and wired to worldStore. Entity detail view in PanelRouter resolves live entity from worldStore (not a stale snapshot). Items collection added to worldStore.
 
   2. **Narrative scroll — "what is the DM saying right now?"** Existing, mostly works. `NarrativeScroll.jsx` + `DMMessage.jsx` handle the DM stream with a typewriter cursor. No changes required except making the chat area *tabbed* (see view 3).
 
