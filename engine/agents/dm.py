@@ -352,9 +352,11 @@ def _creation_context_lines(intro: IntroInput) -> list[str]:
     opt into this mode."
 
     Persona formatting (Layer 1.5): when ``persona_name`` is present,
-    emit ``"Name — Description"`` so the LLM has real voice/tone
-    anchoring. When only ``persona_id`` is present, fall back to the
-    id-only format — pre-Layer-1.5 callers and tests continue to work.
+    the line reads ``"DM persona: <name> — <description>"`` (or just
+    ``"DM persona: <name>"`` when no description is supplied). When
+    only ``persona_id`` is present, falls back to ``"DM persona: <id>"``
+    so pre-Layer-1.5 callers and tests continue to work. Delegated
+    to the ``_format_persona_line`` helper.
     """
     lines: list[str] = []
     if intro.genre:
@@ -380,13 +382,27 @@ def _creation_context_lines(intro: IntroInput) -> list[str]:
 def _format_persona_line(intro: IntroInput) -> str | None:
     """Compose the DM persona line from whatever persona fields are set.
 
-    Three cases:
-    1. ``persona_name`` is present → ``"DM persona: <name> — <description>"``
-       (description is truncated to a sentence if the caller supplied a
-       long one; this keeps the CREATION CONTEXT block terse).
-    2. Only ``persona_id`` is present → ``"DM persona: <id>"`` (the
-       pre-Layer-1.5 fallback).
-    3. Nothing is set → return None (the caller skips the line entirely).
+    Cases (in priority order — `persona_name` wins over `persona_id`
+    so a Layer-1.5 caller never gets stuck on the bare-id fallback):
+
+    1. ``persona_name`` and ``persona_description`` both set →
+       ``"DM persona: <name> — <description>"``. The full description
+       is passed through unchanged — frontend descriptions are
+       single-sentence today (see ``MOCK_PERSONAS`` in
+       ``WorldCreation.jsx``) so there is no truncation.
+    2. ``persona_name`` set, ``persona_description`` missing →
+       ``"DM persona: <name>"``. Less ideal than case 1 but still
+       better than the opaque id, since at least the LLM gets a
+       human-readable label.
+    3. Only ``persona_id`` set → ``"DM persona: <id>"``. The
+       pre-Layer-1.5 fallback. Pre-existing tests and any caller
+       that hasn't been updated to send the descriptive fields land
+       here.
+    4. Neither ``persona_name`` nor ``persona_id`` set → return
+       ``None`` so the caller skips the persona line entirely.
+       (Note: this fires even if ``persona_description`` happens to
+       be set on its own — a description without a name has nothing
+       to anchor to, so it's treated the same as nothing being set.)
     """
     if intro.persona_name:
         if intro.persona_description:

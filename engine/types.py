@@ -92,9 +92,9 @@ class IntroInput:
     # and persona_description alongside persona_id and threads them
     # through to the intro prompt. When both are present,
     # _creation_context_lines formats the persona line as
-    # ``"Name — Description"`` instead of the opaque id. Optional so
-    # callers that only have an id still work (the prompt falls back
-    # to the id-only format).
+    # ``"DM persona: <name> — <description>"`` instead of the opaque id.
+    # Optional so callers that only have an id still work — they get
+    # the ``"DM persona: <id>"`` fallback.
     persona_name: str | None = None
     persona_description: str | None = None
     mood: str | None = None
