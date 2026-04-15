@@ -350,6 +350,11 @@ def _creation_context_lines(intro: IntroInput) -> list[str]:
     terse for callers that pre-date Layer 1. Booleans are only
     emitted when True — the default (False) means "player didn't
     opt into this mode."
+
+    Persona formatting (Layer 1.5): when ``persona_name`` is present,
+    emit ``"Name — Description"`` so the LLM has real voice/tone
+    anchoring. When only ``persona_id`` is present, fall back to the
+    id-only format — pre-Layer-1.5 callers and tests continue to work.
     """
     lines: list[str] = []
     if intro.genre:
@@ -358,8 +363,9 @@ def _creation_context_lines(intro: IntroInput) -> list[str]:
         lines.append(f"Tone: {intro.tone}")
     if intro.starting_region:
         lines.append(f"Starting region: {intro.starting_region}")
-    if intro.persona_id:
-        lines.append(f"DM persona: {intro.persona_id}")
+    persona_line = _format_persona_line(intro)
+    if persona_line:
+        lines.append(persona_line)
     if intro.mood:
         lines.append(f"DM mood: {intro.mood}")
     if intro.sandbox:
@@ -369,3 +375,23 @@ def _creation_context_lines(intro: IntroInput) -> list[str]:
             "Permadeath mode: the player has opted into permanent character death — consequences are real"
         )
     return lines
+
+
+def _format_persona_line(intro: IntroInput) -> str | None:
+    """Compose the DM persona line from whatever persona fields are set.
+
+    Three cases:
+    1. ``persona_name`` is present → ``"DM persona: <name> — <description>"``
+       (description is truncated to a sentence if the caller supplied a
+       long one; this keeps the CREATION CONTEXT block terse).
+    2. Only ``persona_id`` is present → ``"DM persona: <id>"`` (the
+       pre-Layer-1.5 fallback).
+    3. Nothing is set → return None (the caller skips the line entirely).
+    """
+    if intro.persona_name:
+        if intro.persona_description:
+            return f"DM persona: {intro.persona_name} — {intro.persona_description}"
+        return f"DM persona: {intro.persona_name}"
+    if intro.persona_id:
+        return f"DM persona: {intro.persona_id}"
+    return None

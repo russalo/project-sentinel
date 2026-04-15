@@ -72,6 +72,8 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
         tone=body.tone,
         starting_region=body.starting_region,
         persona_id=body.persona_id,
+        persona_name=body.persona_name,
+        persona_description=body.persona_description,
         mood=body.mood,
         sandbox=body.sandbox,
         permadeath=body.permadeath,
