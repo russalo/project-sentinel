@@ -153,7 +153,9 @@ def _resolve_session_log_path(session_id: str) -> Path:
     location automatically.
     """
     sessions_dir = (REPO_ROOT / "data" / "lore" / "core" / "sessions").resolve()
-    candidate = (REPO_ROOT / "data" / "lore" / "core" / "sessions" / f"{session_id}.md").resolve()
+    candidate = (
+        REPO_ROOT / "data" / "lore" / "core" / "sessions" / f"{session_id}.md"
+    ).resolve()
     if candidate.parent != sessions_dir:
         raise HTTPException(
             status_code=403,
