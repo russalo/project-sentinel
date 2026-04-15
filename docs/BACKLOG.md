@@ -389,8 +389,8 @@ turn-finalization code path and share the same visual primitives.
 
 
 
-- [ ] **Write the first unit tests for `mcp-servers/git-sync/`.** `git-sync` is 0 lines of test coverage in the same way fs-manager is — no `tests/` directory, the engine-side dispatch tests only cover the HTTP contract via `httpx.MockTransport`. Test targets: happy-path commit with the standard `[sentinel] session=<id> turn=<N> — <summary>` message format, rollback behavior on commit failure, handling of the "no changes" case (empty working tree after the dispatch — should return `ok=True`), repository-detection logic. Lower urgency than the fs-manager spec/code gap because git-sync's behavior is less security-critical — a bad commit is recoverable, a bad filesystem write may not be.
-      _Discovered: 2026-04-14 | Context: surfaced alongside the fs-manager gap; separated because the fs-manager work is now a spec/code closure, while git-sync is pure test-writing_
+- [ ] **`mcp-servers/git-sync/server.py:73` uses deprecated `datetime.utcnow()`.** Surfaced as a `DeprecationWarning` while running the new `tests/git_sync/` suite. The line is `f"Timestamp: {datetime.utcnow().isoformat()}Z"` in the commit message body. `datetime.utcnow()` is deprecated in Python 3.12+ and scheduled for removal; the replacement is `datetime.now(timezone.utc)`. Care needed on the format: the current code appends a literal `Z` to a naive ISO string; switching to `datetime.now(timezone.utc).isoformat()` produces an explicit `+00:00` offset, so naively swapping would give `+00:00Z` (malformed). Cleanest fix: drop the trailing `Z` and let `.isoformat()` carry the offset, OR keep the `Z` and use `strftime("%Y-%m-%dT%H:%M:%S")`. Tiny followup PR.
+      _Discovered: 2026-04-15 | Context: caught while running the new tests/git_sync/ suite; pre-existing, not introduced by the test PR_
 
 - [ ] Add machine-readable requirements manifest (Brewfile or .tool-versions) for `just`, `chezmoi`, and other non-npm tools
       _Discovered: 2026-03-25 | Context: docs list prerequisites but no single install command exists for a new contributor_
