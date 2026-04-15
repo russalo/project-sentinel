@@ -148,8 +148,13 @@ land back-to-back.
 - Replit was the original development platform. We are migrating away from it.
   Do not introduce new `@replit/*` dependencies. See `docs/BACKLOG.md` for the
   full audit and removal plan.
-- The frontend strategy for 1.0 is undecided. Do not build new frontend features
-  without explicit direction.
+- **React is the 1.0 frontend.** Decided 2026-04-15 by the landing of
+  `feat/panel-ux-entity-cards` — the "undecided, do not build new
+  frontend features" gate that previously lived here is resolved. See
+  `docs/VISION.md` § "Resolved decisions" for the rationale. Frontend
+  work is a normal feature-work pathway; the usual "plan-then-execute,
+  wait for explicit approval" flow still applies like it does for any
+  other task, but there's no longer a special stack-decision gate.
 - `just` is the command runner. Add new recipes to `justfile` rather than creating
   standalone scripts unless the logic is complex enough to warrant a separate file.
 
@@ -250,7 +255,7 @@ The two nodes communicate over a Tailscale mesh in production; locally they run 
 
 **Backend** — `backend/` is a FastAPI app on `:8001`. It serves `GET /healthz`, `POST /api/session/new`, and `POST /api/stream` (SSE). It reads state from `data/state/*.json` directly, calls `engine/` for turn handling, and dispatches writes through `engine.apply_world_update` → fs-manager → git-sync. No ORM, no database queries.
 
-**Frontend** — `apps/sentinel-ui/` (`@sentinel/ui`), React 19 + Vite + Tailwind v4. Talks to the FastAPI backend via fetch + SSE. Remember: the 1.0 frontend strategy is undecided — do not build new frontend features without explicit direction (see rules above).
+**Frontend** — `apps/sentinel-ui/` (`@sentinel/ui`), React 19 + Vite + Tailwind v4. Talks to the FastAPI backend via fetch + SSE. React is the ratified 1.0 frontend stack as of 2026-04-15 (see `docs/VISION.md` § "Resolved decisions"); normal feature-work rules apply.
 
 **Polyglot tooling**
 - pnpm workspace (Node 24, pnpm 10) — `pnpm-workspace.yaml` covers `apps/*`, `artifacts/*`, `lib/*`

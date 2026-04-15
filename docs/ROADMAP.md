@@ -33,6 +33,12 @@ _Last updated: 2026-04-15_
   Fact-Extractor → fs-manager → git-sync worked end-to-end against a real
   Ollama-backed model over LiteLLM. The pipeline has been re-smoke-tested
   via curl against the live fs-manager during PR #29's security work.
+- **React is the 1.0 frontend.** Decided 2026-04-15 by the landing of
+  `feat/panel-ux-entity-cards` — shipping real `EntityCard` primitives +
+  wired left/right panel interactions is a de-facto commitment. The
+  "frontend strategy undecided" gate that blocked feature work until now
+  is resolved. See [`VISION.md`](./VISION.md) § "Resolved decisions" for
+  the rationale and `CLAUDE.md` for the updated agent guidance.
 
 ---
 
@@ -41,23 +47,17 @@ _Last updated: 2026-04-15_
 Ordered by what unblocks what. Each item links to a `docs/BACKLOG.md` entry
 for the full technical detail; the roadmap stays short on purpose.
 
-### 1. **Panel UX ADR (pre-work for the frontend refactor)**
+**Note on Panel UX:** the initial Panel UX primitives (`EntityCard`,
+click-to-inspect wiring, panel tabs) are being built directly on
+`feat/panel-ux-entity-cards` without a preceding ADR. That was an
+intentional call — the ADR's open questions (tombstones for removed
+entities, `mentioned_only` state for future Entity Sweeper glimpses, the
+Phase 1/2/3 source-of-truth split for the system log) all depend on
+downstream work that doesn't exist yet, so writing the ADR now would be
+premature. The ADR is deferred until Entity Sweeper and system log work
+begin. See the BACKLOG entry for the full reframing.
 
-Write ADR 0002 covering the "Panel UX system" BACKLOG item: the unified
-four-view display layer (panel cards, narrative scroll, system log tab,
-turn-delta feedback) that shares `EntityCard` / `DeltaMessage` / `TabbedChat`
-primitives. The ADR pins down the open questions (drawer vs. modal,
-tombstones for removed entities, `mentioned_only` state for future Entity
-Sweeper glimpses, the Phase 1/2/3 source-of-truth split for the system log)
-before any implementation.
-
-- Backlog: [`Panel UX system — unified state rendering across four views`](./BACKLOG.md)
-- Gated behind the stack decision in [`VISION.md`](./VISION.md) — if the
-  1.0 frontend stays React, the ADR is actionable; if not, this work is
-  premature.
-- Exit criteria: ADR merged, referenced from BACKLOG.
-
-### 2. **Persona ID resolution (Layer 1.5)**
+### 1. **Persona ID resolution (Layer 1.5)**
 
 PR #20 wired `persona_id` through to the DM intro prompt as a raw string,
 so the LLM sees `"DM persona: oracle"` with no context about what "oracle"
@@ -74,7 +74,7 @@ the full preset system in the DM Personas & Content Framework BACKLOG item.
   the descriptive persona text, not the raw ID. Verified by a unit test
   against `_build_intro_messages`.
 
-### 3. **git-sync unit tests**
+### 2. **git-sync unit tests**
 
 Sibling of the fs-manager test suite that landed in PR #29. `git-sync` has
 zero test coverage today — no `tests/` directory, the engine-side dispatch
