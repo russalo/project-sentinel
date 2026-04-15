@@ -22,7 +22,26 @@ export const useChatStore = create((set) => ({
   addMessage: (message) => set((state) => ({
     messages: [...state.messages, { id: newId(), ...message }],
   })),
-  clearMessages: () => set({ messages: [] }),
+  clearMessages: () => set({ messages: [], systemLog: [], unreadSystemLog: 0 }),
+
+  // System log — one entry per turn, persists across the session
+  systemLog: [],
+  addSystemLogEntry: (entry) => set((state) => ({
+    systemLog: [...state.systemLog, { id: newId(), ...entry }],
+    // Only increment badge when the player is looking at the narrative tab
+    unreadSystemLog: state.activeView === 'narrative' ? state.unreadSystemLog + 1 : state.unreadSystemLog,
+  })),
+
+  // Active view — 'narrative' | 'system-log'
+  activeView: 'narrative',
+  setActiveView: (view) => set((state) => ({
+    activeView: view,
+    unreadSystemLog: view === 'system-log' ? 0 : state.unreadSystemLog,
+  })),
+
+  // Unread badge count for system log tab
+  unreadSystemLog: 0,
+  clearUnreadSystemLog: () => set({ unreadSystemLog: 0 }),
 
   // Streaming state
   isStreaming: false,

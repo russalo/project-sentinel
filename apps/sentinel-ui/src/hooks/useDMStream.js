@@ -2,9 +2,10 @@ import { useCallback } from 'react';
 import { API_BASE } from '../api/client';
 import { useChatStore } from '../stores/chatStore';
 import { useWorldStore } from '../stores/worldStore';
+import { computeDelta, hasDelta } from '../utils/delta';
 
 export function useDMStream() {
-  const { appendToBuffer, commitStreamMessage, setIsStreaming, addMessage } = useChatStore();
+  const { appendToBuffer, commitStreamMessage, setIsStreaming, addMessage, addSystemLogEntry } = useChatStore();
   const applyUpdate = useWorldStore((s) => s.applyUpdate);
 
   const sendAction = useCallback(
@@ -50,7 +51,17 @@ export function useDMStream() {
               continue;
             }
             if (event.type === 'token') appendToBuffer(event.content);
-            if (event.type === 'world_update') applyUpdate(event.data);
+            if (event.type === 'world_update') {
+              const before = useWorldStore.getState();
+              applyUpdate(event.data);
+              const after = useWorldStore.getState();
+              const delta = computeDelta(before, after);
+              if (hasDelta(delta)) {
+                const ts = new Date();
+                addSystemLogEntry({ delta, timestamp: ts });
+                addMessage({ type: 'delta', delta, timestamp: ts });
+              }
+            }
             if (event.type === 'system') addMessage({ type: 'system', content: event.content, timestamp: new Date() });
             if (event.type === 'error') addMessage({ type: 'system', content: `[Error: ${event.content}]`, timestamp: new Date() });
           }
@@ -65,7 +76,7 @@ export function useDMStream() {
         setIsStreaming(false);
       }
     },
-    [appendToBuffer, commitStreamMessage, setIsStreaming, addMessage, applyUpdate],
+    [appendToBuffer, commitStreamMessage, setIsStreaming, addMessage, addSystemLogEntry, applyUpdate],
   );
 
   return { sendAction };

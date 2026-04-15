@@ -1,46 +1,110 @@
 import { useEffect, useRef } from 'react';
 import { useChatStore } from '../../stores/chatStore';
+import { DeltaMessage } from './DeltaMessage';
 
 export function NarrativeScroll() {
-  const { messages, streamBuffer } = useChatStore();
+  const { messages, streamBuffer, systemLog, activeView, setActiveView, unreadSystemLog } = useChatStore();
   const scrollRef = useRef(null);
 
-  // Auto-scroll to bottom on new messages
+  // Auto-scroll to bottom when narrative view gains new content
   useEffect(() => {
-    if (scrollRef.current) {
+    if (activeView === 'narrative' && scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, streamBuffer]);
+  }, [messages, streamBuffer, activeView]);
 
   return (
-    <div ref={scrollRef} className="flex flex-col p-6 gap-4 overflow-y-auto">
-      {messages.length === 0 && (
-        <div className="flex items-center justify-center h-full text-center text-dust">
-          <div>
-            <p className="text-2xl font-crimson mb-2">The world awaits.</p>
-            <p className="text-sm">Start your adventure by typing an action.</p>
-          </div>
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Tab bar */}
+      <div className="flex gap-1 px-4 pt-3 pb-0 border-b border-border shrink-0">
+        <button
+          onClick={() => setActiveView('narrative')}
+          className={`px-3 py-1 text-xs rounded-t transition-colors ${
+            activeView === 'narrative'
+              ? 'bg-codex text-amber border border-b-codex border-border -mb-px'
+              : 'text-ether hover:text-ink'
+          }`}
+        >
+          Narrative
+        </button>
+        <button
+          onClick={() => setActiveView('system-log')}
+          className={`px-3 py-1 text-xs rounded-t transition-colors flex items-center gap-1.5 ${
+            activeView === 'system-log'
+              ? 'bg-codex text-amber border border-b-codex border-border -mb-px'
+              : 'text-ether hover:text-ink'
+          }`}
+        >
+          System Log
+          {unreadSystemLog > 0 && (
+            <span className="bg-amber text-void text-[10px] font-bold px-1 rounded-full leading-tight">
+              {unreadSystemLog}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {/* Narrative view */}
+      {activeView === 'narrative' && (
+        <div ref={scrollRef} className="flex flex-col p-6 gap-4 overflow-y-auto flex-1">
+          {messages.length === 0 && (
+            <div className="flex items-center justify-center h-full text-center text-dust">
+              <div>
+                <p className="text-2xl font-crimson mb-2">The world awaits.</p>
+                <p className="text-sm">Start your adventure by typing an action.</p>
+              </div>
+            </div>
+          )}
+
+          {messages.map((msg) => (
+            <div key={msg.id} className="animate-fade-in">
+              {msg.type === 'dm' && (
+                <div className="text-ink font-crimson leading-relaxed prose-narrative">{msg.content}</div>
+              )}
+              {msg.type === 'player' && (
+                <div className="text-amber/80 text-sm italic">&gt; {msg.content}</div>
+              )}
+              {msg.type === 'system' && (
+                <div className="text-ether text-xs font-mono">[{msg.content}]</div>
+              )}
+              {msg.type === 'delta' && (
+                <div className="border-l-2 border-border pl-3 ml-1">
+                  <DeltaMessage delta={msg.delta} mode="inline" />
+                </div>
+              )}
+            </div>
+          ))}
+
+          {streamBuffer && (
+            <div className="text-ink font-crimson leading-relaxed prose-narrative animate-fade-in">
+              {streamBuffer}
+              <span className="cursor"></span>
+            </div>
+          )}
         </div>
       )}
 
-      {messages.map((msg) => (
-        <div key={msg.id} className="mb-4 animate-fade-in">
-          {msg.type === 'dm' && (
-            <div className="text-ink font-crimson leading-relaxed prose-narrative">{msg.content}</div>
+      {/* System log view */}
+      {activeView === 'system-log' && (
+        <div className="flex flex-col p-4 gap-0 overflow-y-auto flex-1">
+          {systemLog.length === 0 ? (
+            <div className="flex items-center justify-center h-full text-center text-dust">
+              <div>
+                <p className="text-sm font-crimson mb-1">No events yet.</p>
+                <p className="text-xs text-ether">World state changes will appear here after each turn.</p>
+              </div>
+            </div>
+          ) : (
+            systemLog.map((entry, i) => (
+              <DeltaMessage
+                key={entry.id}
+                delta={entry.delta}
+                mode="log"
+                turnIdx={i + 1}
+                timestamp={entry.timestamp}
+              />
+            ))
           )}
-          {msg.type === 'player' && (
-            <div className="text-amber/80 text-sm italic">&gt; {msg.content}</div>
-          )}
-          {msg.type === 'system' && (
-            <div className="text-ether text-xs font-mono">[{msg.content}]</div>
-          )}
-        </div>
-      ))}
-
-      {streamBuffer && (
-        <div className="text-ink font-crimson leading-relaxed prose-narrative animate-fade-in">
-          {streamBuffer}
-          <span className="cursor"></span>
         </div>
       )}
     </div>
