@@ -14,7 +14,7 @@ Dependencies:
 
 import argparse
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import git
@@ -67,10 +67,15 @@ async def commit_snapshot(body: dict):
         if not repo.index.diff("HEAD"):
             return {"status": "no_changes", "message": "No changes to commit."}
 
+        # `datetime.now(timezone.utc).isoformat()` emits an explicit
+        # `+00:00` offset (e.g. `2026-04-15T14:35:42.123456+00:00`),
+        # so the previous trailing `Z` shorthand is dropped — both
+        # are valid RFC 3339, and the new form is timezone-aware
+        # rather than the deprecated naive-utcnow form.
         commit_message = (
             f"[sentinel] session={session_id[:8]} turn={turn_number} — {summary}\n\n"
             f"Full session_id: {session_id}\n"
-            f"Timestamp: {datetime.utcnow().isoformat()}Z"
+            f"Timestamp: {datetime.now(timezone.utc).isoformat()}"
         )
 
         repo.index.commit(commit_message)

@@ -22,6 +22,21 @@ const TRACKED_FIELDS = {
   item:      ['ownedBy', 'location', 'rarity'],
 };
 
+// Field aliases — read via a single canonical name even if the entity
+// carries the alternate spelling. Mirrors the defensive `ownedBy ??
+// owned_by` pattern in InventoryPanel.jsx (PR #32) so the diff sees
+// the same logical field regardless of casing. Without this, a
+// payload that switches casing on the same item would either drop
+// the change entirely (if the canonical key is missing) or report
+// it as a removal+addition pair on different fields. The backend's
+// canonical casing today is `ownedBy`, but the InventoryPanel's
+// defensive code implies a non-zero risk that won't always hold —
+// the diff layer matches that posture rather than diverging from it.
+function fieldValue(entity, field) {
+  if (field === 'ownedBy') return entity.ownedBy ?? entity.owned_by;
+  return entity[field];
+}
+
 function diffEntities(before, after, type) {
   const deltas = [];
   const keyOf = type === 'item'
@@ -37,8 +52,8 @@ function diffEntities(before, after, type) {
       const prev = beforeMap.get(key);
       const changes = [];
       for (const field of TRACKED_FIELDS[type] ?? []) {
-        const from = prev[field];
-        const to   = entity[field];
+        const from = fieldValue(prev, field);
+        const to   = fieldValue(entity, field);
         if (from !== to && !(from == null && to == null)) {
           changes.push({ field, from, to });
         }
