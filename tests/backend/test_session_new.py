@@ -9,20 +9,17 @@ conftest.py — no real OpenAI, no real fs-manager. The tests verify:
 - error modes return usable HTTP status codes
 """
 
-import json
-import re
-
 
 def _opening_response() -> str:
     return (
         "You step from the trackless wastes into the Crossroads Tavern. "
         "Old Maren watches from a corner; firelight flickers.\n"
         "<world_update>\n"
-        '{'
+        "{"
         '"world": {"currentLocation": "Crossroads Tavern", "tension": 2},'
         '"characters": [{"name": "Old Maren", "action": "upsert", "role": "npc", "status": "alive"}],'
         '"locations": [{"name": "Crossroads Tavern", "action": "upsert", "type": "tavern"}]'
-        '}\n'
+        "}\n"
         "</world_update>"
     )
 
@@ -93,9 +90,7 @@ def test_new_session_dispatches_initial_world_state_to_fs_manager(
     assert session_target.endswith(".json")
 
 
-def test_new_session_commits_snapshot_to_git_sync(
-    client, fake_openai, fake_commit_log
-):
+def test_new_session_commits_snapshot_to_git_sync(client, fake_openai, fake_commit_log):
     """Per ADR 0001 Phase 1, session creation must commit the
     initial state through git-sync after the fs-manager writes
     succeed. Verifies the commit_snapshot dispatch fires with the
@@ -188,7 +183,9 @@ def test_new_session_returns_502_when_session_write_fails(
     def failing_dispatch(config, payload, *, client=None, timeout=30.0):
         calls["count"] += 1
         if calls["count"] == 1:
-            return engine.DispatchResult(ok=True, status_code=200, body={"success": True})
+            return engine.DispatchResult(
+                ok=True, status_code=200, body={"success": True}
+            )
         return engine.DispatchResult(
             ok=False,
             status_code=503,

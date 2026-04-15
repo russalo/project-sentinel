@@ -84,9 +84,13 @@ class Settings:
             openai_api_key=_env("OPENAI_API_KEY", "") or "",
             openai_base_url=_env("OPENAI_BASE_URL"),
             dm_model=_env("DM_MODEL", "gpt-4o-mini") or "gpt-4o-mini",
-            max_completion_tokens=int(_env("DM_MAX_COMPLETION_TOKENS", "2000") or "2000"),
-            fs_manager_url=_env("FS_MANAGER_URL", "http://127.0.0.1:8010") or "http://127.0.0.1:8010",
-            git_sync_url=_env("GIT_SYNC_URL", "http://127.0.0.1:8012") or "http://127.0.0.1:8012",
+            max_completion_tokens=int(
+                _env("DM_MAX_COMPLETION_TOKENS", "2000") or "2000"
+            ),
+            fs_manager_url=_env("FS_MANAGER_URL", "http://127.0.0.1:8010")
+            or "http://127.0.0.1:8010",
+            git_sync_url=_env("GIT_SYNC_URL", "http://127.0.0.1:8012")
+            or "http://127.0.0.1:8012",
             data_dir=DATA_DIR,
             cors_allowed_origins=tuple(
                 (

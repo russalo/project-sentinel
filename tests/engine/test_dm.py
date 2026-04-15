@@ -11,8 +11,8 @@ SDK — if the DM agent starts reading new fields, the helpers will
 need updating, and that's the right signal.
 """
 
-from dataclasses import dataclass, field
-from typing import Any, Iterable
+from dataclasses import dataclass
+from typing import Any
 
 import pytest
 
@@ -78,10 +78,14 @@ class _FakeCompletions:
         self.calls.append(kwargs)
         if kwargs.get("stream"):
             return iter(
-                _FakeStreamChunk(choices=[_FakeStreamChoice(delta=_FakeDelta(content=token))])
+                _FakeStreamChunk(
+                    choices=[_FakeStreamChoice(delta=_FakeDelta(content=token))]
+                )
                 for token in self._stream_tokens
             )
-        return _FakeResponse(choices=[_FakeChoice(message=_FakeMessage(content=self._response_text))])
+        return _FakeResponse(
+            choices=[_FakeChoice(message=_FakeMessage(content=self._response_text))]
+        )
 
 
 class _FakeChat:
@@ -95,7 +99,9 @@ class _FakeOpenAI:
 
 
 def _make_config() -> Config:
-    return Config(openai_api_key="test-key", dm_model="test-model", max_completion_tokens=1234)
+    return Config(
+        openai_api_key="test-key", dm_model="test-model", max_completion_tokens=1234
+    )
 
 
 def _make_turn_input(player_action: str = "I look around.") -> DMTurnInput:
@@ -173,7 +179,10 @@ def test_build_messages_renders_populated_collections():
             {"name": "Compass"},
         ],
         recent_turns=[
-            {"playerAction": "Enter the plaza.", "narrative": "Rain patters on cobblestone."},
+            {
+                "playerAction": "Enter the plaza.",
+                "narrative": "Rain patters on cobblestone.",
+            },
         ],
     )
     messages = _build_messages(ctx, "Greet Kael.")
@@ -297,14 +306,19 @@ def test_stream_turn_accumulation_round_trips_through_fact_extractor():
     client = _FakeOpenAI()
     client.chat.completions.set_stream_tokens(tokens)
 
-    accumulated = "".join(stream_turn(_make_config(), _make_turn_input(), client=client))
+    accumulated = "".join(
+        stream_turn(_make_config(), _make_turn_input(), client=client)
+    )
     result = extract(
         accumulated,
         "123e4567-e89b-12d3-a456-426614174000",
         turn_number=1,
     )
     assert result.payload is not None
-    assert result.payload["updates"][0]["target_file"] == "data/state/core/world/state.json"
+    assert (
+        result.payload["updates"][0]["target_file"]
+        == "data/state/core/world/state.json"
+    )
     assert "tavern hushes" in result.narrative
     assert "<world_update>" not in result.narrative
 
@@ -390,7 +404,9 @@ def test_build_intro_messages_falls_back_to_default_seed_when_none():
 
 
 def test_build_intro_messages_uses_provided_seed_when_given():
-    messages = _build_intro_messages(_make_intro_input(world_seed="A sunlit desert kingdom"))
+    messages = _build_intro_messages(
+        _make_intro_input(world_seed="A sunlit desert kingdom")
+    )
     user = messages[1]["content"]
     assert "sunlit desert kingdom" in user
     assert "classic dark fantasy" not in user.lower()

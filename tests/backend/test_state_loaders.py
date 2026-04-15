@@ -78,9 +78,7 @@ def test_load_world_context_reads_world_and_collections(tmp_data_dir: Path):
 
 def test_load_world_context_skips_malformed_json_files(tmp_data_dir: Path):
     core = tmp_data_dir / "state" / "core"
-    (core / "entities" / "good.json").write_text(
-        json.dumps({"name": "Good"})
-    )
+    (core / "entities" / "good.json").write_text(json.dumps({"name": "Good"}))
     (core / "entities" / "bad.json").write_text("{not valid json")
     (core / "entities" / "wrong_shape.json").write_text(
         json.dumps(["not", "an", "object"])
@@ -133,7 +131,9 @@ def test_read_session_treats_non_dict_root_as_missing(tmp_data_dir: Path):
 
 def test_session_file_path_roundtrip(tmp_data_dir: Path):
     p = session_file_path(tmp_data_dir, VALID_SESSION_ID)
-    assert p == tmp_data_dir / "state" / "core" / "sessions" / f"{VALID_SESSION_ID}.json"
+    assert (
+        p == tmp_data_dir / "state" / "core" / "sessions" / f"{VALID_SESSION_ID}.json"
+    )
 
 
 # ── path traversal / UUID validation ────────────────────────────────

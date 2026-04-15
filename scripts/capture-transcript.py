@@ -174,9 +174,7 @@ def _resolve_session_id(hook_input: dict) -> str:
     back to ``'session'``.
     """
     raw = (
-        hook_input.get("session_id")
-        or os.environ.get("CLAUDE_SESSION_ID")
-        or "session"
+        hook_input.get("session_id") or os.environ.get("CLAUDE_SESSION_ID") or "session"
     )
     cleaned = "".join(c for c in str(raw) if c.isalnum() or c in "-_")[
         :_SESSION_ID_MAX_LEN

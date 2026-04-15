@@ -41,7 +41,9 @@ import jsonschema
 from jsonschema.validators import Draft202012Validator
 
 _SCHEMA_PATH = (
-    Path(__file__).resolve().parent.parent / "schemas" / "apply_world_update.schema.json"
+    Path(__file__).resolve().parent.parent
+    / "schemas"
+    / "apply_world_update.schema.json"
 )
 
 

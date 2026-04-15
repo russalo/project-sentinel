@@ -170,7 +170,9 @@ def test_protected_field_list_includes_core_faction_id(client, session_uuid, tmp
     # Regression test for the missing `core_faction_id` entry in
     # PROTECTED_FIELDS. ARCHITECTURE.md §4 listed it as protected;
     # the set did not include it until this PR.
-    faction_path = tmp_path / "data" / "state" / "core" / "factions" / "shadow_court.json"
+    faction_path = (
+        tmp_path / "data" / "state" / "core" / "factions" / "shadow_court.json"
+    )
     faction_path.parent.mkdir(parents=True, exist_ok=True)
     faction_path.write_text('{"name": "Shadow Court", "relation": 0}')
 
@@ -297,7 +299,9 @@ def test_session_log_exempt_from_namespace_gate_for_community_payload(
     response = client.post("/tools/apply_world_update", json=payload)
     assert response.status_code == 200
 
-    session_log = tmp_path / "data" / "lore" / "core" / "sessions" / f"{session_uuid}.md"
+    session_log = (
+        tmp_path / "data" / "lore" / "core" / "sessions" / f"{session_uuid}.md"
+    )
     assert session_log.exists()
     assert "Test log entry" in session_log.read_text()
 

@@ -112,7 +112,10 @@ def test_location_upsert_produces_valid_payload():
     )
     result = extract(raw, VALID_SESSION_ID, turn_number=1)
     assert result.payload is not None
-    assert result.payload["updates"][0]["target_file"] == "data/state/core/locations/crossroads_tavern.json"
+    assert (
+        result.payload["updates"][0]["target_file"]
+        == "data/state/core/locations/crossroads_tavern.json"
+    )
     assert validate(result.payload).ok
 
 
@@ -133,7 +136,10 @@ def test_faction_upsert_produces_valid_payload():
     )
     result = extract(raw, VALID_SESSION_ID, turn_number=2)
     assert result.payload is not None
-    assert result.payload["updates"][0]["target_file"] == "data/state/core/factions/the_grey_pact.json"
+    assert (
+        result.payload["updates"][0]["target_file"]
+        == "data/state/core/factions/the_grey_pact.json"
+    )
     assert validate(result.payload).ok
 
 
@@ -154,7 +160,10 @@ def test_item_upsert_produces_valid_payload():
     )
     result = extract(raw, VALID_SESSION_ID, turn_number=1)
     assert result.payload is not None
-    assert result.payload["updates"][0]["target_file"] == "data/state/core/items/iron_key.json"
+    assert (
+        result.payload["updates"][0]["target_file"]
+        == "data/state/core/items/iron_key.json"
+    )
     assert validate(result.payload).ok
 
 
@@ -187,9 +196,7 @@ def test_multiple_collections_combined_into_single_payload():
             "characters": [
                 {"name": "Kael", "action": "upsert", "role": "npc", "status": "alive"}
             ],
-            "items": [
-                {"name": "Wall Torch", "action": "upsert", "type": "misc"}
-            ],
+            "items": [{"name": "Wall Torch", "action": "upsert", "type": "misc"}],
         },
     )
     result = extract(raw, VALID_SESSION_ID, turn_number=2)

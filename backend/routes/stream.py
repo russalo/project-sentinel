@@ -147,7 +147,10 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
             dispatch = engine.apply_world_update(config, extracted.payload)
             if not dispatch.ok:
                 yield _sse_event(
-                    {"type": "error", "content": f"fs-manager rejected update: {dispatch.error}"}
+                    {
+                        "type": "error",
+                        "content": f"fs-manager rejected update: {dispatch.error}",
+                    }
                 )
 
         # Append the turn to the session file and re-serialize it.
@@ -209,9 +212,7 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
             # directly — it already includes the "git-sync rejected
             # commit (<status>):" prefix so wrapping it again would
             # produce redundant double prefixes in the UI.
-            yield _sse_event(
-                {"type": "error", "content": commit_result.error}
-            )
+            yield _sse_event({"type": "error", "content": commit_result.error})
 
         yield "data: [DONE]\n\n"
 

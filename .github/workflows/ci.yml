@@ -48,8 +48,12 @@ jobs:
         run: pytest tests/ -v
 
   # ----------------------------------------------------------------
-  # Job 2: Lint and format-check all Python MCP server code
+  # Job 2: Lint and format-check every Python package in the repo
   # ----------------------------------------------------------------
+  # Scope originally was mcp-servers/ only; expanded to engine/,
+  # backend/, tests/, and scripts/ so style drift in Python code
+  # outside the MCP servers stops being invisible to CI. See
+  # docs/TESTING.md "What runs in CI" for the current list.
   lint-python:
     name: Lint Python
     runs-on: ubuntu-latest
@@ -65,10 +69,10 @@ jobs:
         run: pip install ruff
 
       - name: Check for lint errors
-        run: ruff check mcp-servers/
+        run: ruff check engine/ backend/ tests/ scripts/ mcp-servers/
 
       - name: Check formatting
-        run: ruff format --check mcp-servers/
+        run: ruff format --check engine/ backend/ tests/ scripts/ mcp-servers/
 
   # ----------------------------------------------------------------
   # Job 3: TypeScript type-check all libs and artifacts
