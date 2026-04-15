@@ -11,6 +11,11 @@ export const useUIStore = create((set) => ({
   activeTab: 'codex', // 'codex', 'inventory', 'quests', 'map'
   setActiveTab: (tab) => set({ activeTab: tab }),
 
+  // Selected entity for right-panel detail view
+  selectedEntity: null,   // { entity: {...}, type: 'character'|'location'|'faction'|'item' }
+  setSelectedEntity: (entity, type) => set({ selectedEntity: { entity, type }, rightPanelCollapsed: false }),
+  clearSelectedEntity: () => set({ selectedEntity: null }),
+
   // Focus mode (full narrative, no side panels)
   focusMode: false,
   toggleFocusMode: () => set((state) => ({ focusMode: !state.focusMode })),
