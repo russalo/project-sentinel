@@ -1,0 +1,34 @@
+name = "Corporate Tower"
+slug = "corporate-tower"
+genre = "cyberpunk"
+
+prompt_fragment = """
+Halberd-Nine is the hundred-and-twelve-storey central tower
+of the Halberd Group, a mid-tier biotech with a fast-rising
+stock price and a slow-rising internal body count. The
+tower is its own neighbourhood: atrium levels with legally
+separate air recycling, six internal transit lines, a
+resident population of about eighteen thousand employees
+on long-term housing contracts, and enough private security
+to be legally considered a small army in three jurisdictions.
+The floors above ninety are restricted in ways that are
+not published.
+
+Canonical fixtures for the opening scene:
+- Administrator Avilés, the building manager for the
+  public floors, who will greet any legitimate visitor
+  with the same professionally warm smile and who has
+  not been above the sixty-fifth floor in eleven years.
+- Dr. Imelda Fent, a Halberd research lead whose
+  submission of a certain internal report six weeks ago
+  has made her difficult to schedule meetings with and
+  has put her name on a list that the wrong people
+  are reading.
+- The blackout floor — an entire storey between 78 and
+  80 that no employee can access and which does not
+  appear in the building's public directory.
+
+Open the player in the tower's atrium with a legitimate
+reason to be there. The reason is legitimate. The situation
+is not.
+"""

@@ -1,0 +1,23 @@
+name = "Western"
+slug = "western"
+
+prompt_fragment = """
+A frontier of hard distances, unreliable law, and a sun that
+does not care. Towns are small, dusty, and watched over by a
+sheriff, a mayor, or a corporation — sometimes all three, and
+sometimes the same man. Trains and telegraphs reach some places
+and not others; the difference defines whole lives. Cattle, rail,
+and silver are the things people kill over.
+
+The old nations on this land are still here, still owed. Their
+stories and their people are not background — they are actors in
+every scene that matters. Outlaws, drifters, card sharps, and
+preachers move between towns on horseback, by stagecoach, or on
+foot. Violence is quick, usually ugly, and rarely clean.
+
+Language should be plain, physical, and weather-aware: dust, sun,
+shade, leather, iron, creek, ridge, wire. Let silence do real
+work — a stare held too long means more than a sentence. Avoid
+modern idiom and any genre nostalgia that flattens the period
+into costume. This place is mean to its children.
+"""

@@ -1,0 +1,31 @@
+name = "Outer Ring"
+slug = "outer-ring"
+genre = "sci-fi"
+
+prompt_fragment = """
+The Outer Ring is the loose name for the scattered
+settlements along a gas giant's ring system — habitats
+built inside tumbled ice boulders, docked freighters
+converted into apartment blocks, and one refinery the size
+of a small city that refines nothing anymore. Nothing out
+here is close to anything else. Communications lag by
+seconds or minutes. Law is whatever the nearest
+station-master is willing to enforce, and the nearest
+station-master is always a specific person with a specific
+grudge.
+
+Canonical fixtures for the opening scene:
+- The Harrower, a decommissioned mining rig now used as
+  a trading hub, whose current operator has not been seen
+  outside their office in six months.
+- Pilot Yuliya Crane, a retired racer who runs the best
+  short-hop ferry between the inhabited rocks and who is
+  running out of both spare parts and patience.
+- The Silent Ring, a stretch of the main broadcast band
+  that has been empty for three weeks — nobody out here
+  transmits on it anymore, and nobody will say why.
+
+Open the player docked at the Harrower with a contract that
+only makes sense if the client knows something the player
+does not.
+"""

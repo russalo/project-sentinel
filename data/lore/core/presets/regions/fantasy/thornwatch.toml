@@ -1,0 +1,29 @@
+name = "Thornwatch"
+slug = "thornwatch"
+genre = "fantasy"
+
+prompt_fragment = """
+Thornwatch is an old forest that has been a border for as long
+as anyone keeps records. The trees here grow in unnatural
+patterns — roots that surface in rings, crowns that lean
+toward one compass point, bark that bleeds a thin sap the
+colour of rust. The Watch itself is a string of abandoned and
+partly abandoned fort-towers built along the forest's edge by
+a kingdom that is no longer sure which neighbour they were
+meant to guard against.
+
+Canonical fixtures for the opening scene:
+- Ser Denna, a knight of the old Thornwatch order, still
+  rides the forest's edge alone. Her mandate lapsed two
+  generations ago, but she has not been told.
+- The Briarfolk, a small scattered people who live inside
+  the forest and consider the trees kin. They have their
+  own count of the years. They will not lie to outsiders,
+  but they will also not hurry.
+- The fifth tower, Deepwatch, which is locked from the
+  inside by something that still answers when knocked on.
+
+Open the player at the forest's edge, late in the day.
+Thornwatch is best approached when you are already committed
+to whatever brought you here.
+"""

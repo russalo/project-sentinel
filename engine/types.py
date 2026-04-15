@@ -75,8 +75,22 @@ class IntroInput:
     ``sandbox``/``permadeath`` fields are optional World Generation
     Layer 1 inputs — when any of them are set, the intro prompt
     appends a "CREATION CONTEXT" block so the LLM can anchor its
-    opening to the player's choices. No preset lookups happen yet;
-    these are free-form strings passed straight through.
+    opening to the player's choices. These are free-form strings
+    passed straight through when no preset content is resolved.
+
+    World Generation Layer 2 (preset content framework) adds four
+    optional ``*_prompt`` fields: ``genre_prompt``, ``persona_prompt``,
+    ``mood_prompt``, and ``region_prompt``. When set, they carry
+    multi-sentence authored content loaded by the backend from
+    ``data/lore/core/presets/`` and are injected into the intro
+    prompt as standalone paragraphs (not one-line bullets). When a
+    ``*_prompt`` field is set, ``_creation_context_lines`` omits the
+    corresponding bare label line so the prompt is not redundant.
+    The distinction is an intentional separation between "the player
+    picked this label" (bare field, Layer 1) and "here is the real
+    content behind that label" (prompt field, Layer 2). Tone,
+    sandbox, and permadeath remain label-only since they are
+    modifiers rather than content bundles.
     """
 
     world_name: str
@@ -100,6 +114,18 @@ class IntroInput:
     mood: str | None = None
     sandbox: bool = False
     permadeath: bool = False
+
+    # Layer 2 preset-content fields. Each carries a multi-sentence
+    # paragraph authored under data/lore/core/presets/<type>/<id>.toml
+    # and loaded by the backend's ``presets.load_preset`` helper. The
+    # engine does not load them itself — it only knows how to format
+    # them into the intro prompt. When None (the common case for
+    # pre-Layer-2 callers and tests), the bare label fields above
+    # are used instead, preserving backward compatibility.
+    genre_prompt: str | None = None
+    persona_prompt: str | None = None
+    mood_prompt: str | None = None
+    region_prompt: str | None = None
 
 
 @dataclass

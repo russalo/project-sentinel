@@ -312,6 +312,15 @@ def _build_intro_messages(intro: IntroInput) -> list[dict]:
     permadeath) are set, append a "CREATION CONTEXT" block listing
     only the fields the player actually specified. The DM sees them
     as free-form strings and can anchor the opening to them.
+
+    World Generation Layer 2: if any of the ``*_prompt`` fields are
+    set, prepend a "WORLD FOUNDATIONS" block of authored preset
+    content (multi-sentence paragraphs loaded by the backend from
+    ``data/lore/core/presets/``). The paragraphs go in as standalone
+    blocks, not one-line bullets, so the LLM treats them as setting
+    material rather than label metadata. When a ``*_prompt`` is
+    present, ``_creation_context_lines`` omits the corresponding
+    bare bullet so the same information does not appear twice.
     """
     seed_context = intro.world_seed if intro.world_seed else _INTRO_SEED_FALLBACK
 
@@ -321,6 +330,15 @@ def _build_intro_messages(intro: IntroInput) -> list[dict]:
         f"- Player Character: {intro.player_name}, a {intro.player_class}\n"
         f"- {seed_context}\n"
     )
+
+    preset_block = _format_preset_block(intro)
+    if preset_block:
+        user_content += (
+            "\nWORLD FOUNDATIONS (authored preset content — treat as "
+            "canonical setting material):\n\n"
+        )
+        user_content += preset_block
+        user_content += "\n"
 
     creation_lines = _creation_context_lines(intro)
     if creation_lines:
@@ -351,6 +369,19 @@ def _creation_context_lines(intro: IntroInput) -> list[str]:
     emitted when True — the default (False) means "player didn't
     opt into this mode."
 
+    Layer 2 suppression rule: when a field has a corresponding
+    ``*_prompt`` set on the IntroInput, the bare label line is
+    omitted here so the WORLD FOUNDATIONS block (a full paragraph
+    of authored preset content) carries the information alone. The
+    four paired fields are:
+    - ``genre`` / ``genre_prompt``
+    - ``starting_region`` / ``region_prompt``
+    - (``persona_name`` or ``persona_id``) / ``persona_prompt``
+    - ``mood`` / ``mood_prompt``
+    ``tone``, ``sandbox``, and ``permadeath`` are always label-only
+    (no preset counterpart) because they are modifiers rather than
+    content bundles.
+
     Persona formatting (Layer 1.5): when ``persona_name`` is present,
     the line reads ``"DM persona: <name> — <description>"`` (or just
     ``"DM persona: <name>"`` when no description is supplied). When
@@ -359,16 +390,17 @@ def _creation_context_lines(intro: IntroInput) -> list[str]:
     to the ``_format_persona_line`` helper.
     """
     lines: list[str] = []
-    if intro.genre:
+    if intro.genre and not intro.genre_prompt:
         lines.append(f"Genre: {intro.genre}")
     if intro.tone:
         lines.append(f"Tone: {intro.tone}")
-    if intro.starting_region:
+    if intro.starting_region and not intro.region_prompt:
         lines.append(f"Starting region: {intro.starting_region}")
-    persona_line = _format_persona_line(intro)
-    if persona_line:
-        lines.append(persona_line)
-    if intro.mood:
+    if not intro.persona_prompt:
+        persona_line = _format_persona_line(intro)
+        if persona_line:
+            lines.append(persona_line)
+    if intro.mood and not intro.mood_prompt:
         lines.append(f"DM mood: {intro.mood}")
     if intro.sandbox:
         lines.append("Sandbox mode: the player prefers an open, non-linear world")
@@ -377,6 +409,34 @@ def _creation_context_lines(intro: IntroInput) -> list[str]:
             "Permadeath mode: the player has opted into permanent character death — consequences are real"
         )
     return lines
+
+
+def _format_preset_block(intro: IntroInput) -> str:
+    """Return the WORLD FOUNDATIONS paragraph block for Layer 2 presets.
+
+    When any of ``genre_prompt`` / ``region_prompt`` / ``persona_prompt``
+    / ``mood_prompt`` are set on the IntroInput, format each as a
+    standalone paragraph under an uppercase header (e.g. ``GENRE:``).
+    Paragraphs are joined with a blank line so the LLM sees them as
+    distinct setting blocks. Returns an empty string when no preset
+    fields are set so the caller can cleanly skip the whole section.
+
+    Ordering is deliberate: genre first (sets the overall world
+    frame), starting region second (anchors the opening scene to a
+    specific place), persona third (voice/tone for narration), mood
+    last (the finest-grained modifier, meant to colour the prior
+    blocks rather than replace them).
+    """
+    fragments: list[str] = []
+    if intro.genre_prompt:
+        fragments.append(f"GENRE:\n{intro.genre_prompt.strip()}")
+    if intro.region_prompt:
+        fragments.append(f"STARTING REGION:\n{intro.region_prompt.strip()}")
+    if intro.persona_prompt:
+        fragments.append(f"DM PERSONA:\n{intro.persona_prompt.strip()}")
+    if intro.mood_prompt:
+        fragments.append(f"MOOD:\n{intro.mood_prompt.strip()}")
+    return "\n\n".join(fragments)
 
 
 def _format_persona_line(intro: IntroInput) -> str | None:

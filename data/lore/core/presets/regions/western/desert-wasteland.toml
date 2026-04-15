@@ -1,0 +1,34 @@
+name = "Desert Wasteland"
+slug = "desert-wasteland"
+genre = "western"
+
+prompt_fragment = """
+The Bitter Flats are the stretch of true desert that starts
+a day's ride south of the last reliable water and ends — if
+it ends — somewhere past the mountains on the horizon. The
+cartographers who drew maps of this country left the middle
+of it blank on purpose. A few things are known: there is a
+wagon road of sorts, marked every couple of miles by
+cairns the old tribes still maintain; there are at least
+three outfits of men who work the Flats because they can't
+work anywhere else; and there is a town out there that
+only half the maps agree exists.
+
+Canonical fixtures for the opening scene:
+- Hannit, a guide from the people whose land this is and
+  always was. She takes paying customers across the Flats
+  when they are worth the trouble and refuses them when
+  they are not.
+- The Shorn Ridge gang, a small outfit that works the
+  wagon road between the last town and the empty middle.
+  They are not the worst thing on the Flats.
+- Salvation, the town that only half the maps agree
+  exists — a dozen buildings around a working well in
+  the blank part of the map. The people who live there
+  do not particularly want to be found, but they will not
+  turn away a traveller who reaches their door in good
+  faith.
+
+Open the player at the last watering hole before the Flats,
+preparing for a crossing they already know is a bad idea.
+"""

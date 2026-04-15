@@ -1,0 +1,30 @@
+name = "Asteroid Field"
+slug = "asteroid-field"
+genre = "sci-fi"
+
+prompt_fragment = """
+The Berelt Sparse is a low-density asteroid field between
+two of the system's major shipping lanes. It is not rich
+enough to interest the big mining concerns and not empty
+enough to be safely ignored. Independent prospectors, salvage
+crews, and the occasional corporate survey team move
+through it in small, cheap ships they call bugs — too
+light to do any other work but perfect for threading
+between rocks.
+
+Canonical fixtures for the opening scene:
+- The Bug Bar at Marker 17, a pressurised shed welded to
+  an oblong rock halfway through the field. It serves two
+  kinds of coffee and one kind of news.
+- Old Ziko, who logs every ship that passes Marker 17 in a
+  paper notebook because he does not trust the Sparse's
+  comms relay. He does not trust the comms relay for a
+  reason.
+- The ghost beacon — an unidentified automated transmitter
+  that has been pinging from somewhere in the field's
+  deep middle for at least a decade, and which nobody
+  has been paid enough to go find.
+
+Open the player at Marker 17 with a job that involves the
+deep middle of the field.
+"""

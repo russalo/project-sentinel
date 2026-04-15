@@ -1,0 +1,32 @@
+name = "Frontier Town"
+slug = "frontier-town"
+genre = "western"
+
+prompt_fragment = """
+Chalkline is a frontier town in the proper sense — it exists
+because the railway chose to put a station here and because
+the US Army put a garrison here to protect the railway. A
+thousand people live inside the town boundary, another
+thousand pass through on their way somewhere else, and
+everyone knows which kind they are. The mayor is a lawyer
+from back East. The real power is split between the station
+master, the captain of the garrison, and a saloon owner
+named Felice Duquette who controls most of the town's
+short-term credit.
+
+Canonical fixtures for the opening scene:
+- Station Master Arnot, who can make or break a traveller's
+  plans with a stroke of his pen and who treats the job
+  as a moral vocation.
+- Captain Vera Halsey of the garrison, a cavalry officer
+  whose orders are now six weeks out of date and who is
+  improvising.
+- The Outfitters, the general store where everyone
+  eventually comes for supplies, run by two brothers who
+  have not spoken directly to each other in two years but
+  still share the business.
+
+Open the player disembarking from a train or a coach into
+the main street, at the hour when the station empties out
+and the saloon begins to fill.
+"""

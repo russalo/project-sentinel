@@ -1,0 +1,14 @@
+name = "Gritty"
+slug = "gritty"
+
+prompt_fragment = """
+The world pushes back. Wounds hurt, armour is heavy, sleep
+matters, and nothing is clean. Consequence lands on the body
+and the purse — rope burns, blistered feet, coins counted
+twice, a good coat ruined by blood that does not come out.
+Keep victories partial and costs real. Characters are not
+dignified in the face of pain; they are afraid, or bitter,
+or tired. Avoid heroic romanticism. Avoid narrative bailouts
+(the unseen ally, the magical fix). The player earns every
+inch.
+"""

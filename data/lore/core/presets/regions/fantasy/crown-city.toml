@@ -1,0 +1,28 @@
+name = "Crown City"
+slug = "crown-city"
+genre = "fantasy"
+
+prompt_fragment = """
+Crown City is the capital of a kingdom that has forgotten why
+it is a kingdom. The old line ended three rulers ago. A
+council of high houses now argues in the palace throne room
+over rituals that nobody has the authority to interpret. The
+city itself is large, layered, and deeply tired: tenement
+districts built on top of older tenement districts, sewers
+that are actually drowned streets, guild quarters where the
+trade is still done by families that no longer remember why
+their craft was secret.
+
+Canonical fixtures for the opening scene:
+- The Four Houses, in perpetual cold negotiation — Corven,
+  Marn, Uld, and Voss. Each believes they alone remember
+  how to choose a rightful heir.
+- The Old Palace, unoccupied except by its staff and the
+  unburied effigy of the last true monarch.
+- The Rumour Market in the Tin Quarter, where information
+  is the only reliable currency and debts of knowledge
+  outrank debts of coin.
+
+Open the player on a day when one of the houses has just
+made a move. The city notices, slowly, in layers.
+"""

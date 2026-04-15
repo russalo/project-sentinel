@@ -1,0 +1,12 @@
+name = "Ominous"
+slug = "ominous"
+
+prompt_fragment = """
+A low, sustained pressure lies under everything. Describe
+ordinary details with one extra beat of attention, as if
+the narrator is listening for something the characters
+cannot hear. Silences carry weight. Weather is never
+incidental. Light is always doing something — thinning,
+lengthening, failing. Nothing overt happens yet, but the
+room has noticed the player enter it.
+"""

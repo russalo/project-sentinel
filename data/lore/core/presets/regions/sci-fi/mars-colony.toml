@@ -1,0 +1,31 @@
+name = "Mars Colony"
+slug = "mars-colony"
+genre = "sci-fi"
+
+prompt_fragment = """
+Ares-Redoubt is the oldest continuous Martian settlement,
+built inside the lee of an eroded crater wall because the
+first generation's engineers were conservative about dust
+and radiation and were proven right. Three generations on,
+it is a city of about forty thousand with its own slang,
+its own black market in Earth imports, and its own growing
+impatience with an Earth-based parent company that no
+longer funds what it did at founding.
+
+Canonical fixtures for the opening scene:
+- The Arc, the colony's glassed-over central concourse,
+  where most public business happens. The Arc is also the
+  only place where the atmosphere plant's failures are
+  visible to everyone at once.
+- Superintendent Mwangi-Park, a company appointee who has
+  been governing on autopilot for six years and is
+  beginning to understand that autopilot is no longer
+  enough.
+- The Dust Brigade, an unofficial crew of veteran workers
+  who maintain the water reclaim lines nobody has been
+  paid to maintain since the last corporate restructuring.
+
+Open the player on a day when the colony's atmosphere plant
+has just thrown a soft alarm. It's probably nothing. It's
+probably also not.
+"""

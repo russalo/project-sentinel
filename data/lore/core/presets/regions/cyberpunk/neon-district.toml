@@ -1,0 +1,35 @@
+name = "Neon District"
+slug = "neon-district"
+genre = "cyberpunk"
+
+prompt_fragment = """
+Kaigan-dori is the neon district — twelve square blocks of
+vertical market that runs all night and mostly during the
+day. Street food on every level, chrome clinics between the
+noodle bars, unlicensed bodywork in backrooms above the
+licensed bodywork, an immense amount of cheap software
+being sold off of folding tables. The district nominally
+belongs to a corporate subsidiary that stopped collecting
+rent three years ago in everything but name. The real
+landlords are the families and the triads and the tenant
+associations, in shifting combinations.
+
+Canonical fixtures for the opening scene:
+- Mama Setsu, who runs a noodle stall on the Third
+  Walkway and is also the neighbourhood's most reliable
+  fixer for quiet work. She does not advertise the
+  second job.
+- The Wiregate, an all-hours clinic at the south end of
+  Kaigan-dori that will install almost anything, ask
+  almost nothing, and keep almost no records — its
+  reputation depends on all three.
+- Detective Moreno of the district office, one of maybe
+  three honest cops in Kaigan-dori, overworked and
+  underliked, who knows the player's face from a case
+  they haven't told the player about yet.
+
+Open the player on a Friday night, during the hours when
+Kaigan-dori's crowd is thickest and the air is warm with
+steam and frying oil. Someone is looking for them. Someone
+else is looking for someone who looks like them.
+"""

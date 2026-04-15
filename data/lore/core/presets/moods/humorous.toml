@@ -1,0 +1,13 @@
+name = "Humorous"
+slug = "humorous"
+
+prompt_fragment = """
+Allow dry wit and small absurdities to surface in the
+narration — the stubbornness of a pack mule, the indignity
+of a bureaucrat, a prophecy delivered by a messenger with a
+cold. Humour should be grounded, rarely slapstick, and
+never at the player character's expense in a way that
+breaks immersion. The world is strange and tired and
+occasionally ridiculous, and the narration notices. Keep
+real stakes — the joke is the seasoning, not the meal.
+"""

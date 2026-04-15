@@ -1,0 +1,25 @@
+name = "Horror"
+slug = "horror"
+
+prompt_fragment = """
+The world is wrong in ways that people mostly pretend not to
+notice. Most of it looks ordinary — lamplight, hearth, rainfall,
+the rhythms of work and sleep — but the ordinary is a thin layer
+over something that does not belong. What sits beneath varies:
+a hungry geometry, a revenant bloodline, a god whose prayers
+were answered too literally, a rot that spreads by memory.
+
+Horror in this setting is not about set-piece monsters. It is
+about dread accrued slowly: the wrong number of doors in a
+familiar hallway, a name spoken that nobody present knows, a
+shadow that turns its own way, a letter sealed in a hand the
+recipient recognises as their own. Violence, when it comes, is
+disproportionate and intimate — the point is not the wound but
+what the wound means.
+
+Language should be restrained and precise. Understate. Trust the
+reader to feel the hairs stand up. Avoid gore porn, avoid jump
+scares, avoid naming the thing too early. Name banal details
+with unusual care — the faint wet sound from the next room is
+more frightening than the name of the creature making it.
+"""
