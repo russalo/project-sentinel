@@ -3,7 +3,7 @@ import { useLocation } from 'wouter';
 import { apiClient } from '../api/client';
 import { useWorldCreationStore } from '../stores/worldCreationStore';
 import { usePlayerStore } from '../stores/playerStore';
-import { useChatStore } from '../stores/chatStore';
+import { useChatStore, stripWorldUpdate } from '../stores/chatStore';
 import { useWorldStore } from '../stores/worldStore';
 import { usePersonaStore } from '../stores/personaStore';
 import { GenreSelector } from '../components/world-creation/GenreSelector';
@@ -150,6 +150,7 @@ export default function WorldCreation() {
         usePersonaStore.getState().setPersona(
           creation.personaId,
           selectedPersona?.name ?? creation.personaId,
+          selectedPersona?.moods,
         );
       }
       if (creation.mood) {
@@ -160,9 +161,15 @@ export default function WorldCreation() {
       clearMessages();
       if (data.turns?.length > 0) {
         const opening = data.turns[0];
+        // Strip the DM's <world_update> block from the opening
+        // narrative the same way chatStore.commitStreamMessage does
+        // for per-turn streams. Without this, the intro turn leaks
+        // the machine-readable block into the player-visible scroll
+        // on first load; the per-turn path was fixed in the same PR
+        // but this seed path used the raw text.
         addMessage({
           type: 'dm',
-          content: opening.narrative,
+          content: stripWorldUpdate(opening.narrative ?? ''),
           author: 'DM',
           timestamp: new Date(),
         });

@@ -7,7 +7,7 @@ import { SeedShareModal } from '../seed/SeedShareModal';
 import { StatusIndicator } from './StatusIndicator';
 
 export function TopBar({ worldName = 'The Shattered Expanse', seedString = 'ABC-DEF-GHI-JKL' }) {
-  const { personaName, mood, isLocked } = usePersonaStore();
+  const { personaName, mood, isLocked, availableMoods } = usePersonaStore();
   const { focusMode } = useUIStore();
   const [personaSheetOpen, setPersonaSheetOpen] = useState(false);
   const [seedModalOpen, setSeedModalOpen] = useState(false);
@@ -75,7 +75,7 @@ export function TopBar({ worldName = 'The Shattered Expanse', seedString = 'ABC-
         </div>
       </header>
 
-      <PersonaSheet open={personaSheetOpen} onClose={() => setPersonaSheetOpen(false)} moods={['neutral', 'ominous', 'lore-heavy']} />
+      <PersonaSheet open={personaSheetOpen} onClose={() => setPersonaSheetOpen(false)} moods={availableMoods} />
       <SeedShareModal open={seedModalOpen} onClose={() => setSeedModalOpen(false)} seed={seedString} worldName={worldName} />
     </>
   );

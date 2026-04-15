@@ -4,9 +4,18 @@ export const usePersonaStore = create((set) => ({
   // Persona type
   personaId: null,
   personaName: 'Oracle',
-  setPersona: (id, name) => set({ personaId: id, personaName: name }),
+  // The mood list that belongs to the active persona. Populated at
+  // session-create time from the preset metadata so the PersonaSheet
+  // only offers moods compatible with the chosen persona instead of
+  // a fixed Oracle list.
+  availableMoods: ['neutral', 'ominous', 'lore-heavy'],
+  setPersona: (id, name, moods) => set({
+    personaId: id,
+    personaName: name,
+    ...(Array.isArray(moods) && moods.length > 0 ? { availableMoods: moods } : {}),
+  }),
 
-  // Mood (always changeable)
+  // Mood (always changeable within the active persona's list)
   mood: 'neutral',
   setMood: (mood) => set({ mood }),
 

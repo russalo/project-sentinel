@@ -10,7 +10,7 @@ import { newId } from '../utils/id';
 // 2026-04-15 once the dispatch path was confirmed working
 // end-to-end and the visible block became distracting noise during
 // real walkthroughs.
-function stripWorldUpdate(text) {
+export function stripWorldUpdate(text) {
   return text.replace(/<world_update>[\s\S]*?<\/world_update>/g, '').trim();
 }
 
