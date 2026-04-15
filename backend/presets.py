@@ -100,7 +100,10 @@ def load_preset(
     if preset_type == "regions":
         if not genre:
             return None
-        path = preset_root / "regions" / _slugify(genre) / f"{slug}.toml"
+        genre_slug = _slugify(genre)
+        if not genre_slug:
+            return None
+        path = preset_root / "regions" / genre_slug / f"{slug}.toml"
     else:
         path = preset_root / preset_type / f"{slug}.toml"
 

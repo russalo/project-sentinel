@@ -101,6 +101,13 @@ def test_load_preset_regions_require_genre(tmp_path: Path) -> None:
     assert preset["name"] == "The Breach"
 
 
+def test_load_preset_regions_returns_none_when_genre_slug_is_all_punctuation(
+    tmp_path: Path,
+) -> None:
+    # "---" slugifies to "" — must not produce a path like regions//the-breach.toml
+    assert load_preset(tmp_path, "regions", "The Breach", genre="---") is None
+
+
 def test_load_preset_regions_slugify_the_genre_too(tmp_path: Path) -> None:
     _write_preset(
         tmp_path,
