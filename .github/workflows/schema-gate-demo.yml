@@ -69,20 +69,49 @@ jobs:
           [[ "$STATUS" == "422" ]] || (echo "FAIL: expected 422, got $STATUS" && exit 1)
 
       # ── Test 4: Protected field write ── expect 403 ───────────────
-      # Payload passes schema validation but contains a protected field
-      # (unique_id). The server's protected-field guard returns 403.
+      # Payload is core-authorized (namespace: "core") so the namespace
+      # gate passes, path is allowed, schema validates — but the data
+      # contains a protected field (unique_id). The server's
+      # protected-field guard returns 403 PROTECTED_FIELD_VIOLATION.
+      # The explicit "namespace": "core" is load-bearing here: without
+      # it, the namespace gate would fire first with its own 403 and
+      # this test would pass by accident on the wrong rejection path.
       - name: "Gate test 4: protected field write → 403"
         run: |
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
             -X POST http://localhost:8010/tools/apply_world_update \
             -H "Content-Type: application/json" \
             -d '{
+              "namespace": "core",
               "session_id": "550e8400-e29b-41d4-a716-446655440000",
               "log_entry": "Attempting to overwrite a protected identity field.",
               "updates": [{
                 "target_file": "data/state/core/entities/kael.json",
                 "operation": "update",
                 "data": { "unique_id": "hacked-id", "status": "alive" }
+              }]
+            }')
+          echo "Status: $STATUS"
+          [[ "$STATUS" == "403" ]] || (echo "FAIL: expected 403, got $STATUS" && exit 1)
+
+      # ── Test 5: Namespace gate ── expect 403 ──────────────────────
+      # Mirror of Test 4 without the "namespace": "core" token.
+      # Payload targets a core-gated path but has no authorization.
+      # The namespace gate returns 403 NAMESPACE_VIOLATION before the
+      # protected-field check even runs. This is the new enforcement
+      # added in the fs-manager security-gap closure PR.
+      - name: "Gate test 5: community payload → core path → 403"
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X POST http://localhost:8010/tools/apply_world_update \
+            -H "Content-Type: application/json" \
+            -d '{
+              "session_id": "550e8400-e29b-41d4-a716-446655440000",
+              "log_entry": "Unauthorized attempt to write a core entity.",
+              "updates": [{
+                "target_file": "data/state/core/entities/injected.json",
+                "operation": "create",
+                "data": { "name": "Injected" }
               }]
             }')
           echo "Status: $STATUS"
