@@ -39,6 +39,28 @@ _Last updated: 2026-04-15_
   "frontend strategy undecided" gate that blocked feature work until now
   is resolved. See [`VISION.md`](./VISION.md) § "Resolved decisions" for
   the rationale and `CLAUDE.md` for the updated agent guidance.
+- **World Generation Layer 2 shipped (PR #39).** The preset content +
+  generation pipeline that was previously vision-level work is now real:
+  5 genres, 3 personas, 6 moods, and 20 regions (4 per genre) live as
+  TOML files under `data/lore/core/presets/`. `backend/presets.py` loads them on
+  `POST /api/session/new`, and the engine's `_build_intro_messages`
+  injects the resolved fragments as a "WORLD FOUNDATIONS" paragraph
+  block above the existing one-line "CREATION CONTEXT" block.
+  Augments — rather than replaces — the Layer 1 (PR #20) and Layer 1.5
+  persona resolution (PR #33) work: the older fields stay on
+  `IntroInput` as graceful fallbacks when no preset matches. 70+ new
+  tests in `tests/backend/test_presets.py` and `tests/engine/test_dm.py`.
+- **Frontend test infrastructure landed (PR #37).** vitest +
+  @testing-library/react now run as a dedicated CI job; first 34 tests
+  cover `utils/delta.js` and the Panel UX primitives (`EntityCard`,
+  `DeltaMessage`). Adding more tests is now mechanical work — the
+  hard part (infra + the JSX automatic-runtime config) is done.
+- **fs-manager and git-sync both have first-class CI test suites.**
+  PR #29 added 16 fs-manager tests against a tmp-data fixture; PR #35
+  added 10 git-sync tests against a tmp git repo. Both servers are
+  exercised end-to-end (real file writes, real git commits) instead
+  of just contract-tested via httpx.MockTransport from the engine
+  side. The "MCP servers have no unit tests" gap is closed.
 
 ---
 
@@ -57,36 +79,38 @@ downstream work that doesn't exist yet, so writing the ADR now would be
 premature. The ADR is deferred until Entity Sweeper and system log work
 begin. See the BACKLOG entry for the full reframing.
 
-### 1. **Persona ID resolution (Layer 1.5)**
+### 1. **Frontend store + hook tests**
 
-PR #20 wired `persona_id` through to the DM intro prompt as a raw string,
-so the LLM sees `"DM persona: oracle"` with no context about what "oracle"
-means. Gemini flagged on review that an opaque ID is unlikely to make the
-LLM actually adopt the persona. Minimum viable fix: either (a) have the
-frontend send `personaName` + a one-line `personaDescription` alongside
-`personaId`, or (b) have the backend resolve the ID against a small
-in-memory catalog of known personas and inject the descriptive version into
-the intro prompt. Unblocks meaningful persona selection without waiting for
-the full preset system in the DM Personas & Content Framework BACKLOG item.
+Vitest infrastructure landed in PR #37 with the first 34 tests covering
+`utils/delta.js` and the Panel UX primitives (`EntityCard`, `DeltaMessage`).
+The next slice is the Zustand stores (`chatStore`, `worldStore`, `uiStore`,
+`personaStore`) and the `useDMStream` hook. `useDMStream` is the highest-
+value target because it carries the SSE event parsing + delta computation
++ pendingDeltas flush ordering that's been the source of multiple bugs
+(see PR #34's review history). Tests should mock `fetch` with a small
+SSE-event-emitting fake — no real backend required.
 
-- Backlog: [`Persona ID resolution (Layer 1.5)`](./BACKLOG.md)
-- Exit criteria: the DM intro prompt for a persona-selected session contains
-  the descriptive persona text, not the raw ID. Verified by a unit test
-  against `_build_intro_messages`.
+- Backlog: [`Expand apps/sentinel-ui/ test coverage to stores and hooks`](./BACKLOG.md)
+- Exit criteria: store unit tests landed; `useDMStream` has at least one
+  end-to-end test covering the player → token → world_update → [DONE]
+  ordering with delta insertion happening AFTER `commitStreamMessage()`.
 
-### 2. **git-sync unit tests**
+### 2. **World identity & multi-session ADR**
 
-Sibling of the fs-manager test suite that landed in PR #29. `git-sync` has
-zero test coverage today — no `tests/` directory, the engine-side dispatch
-tests only cover the HTTP contract via `httpx.MockTransport`. Test targets
-per the BACKLOG entry: happy-path commit with the standard
-`[sentinel] session=<id> turn=<N> — <summary>` message format, rollback
-behavior on commit failure, the "no changes" case (empty working tree
-after dispatch — must return `ok=True`), and repository-detection logic.
+The "world identity, world_seed persistence, and multi-session semantics"
+BACKLOG item has been queued for a while and now sits as a precondition
+for two unblocked items: (a) the seed-entity step of WC Layer 2 (region
+preset files describe canonical NPCs/locations in prose, but there's no
+structured guarantee — needs to know whether regions are keyed per world
+or globally shared), and (b) Phase 2 of the Panel UX system log (the
+backend hydration endpoint needs to know what session-id-to-world
+mapping it's filtering by). An ADR-sized decision before any
+implementation: per-clone single-world vs. multi-world-per-clone, how
+`world_seed` persists, what session resume looks like.
 
-- Backlog: [`Write the first unit tests for mcp-servers/git-sync/`](./BACKLOG.md)
-- Exit criteria: `tests/git_sync/test_server.py` exists with at least the
-  four behaviors above, wired into `pytest tests/` so CI runs it.
+- Backlog: [`World identity, world_seed persistence, and multi-session semantics`](./BACKLOG.md)
+- Exit criteria: ADR 0002 (or whatever number lands in order) merged
+  under `docs/adr/` capturing the decision and its rationale.
 
 ---
 
@@ -120,13 +144,15 @@ Work that's actionable but waiting on a specific trigger or decision:
 
 These belong in [`VISION.md`](./VISION.md):
 
-- 1.0 frontend stack decision (React stays vs. pivot)
-- World identity model + multi-session support
 - Background simulation / APScheduler ticking
 - `.spak` export / import / Airlock pipeline
 - Community pack gateway and validation CI
 - Sentinel Charter governance
 - Plugin API for third-party MCP tools
+
+(The 1.0 frontend stack decision and the genre/preset content system —
+both previously listed here — have shipped. See "Where we are" above
+and `VISION.md` § "Resolved decisions".)
 
 ---
 
