@@ -34,36 +34,61 @@ landed. Everything else in this document flows from that commitment.
 
 ---
 
+## Resolved decisions
+
+Things that were in "Open questions" and got answered. Kept here as a
+short retrospective so future agents can see how we got where we are.
+
+### The 1.0 frontend stack → React (decided 2026-04-15)
+
+`apps/sentinel-ui/` is React 19 + Vite + Tailwind v4 + Zustand. The
+question sat as an open item for weeks — the app existed because the
+Replit-era scaffolding left it behind, not because a first-principles
+evaluation picked it, and the decision was deferred to avoid premature
+commitment. Alternatives considered: a terminal-native client, a local
+desktop app (Electron/Tauri), an embedded pane inside Obsidian / Discord
+/ VS Code.
+
+**The answer landed by action, not by meeting.** On 2026-04-15, the
+`feat/panel-ux-entity-cards` branch shipped real `EntityCard` primitives,
+click-to-inspect wiring on the left-panel lists, and activated right-panel
+tabs. Shipping those features on the React app is a de-facto commitment
+— you don't build them twice — and the user explicitly endorsed making
+the decision explicit in the docs when that branch merged.
+
+**Rationale:**
+- The existing React prototype is close enough to 1.0 shape that a
+  from-scratch rewrite in another stack would cost more than it saves.
+- React's component model fits the "entity card + panel + drawer"
+  pattern naturally; the alternatives' strengths (terminal aesthetic,
+  desktop wrapper, embedded tool) don't pay rent against the UX
+  complexity the Panel UX BACKLOG item requires.
+- The Panel UX work itself is validating the choice by producing real
+  features. A decision that makes the next PR possible is the right
+  kind of decision to make.
+
+**What this unblocks:**
+- Feature work on `apps/sentinel-ui/` no longer needs the "do not build
+  new frontend features without explicit direction" gate from `CLAUDE.md`.
+- The Panel UX BACKLOG item stops being "blocked on stack decision" and
+  becomes "in progress" — though the ADR that was previously listed as
+  a prerequisite is itself being deferred until Entity Sweeper and
+  system log work begin (see the BACKLOG entry's "Before implementation:
+  ADR" paragraph for the reframing).
+
+**What this does NOT decide:**
+- Whether Sentinel ever ships additional client shapes alongside React
+  (a terminal client as a diegetic alternative, a CLI for automation).
+  That's a post-1.0 question. "React is the 1.0 client" doesn't mean
+  "React is the only client forever."
+
+---
+
 ## Open questions (the "not-yet-decided" list)
 
 These are the things I'm deliberately leaving unresolved until evidence
 forces a choice. Each one is a seam where the project could diverge
 meaningfully.
-
-### The 1.0 frontend stack
-
-`apps/sentinel-ui/` today is React 19 + Vite + Tailwind v4 + Zustand.
-It exists because it's what the Replit-era scaffolding left behind, not
-because a first-principles evaluation chose it. The rules in `CLAUDE.md`
-explicitly flag the 1.0 frontend as undecided and forbid new feature
-work until the decision is ratified.
-
-The real question isn't React-vs-something-else — it's *what shape of
-client does Sentinel want*:
-
-- A single-window web app (the current direction)
-- A terminal-native client (fits the diegetic aesthetic better, smaller
-  surface area, zero-install contributor story)
-- A local desktop app wrapping the backend (Electron / Tauri — removes
-  the deploy-a-webserver step for solo players)
-- An embedded pane inside an existing tool (Obsidian plugin, Discord bot,
-  VS Code extension — lowers the barrier to "where the player already is")
-
-Until the Panel UX ADR forces the question, I'm holding the line against
-adding features to the current React app. If React stays, the Panel UX
-ADR becomes the next piece of work. If it doesn't, the current app
-becomes a reference prototype and the real client gets designed from
-scratch.
 
 ### World identity and multi-session support
 
@@ -158,11 +183,13 @@ relevant lore from `data/lore/core/codex/` and `data/lore/community/`
 and inject the top-K results into the DM's context window.
 
 The open question isn't whether this should happen — it obviously
-should — it's *when*. Until the DM agent is migrated out of
-`backend/api/dm_ai.py` into `engine/agents/dm.py`, there's no clean
-place for the Lorekeeper to hook in. Until there's enough lore to
-query, the RAG doesn't earn its complexity. Both preconditions need
-to happen before this becomes actionable.
+should — it's *when*. The DM agent is already running out of
+`engine/agents/dm.py` (PR #12 landed that migration), so the
+"hook-in point" precondition is already satisfied. The real remaining
+precondition is "enough lore to query to make the RAG earn its
+complexity" — today the `data/lore/core/codex/` tree is sparse, so
+even a perfect Lorekeeper wouldn't return much useful context. When
+that changes, Lorekeeper becomes actionable.
 
 ### Community packs and the gateway
 
@@ -225,9 +252,9 @@ worth naming even though the questions aren't settled:
 - When reality overtakes a vision item (it silently shipped in a PR
   without being formally promoted): note the PR number inline and
   move the item to `ROADMAP.md`'s "landed" tail.
-- When the stack decisions land: the "1.0 frontend stack" question
-  above gets replaced with the ratified choice and a pointer to the
-  ADR that made it.
+- When a stack decision lands: move the item from "Open questions" up
+  to "Resolved decisions" with a dated retrospective. The 2026-04-15
+  React decision is the working example of how this should look.
 
 This doc is allowed to be wrong, incomplete, and over-ambitious. That
 is the point. `ROADMAP.md` is where the commitments live.
