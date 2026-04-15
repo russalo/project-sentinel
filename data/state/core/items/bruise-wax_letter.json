@@ -1,0 +1,9 @@
+{
+  "name": "Bruise-Wax Letter",
+  "type": "misc",
+  "description": "A letter written in your own hand, sealed with wax the color of a fresh bruise. The paper reeks of iron and old parchment.",
+  "rarity": "uncommon",
+  "ownedBy": "Chez",
+  "location": "Hallowrun Inn",
+  "magical": true
+}

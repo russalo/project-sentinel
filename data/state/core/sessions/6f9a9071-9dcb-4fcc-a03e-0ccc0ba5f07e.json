@@ -72,6 +72,50 @@
         ]
       },
       "created_at": "2026-04-15T20:49:46.095579+00:00"
+    },
+    {
+      "id": 2,
+      "session_id": "6f9a9071-9dcb-4fcc-a03e-0ccc0ba5f07e",
+      "turn_number": 1,
+      "player_action": "read the letter",
+      "narrative": "The letter\u2019s wax seal cracks like a scab. The paper is thick, too thick\u2014pulp ground from something fibrous, maybe bone. Your handwriting says: *\u201cThey\u2019re not the first. The millstones remember. Ask about the third son. The debt must be paid in full.\u201d* Your name is signed at the bottom, but the ink bleeds into the fibers, as if the page is digesting it. The room\u2019s shadows deepen, pooling in the corners like spilled oil. Outside, the Pell family\u2019s laughter sharpens into a single, sustained note\u2014the whine of a taut bowstring.  \n\nYou notice the straw mattress beneath you is damp, not with sweat or mildew, but something that hardens as it dries. The letter\u2019s final line is smudged, though you\u2019re certain it read *\u201cthe bell must toll again.\u201d* Mir Halder\u2019s voice echoes from downstairs, but her words are muffled, as if she\u2019s speaking through water. The floorboards above the mill creak in rhythm with the grinding stones.",
+      "world_updates": {
+        "world": {
+          "currentLocation": "Hallowrun Inn",
+          "tension": 8
+        },
+        "items": [
+          {
+            "name": "Bruise-Wax Letter",
+            "action": "upsert",
+            "type": "misc",
+            "description": "A letter written in your own hand, sealed with wax the color of a fresh bruise. The paper reeks of iron and old parchment.",
+            "rarity": "uncommon",
+            "ownedBy": "Chez",
+            "location": "Hallowrun Inn",
+            "magical": true
+          }
+        ],
+        "characters": [
+          {
+            "name": "Pell Family",
+            "action": "upsert",
+            "traits": [
+              "suspicious",
+              "connected to ancient ritual"
+            ],
+            "currentLocation": "Hallowrun Mill"
+          }
+        ],
+        "locations": [
+          {
+            "name": "Hallowrun Mill",
+            "action": "upsert",
+            "danger": 7
+          }
+        ]
+      },
+      "created_at": ""
     }
   ],
   "active": true

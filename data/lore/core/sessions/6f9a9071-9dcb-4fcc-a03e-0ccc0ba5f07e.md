@@ -9,3 +9,13 @@ Upstairs, the Pell family’s laughter rises from the mill, syncopated, as if ea
 ---
 
 [Session Start] simcity 2.0 — intro generated.
+
+---
+
+The letter’s wax seal cracks like a scab. The paper is thick, too thick—pulp ground from something fibrous, maybe bone. Your handwriting says: *“They’re not the first. The millstones remember. Ask about the third son. The debt must be paid in full.”* Your name is signed at the bottom, but the ink bleeds into the fibers, as if the page is digesting it. The room’s shadows deepen, pooling in the corners like spilled oil. Outside, the Pell family’s laughter sharpens into a single, sustained note—the whine of a taut bowstring.  
+
+You notice the straw mattress beneath you is damp, not with sweat or mildew, but something that hardens as it dries. The letter’s final line is smudged, though you’re certain it read *“the bell must toll again.”* Mir Halder’s voice echoes from downstairs, but her words are muffled, as if she’s speaking through water. The floorboards above the mill creak in rhythm with the grinding stones.
+
+---
+
+The letter’s wax seal cracks like a scab. The paper is thick, too thick—pulp ground from something fibrous, maybe bone. Your handwriting says: *“They’re not the first. The millstones remember. Ask abo
