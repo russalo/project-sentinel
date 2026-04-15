@@ -18,7 +18,7 @@ Every push and pull request runs three jobs from `.github/workflows/ci.yml`:
 | Job | What it runs | Runtime |
 |-----|--------------|---------|
 | **Validate Schemas** | The full Python test suite: `pytest tests/` | ~20s |
-| **Lint Python** | `ruff check mcp-servers/` + `ruff format --check mcp-servers/` | ~10s |
+| **Lint Python** | `ruff check` + `ruff format --check` across `engine/`, `backend/`, `tests/`, `scripts/`, `mcp-servers/` | ~10s |
 | **Typecheck TypeScript** | `pnpm run typecheck` across the pnpm workspace | ~20s |
 
 "Validate Schemas" is kept as the job's display name for branch-protection
@@ -55,31 +55,15 @@ Flagging gaps honestly so TESTING.md doesn't lie by omission:
   Flagged in `docs/BACKLOG.md` under Developer Experience; scheduled to
   land alongside the Panel UX primitives (`EntityCard`, `DeltaMessage`,
   `TabbedChat`) per `docs/ROADMAP.md` step 1.
-- **The MCP servers have no unit tests at all.** `mcp-servers/fs-manager/`
-  is 271 lines of path validation and protected-field enforcement, and
-  `mcp-servers/git-sync/` is the only thing that produces the per-turn
-  git audit trail — neither has a `tests/` directory, never has. The
-  engine-side dispatch tests (`tests/engine/test_dispatch_*.py`) cover
-  the HTTP contract via `httpx.MockTransport`, which validates the
+- **`mcp-servers/git-sync/` has no unit tests.** `fs-manager/` got its
+  first 16-test suite in PR #29 as part of the security-gap closure,
+  but `git-sync/` — the only thing that produces the per-turn git
+  audit trail — still has no `tests/` directory. The engine-side
+  dispatch tests (`tests/engine/test_dispatch_git_sync.py`) cover the
+  HTTP contract via `httpx.MockTransport`, which validates the
   request/response shape the backend relies on but does not test the
-  servers' internal logic. Flagged in `docs/BACKLOG.md`.
-- **`ARCHITECTURE.md` describes fs-manager enforcement that `server.py`
-  does not implement.** Specifically, the namespace gate described in
-  §2 (writes to `data/{state,lore}/core/` blocked without a
-  `"namespace": "core"` token) and the `core_faction_id` entry in the
-  §4 protected-fields table both exist in the spec but not in code.
-  `server.py`'s `PROTECTED_FIELDS` set is `{"unique_id", "world_seed",
-  "namespace", "created_at", "canon"}` — no `core_faction_id` — and there
-  is no namespace-token check anywhere in the file. This is a bigger
-  finding than a testing gap: the "core vs community" authorization
-  story that the project's security posture rests on is currently
-  aspirational in the code. Flagged in `docs/BACKLOG.md` as a
-  high-priority spec/code decision: implement or pare back the spec.
-- **Ruff lint scope is `mcp-servers/` only.** The CI "Lint Python" job
-  runs `ruff check mcp-servers/` and `ruff format --check mcp-servers/`
-  and nothing else. `engine/`, `backend/`, and `tests/` are written in
-  Python, have no lint enforcement, and can drift in style without CI
-  catching it. Flagged in `docs/BACKLOG.md`.
+  server's internal commit logic or rollback behavior. Flagged in
+  `docs/BACKLOG.md`.
 - **No end-to-end turn loop.** We don't spin up a real fs-manager
   subprocess + real git-sync + real LLM (or a fake one) and send a
   synthetic turn through the whole pipeline. The first live smoke test

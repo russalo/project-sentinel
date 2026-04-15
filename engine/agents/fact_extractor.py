@@ -151,9 +151,7 @@ def extract(
         try:
             hint = json.loads(block)
         except json.JSONDecodeError as exc:
-            errors.append(
-                f"world_update block {block_index} is not valid JSON: {exc}"
-            )
+            errors.append(f"world_update block {block_index} is not valid JSON: {exc}")
             continue
 
         if not isinstance(hint, dict):
@@ -194,9 +192,7 @@ def extract(
 
     validation = validate(payload)
     if not validation.ok:
-        errors.extend(
-            f"self-validation failed: {msg}" for msg in validation.errors
-        )
+        errors.extend(f"self-validation failed: {msg}" for msg in validation.errors)
         return FactExtractResult(payload=None, narrative=narrative, errors=errors)
 
     return FactExtractResult(payload=payload, narrative=narrative, errors=errors)
@@ -267,9 +263,7 @@ def _build_updates(hint: dict, errors: list[str]) -> list[dict]:
                 }
             )
         elif not isinstance(world, dict):
-            errors.append(
-                f"world block is {type(world).__name__}, expected object"
-            )
+            errors.append(f"world block is {type(world).__name__}, expected object")
 
     # Entity collections → one file per named entity
     for hint_key, category in category_map.items():
@@ -292,9 +286,7 @@ def _build_updates(hint: dict, errors: list[str]) -> list[dict]:
             name = entry.get("name")
             slug = _slugify(name) if name is not None else None
             if slug is None:
-                errors.append(
-                    f"{hint_key}[{index}] missing usable name (got {name!r})"
-                )
+                errors.append(f"{hint_key}[{index}] missing usable name (got {name!r})")
                 continue
 
             updates.append(

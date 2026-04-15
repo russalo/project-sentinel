@@ -37,6 +37,7 @@ COMMUNITY_MANIFEST_SCHEMA = load_schema("community_manifest.schema.json")
 
 # ── apply_world_update schema tests ───────────────────────────────────────────
 
+
 def _validate(instance: dict, schema: dict) -> None:
     """Validate with format checking enabled (enforces 'uuid', 'date-time', etc.)."""
     validator_cls = jsonschema.validators.validator_for(schema)
@@ -65,6 +66,7 @@ def test_path_traversal_fails():
 
 
 # ── community_manifest schema tests ───────────────────────────────────────────
+
 
 def test_valid_community_manifest_passes():
     """A correctly formed community pack manifest must validate without error."""

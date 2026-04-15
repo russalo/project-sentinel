@@ -105,7 +105,9 @@ def test_stream_happy_path_emits_token_world_update_and_done(
     events = _parse_sse_events(response.text)
     # There should be multiple token events, then one world_update,
     # then [DONE].
-    token_events = [e for e in events if isinstance(e, dict) and e.get("type") == "token"]
+    token_events = [
+        e for e in events if isinstance(e, dict) and e.get("type") == "token"
+    ]
     world_update_events = [
         e for e in events if isinstance(e, dict) and e.get("type") == "world_update"
     ]
@@ -177,9 +179,7 @@ def test_stream_handles_empty_world_update_block_gracefully(
     session_id = VALID_SESSION_ID_3
     _prime_session(tmp_data_dir, session_id)
 
-    fake_openai.chat.completions.set_stream_tokens(
-        ["A long ", "silence ", "follows."]
-    )
+    fake_openai.chat.completions.set_stream_tokens(["A long ", "silence ", "follows."])
 
     response = client.post(
         "/api/stream", json={"action": "wait", "sessionId": session_id}
@@ -187,7 +187,9 @@ def test_stream_handles_empty_world_update_block_gracefully(
     assert response.status_code == 200
     events = _parse_sse_events(response.text)
 
-    world_updates = [e for e in events if isinstance(e, dict) and e.get("type") == "world_update"]
+    world_updates = [
+        e for e in events if isinstance(e, dict) and e.get("type") == "world_update"
+    ]
     assert len(world_updates) == 1
     assert world_updates[0]["data"] == {}
 
@@ -220,9 +222,7 @@ def test_stream_passes_prior_turns_as_recent_context(
 
     fake_openai.chat.completions.set_stream_tokens(["Next turn."])
 
-    client.post(
-        "/api/stream", json={"action": "look around", "sessionId": session_id}
-    )
+    client.post("/api/stream", json={"action": "look around", "sessionId": session_id})
 
     # One create call to OpenAI — inspect its messages.
     assert len(fake_openai.chat.completions.calls) == 1
@@ -325,7 +325,9 @@ def test_stream_emits_error_when_session_write_fails(
     def failing_dispatch(config, payload, *, client=None, timeout=30.0):
         calls["count"] += 1
         if calls["count"] == 1:
-            return engine.DispatchResult(ok=True, status_code=200, body={"success": True})
+            return engine.DispatchResult(
+                ok=True, status_code=200, body={"success": True}
+            )
         return engine.DispatchResult(
             ok=False,
             status_code=503,
@@ -345,10 +347,14 @@ def test_stream_emits_error_when_session_write_fails(
 
     # Tokens streamed successfully; the error only surfaces after
     # the session-write attempt fails.
-    token_events = [e for e in events if isinstance(e, dict) and e.get("type") == "token"]
+    token_events = [
+        e for e in events if isinstance(e, dict) and e.get("type") == "token"
+    ]
     assert len(token_events) >= 1
 
-    error_events = [e for e in events if isinstance(e, dict) and e.get("type") == "error"]
+    error_events = [
+        e for e in events if isinstance(e, dict) and e.get("type") == "error"
+    ]
     assert len(error_events) == 1
     assert "Failed to save turn to session" in error_events[0]["content"]
     assert "fs-manager offline" in error_events[0]["content"]

@@ -72,6 +72,7 @@ def test_no_changes_response_still_counts_as_success():
     """git-sync returning 200 with {status: 'no_changes'} is a normal
     outcome — two consecutive calls with no intervening fs-manager
     writes produce this. Callers should see ok=True."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
             200,
@@ -96,6 +97,7 @@ def test_missing_session_id_returns_422():
     """git-sync rejects a payload without session_id. Our dispatcher
     never sends an empty session_id (the param is required), but if
     the server returns 422 for any reason we surface it as ok=False."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
             422,
@@ -118,12 +120,15 @@ def test_missing_session_id_returns_422():
 
     assert result.ok is False
     assert result.status_code == 422
-    assert "MISSING_SESSION_ID" in result.error or "session_id is required" in result.error
+    assert (
+        "MISSING_SESSION_ID" in result.error or "session_id is required" in result.error
+    )
 
 
 def test_git_error_returns_500():
     """A git failure on the server side (non-git repo, broken index,
     etc.) lands as HTTP 500 with a GIT_ERROR code."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
             500,
@@ -151,6 +156,7 @@ def test_git_error_returns_500():
 
 def test_network_error_returns_status_zero():
     """Connection failures land as ok=False with status_code=0 (not an exception)."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("connection refused")
 
@@ -186,7 +192,9 @@ def test_url_uses_config_git_sync_url():
         client=_client_returning(handler),
     )
 
-    assert captured["url"] == "https://sentinel.tailscale.net:8012/tools/commit_snapshot"
+    assert (
+        captured["url"] == "https://sentinel.tailscale.net:8012/tools/commit_snapshot"
+    )
 
 
 def test_trailing_slash_in_git_sync_url_is_normalized():
@@ -240,7 +248,10 @@ def test_summary_newlines_are_normalized_to_spaces():
     assert "\r" not in sent_summary
     assert "\t" not in sent_summary
     # Content preserved, whitespace runs collapsed to single spaces
-    assert sent_summary == "The fire crackles. Thalia nocks an arrow. Russalo casts shadow."
+    assert (
+        sent_summary
+        == "The fire crackles. Thalia nocks an arrow. Russalo casts shadow."
+    )
 
 
 def test_summary_tab_and_multiple_spaces_are_collapsed():
@@ -268,6 +279,7 @@ def test_summary_tab_and_multiple_spaces_are_collapsed():
 
 def test_non_json_response_wraps_raw_text():
     """Server returning non-JSON still produces a structured result."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(502, content=b"<html>502 Bad Gateway</html>")
 

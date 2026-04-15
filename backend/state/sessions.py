@@ -44,9 +44,7 @@ def _require_uuid(session_id: str) -> None:
     try:
         uuid.UUID(session_id)
     except (ValueError, TypeError, AttributeError) as exc:
-        raise ValueError(
-            f"session_id is not a valid UUID: {session_id!r}"
-        ) from exc
+        raise ValueError(f"session_id is not a valid UUID: {session_id!r}") from exc
 
 
 @dataclass
@@ -157,5 +155,7 @@ def write_session(
     fs-manager rejections (typically: log and continue, since the
     narrative has already been streamed to the player).
     """
-    payload = _build_session_payload(session, log_entry=log_entry, turn_number=turn_number)
+    payload = _build_session_payload(
+        session, log_entry=log_entry, turn_number=turn_number
+    )
     return engine.apply_world_update(config, payload)

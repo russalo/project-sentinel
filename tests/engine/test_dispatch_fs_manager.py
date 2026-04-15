@@ -34,7 +34,9 @@ def test_success_returns_ok_result():
             json={
                 "success": True,
                 "session_id": "123e4567-e89b-12d3-a456-426614174000",
-                "results": [{"status": "updated", "path": "data/state/core/entities/kael.json"}],
+                "results": [
+                    {"status": "updated", "path": "data/state/core/entities/kael.json"}
+                ],
             },
         )
 
@@ -58,6 +60,7 @@ def test_success_returns_ok_result():
 
 def test_schema_violation_returns_422():
     """fs-manager rejects an invalid payload with HTTP 422."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
             422,
@@ -85,6 +88,7 @@ def test_schema_violation_returns_422():
 
 def test_protected_field_violation_returns_403():
     """fs-manager rejects an attempt to modify a protected field with HTTP 403."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
             403,
@@ -97,7 +101,9 @@ def test_protected_field_violation_returns_403():
         )
 
     config = _config()
-    result = apply_world_update(config, {"updates": []}, client=_client_returning(handler))
+    result = apply_world_update(
+        config, {"updates": []}, client=_client_returning(handler)
+    )
 
     assert result.ok is False
     assert result.status_code == 403
@@ -106,6 +112,7 @@ def test_protected_field_violation_returns_403():
 
 def test_network_error_returns_status_zero():
     """Connection failures land as ok=False with status_code=0 (not an exception)."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("connection refused")
 
@@ -120,6 +127,7 @@ def test_network_error_returns_status_zero():
 
 def test_non_json_response_wraps_raw_text():
     """Server returning non-JSON still produces a structured result."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(500, content=b"<html>500 Internal Server Error</html>")
 
@@ -143,7 +151,10 @@ def test_url_uses_config_fs_manager_url():
     config = _config("https://sentinel.tailscale.net:8010")
     apply_world_update(config, {}, client=_client_returning(handler))
 
-    assert captured["url"] == "https://sentinel.tailscale.net:8010/tools/apply_world_update"
+    assert (
+        captured["url"]
+        == "https://sentinel.tailscale.net:8010/tools/apply_world_update"
+    )
 
 
 def test_trailing_slash_in_fs_manager_url_is_normalized():
@@ -177,6 +188,7 @@ def test_multiple_trailing_slashes_are_all_normalized():
 
 def test_2xx_non_200_responses_count_as_success():
     """The docstring now says 'any 2xx' counts as success — verify."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(202, json={"success": True, "queued": True})
 
@@ -189,6 +201,7 @@ def test_2xx_non_200_responses_count_as_success():
 
 def test_accepts_list_body_gracefully():
     """A server response that is a JSON list (not dict) shouldn't crash."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=["unexpected", "list"])
 

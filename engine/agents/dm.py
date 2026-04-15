@@ -248,9 +248,7 @@ def _build_messages(ctx: WorldContext, player_action: str) -> list[dict]:
         )
         or "None yet"
     )
-    locs = (
-        ", ".join(l.get("name", "?") for l in ctx.locations) or "None yet"
-    )
+    locs = ", ".join(loc.get("name", "?") for loc in ctx.locations) or "None yet"
     facs = (
         ", ".join(
             f"{f.get('name', '?')} (relation: {f.get('playerRelation', 0)})"
@@ -292,7 +290,10 @@ def _build_messages(ctx: WorldContext, player_action: str) -> list[dict]:
 
     return [
         {"role": "system", "content": DM_SYSTEM_PROMPT},
-        {"role": "user", "content": context_block + "\nPLAYER ACTION: " + player_action},
+        {
+            "role": "user",
+            "content": context_block + "\nPLAYER ACTION: " + player_action,
+        },
     ]
 
 
@@ -323,7 +324,9 @@ def _build_intro_messages(intro: IntroInput) -> list[dict]:
 
     creation_lines = _creation_context_lines(intro)
     if creation_lines:
-        user_content += "\nCREATION CONTEXT (player choices — honor them in the opening):\n"
+        user_content += (
+            "\nCREATION CONTEXT (player choices — honor them in the opening):\n"
+        )
         user_content += "\n".join(f"- {line}" for line in creation_lines)
         user_content += "\n"
 
@@ -362,5 +365,7 @@ def _creation_context_lines(intro: IntroInput) -> list[str]:
     if intro.sandbox:
         lines.append("Sandbox mode: the player prefers an open, non-linear world")
     if intro.permadeath:
-        lines.append("Permadeath mode: the player has opted into permanent character death — consequences are real")
+        lines.append(
+            "Permadeath mode: the player has opted into permanent character death — consequences are real"
+        )
     return lines
