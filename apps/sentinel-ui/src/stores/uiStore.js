@@ -12,8 +12,9 @@ export const useUIStore = create((set) => ({
   setActiveTab: (tab) => set({ activeTab: tab }),
 
   // Selected entity for right-panel detail view
-  selectedEntity: null,   // { entity: {...}, type: 'character'|'location'|'faction'|'item' }
-  setSelectedEntity: (entity, type) => set({ selectedEntity: { entity, type }, rightPanelCollapsed: false }),
+  // Stores { name, type } only — PanelRouter resolves the live entity from worldStore
+  selectedEntity: null,
+  setSelectedEntity: (entity, type) => set({ selectedEntity: { name: entity.name, type }, rightPanelCollapsed: false }),
   clearSelectedEntity: () => set({ selectedEntity: null }),
 
   // Focus mode (full narrative, no side panels)

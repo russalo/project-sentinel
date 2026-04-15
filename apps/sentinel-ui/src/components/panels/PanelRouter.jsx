@@ -1,4 +1,5 @@
 import { useUIStore } from '../../stores/uiStore';
+import { useWorldStore } from '../../stores/worldStore';
 import { CodexPanel } from './CodexPanel';
 import { InventoryPanel } from './InventoryPanel';
 import { QuestLogPanel } from './QuestLogPanel';
@@ -12,8 +13,21 @@ const TABS = [
   { id: 'map',       label: 'Map',    component: MapPanel },
 ];
 
+const COLLECTIONS = {
+  character: (s) => s.characters,
+  location:  (s) => s.locations,
+  faction:   (s) => s.factions,
+  item:      (s) => s.items,
+};
+
 export function PanelRouter() {
   const { activeTab, setActiveTab, selectedEntity, clearSelectedEntity } = useUIStore();
+  const worldStore = useWorldStore();
+
+  // Resolve live entity from worldStore so the card stays current after world_update
+  const liveEntity = selectedEntity
+    ? (COLLECTIONS[selectedEntity.type]?.(worldStore) ?? []).find(e => e.name === selectedEntity.name)
+    : null;
 
   // Entity detail view overrides normal tab content
   if (selectedEntity) {
@@ -29,7 +43,10 @@ export function PanelRouter() {
           <span className="text-xs text-ether ml-1 capitalize">{selectedEntity.type}</span>
         </div>
         <div className="flex-1 overflow-y-auto">
-          <EntityCard entity={selectedEntity.entity} type={selectedEntity.type} />
+          {liveEntity
+            ? <EntityCard entity={liveEntity} type={selectedEntity.type} />
+            : <p className="p-4 text-xs text-ether">Entity no longer exists.</p>
+          }
         </div>
       </div>
     );
