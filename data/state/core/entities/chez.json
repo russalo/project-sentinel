@@ -1,0 +1,10 @@
+{
+  "name": "Chez",
+  "status": "alive",
+  "currentLocation": "Hallowrun Inn",
+  "description": "Chaingang boss with a head full of unspoken questions",
+  "role": "player",
+  "class": "chaingang boss",
+  "race": "human",
+  "level": 1
+}

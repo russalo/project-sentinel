@@ -1,0 +1,11 @@
+{
+  "name": "Pell Family",
+  "status": "alive",
+  "currentLocation": "Hallowrun Mill",
+  "description": "Mill operators with delayed speech and wrong-eyed stares",
+  "role": "neutral",
+  "traits": [
+    "affected by dreams",
+    "prosperous"
+  ]
+}

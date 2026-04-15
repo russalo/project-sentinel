@@ -1,0 +1,11 @@
+{
+  "name": "Mir Halder",
+  "status": "alive",
+  "currentLocation": "Hallowrun Inn",
+  "description": "Innkeeper with a face like a closed ledger",
+  "role": "ally",
+  "traits": [
+    "honest",
+    "cryptic"
+  ]
+}

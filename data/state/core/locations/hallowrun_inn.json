@@ -1,0 +1,8 @@
+{
+  "name": "Hallowrun Inn",
+  "type": "tavern",
+  "description": "Smells of damp straw and unasked questions",
+  "region": "Hallowrun",
+  "discovered": true,
+  "danger": 4
+}
