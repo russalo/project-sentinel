@@ -82,6 +82,77 @@ the decision explicit in the docs when that branch merged.
   That's a post-1.0 question. "React is the 1.0 client" doesn't mean
   "React is the only client forever."
 
+### The genre / preset content system → shipped (decided 2026-04-15)
+
+The original VISION question was "what does each genre actually contain,
+and how does the WorldCreation form's choices get composed into the DM
+intro prompt?" The plan was a vision-level item: each genre / persona /
+mood / region as a content bundle under `data/lore/core/presets/`, with a
+backend pipeline that loads the matching bundle at session-create time.
+The bridge implementations (Layer 1 in PR #20, Layer 1.5 persona
+resolution in PR #33) were deliberate placeholders — they wired the
+fields through and pushed descriptive strings into the intro prompt as
+free-form context, but didn't load authored preset content.
+
+**The answer landed by execution.** PR #39 ("World Generation Layer 2 —
+preset content + generation pipeline") shipped the real thing. What's
+now real:
+
+- **Authored preset content under `data/lore/core/presets/`** in TOML
+  format, one file per preset:
+  - 5 genres: cyberpunk, fantasy, horror, sci-fi, western
+  - 3 personas: chronicler, cowboy, oracle
+  - 6 moods: fast-paced, gritty, humorous, lore-heavy, neutral, ominous
+  - 16 regions, genre-scoped under `regions/<genre>/<slug>.toml`
+    (4 regions per genre)
+- **`backend/presets.py`** — minimal loader (`load_preset` +
+  `get_prompt_fragment`). Lenient by design: missing files return
+  `None`, which lets the engine fall through to Layer 1's free-form
+  label handling without the frontend needing to know which presets
+  exist on disk.
+- **`engine/agents/dm.py::_build_intro_messages`** now injects a
+  "WORLD FOUNDATIONS" paragraph block above the existing one-line
+  "CREATION CONTEXT" block when any `*_prompt` fragment is set.
+  Suppression rule: when a Layer 2 prompt fragment is present, the
+  corresponding bare-label line is omitted from CREATION CONTEXT so
+  the same information doesn't appear twice.
+- **70+ new tests** in `tests/backend/test_presets.py` and
+  `tests/engine/test_dm.py` covering the loader, the pipeline, and
+  the engine's preset-aware prompt composition.
+
+**Why this happened by execution rather than ADR:** the file layout
+turned out small enough to self-document via the shipped TOML files
+and the `backend/presets.py` docstring. The author of PR #39
+deliberately skipped writing an ADR (per the BACKLOG entry's order-
+of-operations checklist, step 1 was "write an ADR" but steps 2–4
+shipped first). Reasonable call for content-shape decisions that are
+easier to read in code than to specify in prose.
+
+**What this does NOT decide:**
+- **Community pack composition** — the schema for declaring a pack's
+  presets in `community.json` is still future work. PR #39 only ships
+  the core layer; the community mirror (`data/lore/community/<author>/
+  presets/<type>/`) loader and validation pipeline doesn't exist yet.
+- **Programmatic seed-entity merging** — region preset files describe
+  their canonical NPCs, locations, and opening situations in prose
+  inside `prompt_fragment`, which the LLM reads and typically honors,
+  but there's no structured guarantee. An optional `seed_entities`
+  TOML block on region files (characters, locations, factions, items
+  with schema-valid fields), merged into the initial
+  `apply_world_update` payload before dispatch, is the next step in
+  the WC Layer 2 BACKLOG entry's checklist. Gated on the world
+  identity ADR.
+- **Per-persona file directories** with split `system_prompt.md` /
+  `voice_rules.md` / `persona.md` / `persona.json` (the layout the
+  original DM Personas & Content Framework BACKLOG entry envisioned).
+  PR #39 shipped a simpler one-TOML-file-per-preset layout instead.
+  If the richer layout ever becomes necessary, the loader can be
+  extended; for now the simpler shape works.
+- **Action catalogs, mechanical resolution presets, additional
+  content types** — generalizing the "preset" pattern to the rest
+  of the framework (action sets, dice systems, etc.) is still future
+  work. PR #39 proves the pattern, doesn't fully exhaust it.
+
 ---
 
 ## Open questions (the "not-yet-decided" list)
@@ -126,23 +197,14 @@ Sentinel either:
   rules into the DM system prompt and the schema
 
 The right answer almost certainly depends on genre. Fantasy-combat-heavy
-campaigns benefit from dice; conversation-driven campaigns don't. This
-ties to the Genre System direction below.
-
-### The genre system
-
-A WorldCreation form sends `genre`, `tone`, `starting_region`, and
-`mood` to the backend today — and they're silently dropped. The vision
-is that each genre is a proper content bundle:
-`data/lore/core/presets/genres/<genre>.md` for human-readable prompt
-guidance, `data/state/core/presets/genres/<genre>.json` for structured
-metadata (key tropes, tone shifts, "forbidden moves", UI color palette).
-Fantasy gets one set; Sci-Fi, Western, Horror, Cyberpunk each get their
-own. The DM prompt includes the relevant preset at session creation.
-
-This is a lot of content authoring work before it becomes load-bearing.
-Near-term path is "Layer 1" — just wire the fields through and feed them
-to the prompt as free-form strings. The full preset system is vision work.
+campaigns benefit from dice; conversation-driven campaigns don't. The
+genre/preset content system that landed in PR #39 (see "Resolved
+decisions" above) is the natural place to attach mechanical rules
+to a specific genre — a `mechanical_resolution` field on a genre
+preset's TOML could declare "this genre uses the dice subsystem" or
+"this genre is pure-narrative." Implementation deferred until either
+a real session needs it or someone writes a content pack that depends
+on it.
 
 ### Background simulation
 
