@@ -30,7 +30,10 @@ export function CommandBar() {
   };
 
   return (
-    <footer className="bg-codex border-t border-border px-6 py-4 flex gap-3">
+    <footer
+      className="bg-codex border-t border-border px-3 lg:px-6 pt-3 flex gap-2 lg:gap-3"
+      style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+    >
       <div className="flex-1 flex gap-2">
         <input
           type="text"
@@ -39,19 +42,19 @@ export function CommandBar() {
           onKeyDown={handleKeyDown}
           placeholder={sessionId ? 'What do you do?' : 'Start a new world to begin...'}
           disabled={isStreaming || !sessionId}
-          className="flex-1 bg-void border border-border rounded px-3 py-2 text-ink placeholder-dust focus:outline-none focus:border-amber transition-colors disabled:opacity-50"
+          className="flex-1 bg-void border border-border rounded px-3 py-2.5 text-ink placeholder-dust focus:outline-none focus:border-amber transition-colors disabled:opacity-50"
         />
         <button
           onClick={handleSubmit}
           disabled={isStreaming || !sessionId}
-          className="px-4 py-2 bg-amber text-void rounded hover:bg-amber/90 transition-colors flex items-center gap-2 disabled:opacity-50"
+          className="px-4 py-2.5 bg-amber text-void rounded hover:bg-amber/90 transition-colors flex items-center gap-2 disabled:opacity-50"
         >
           <Send size={16} />
         </button>
       </div>
-      <button className="px-4 py-2 bg-border text-ink rounded hover:bg-border/80 transition-colors flex items-center gap-2">
+      <button className="px-3 lg:px-4 py-2.5 bg-border text-ink rounded hover:bg-border/80 transition-colors flex items-center gap-1.5">
         <Dices size={16} />
-        Roll
+        <span className="hidden sm:inline">Roll</span>
       </button>
     </footer>
   );

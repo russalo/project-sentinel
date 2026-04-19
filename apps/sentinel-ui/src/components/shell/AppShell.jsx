@@ -8,7 +8,7 @@ import { NarrativeScroll } from '../narrative/NarrativeScroll';
 import { PanelRouter } from '../panels/PanelRouter';
 
 export function AppShell() {
-  const { focusMode, toggleFocusMode, leftPanelCollapsed, rightPanelCollapsed } = useUIStore();
+  const { focusMode, toggleFocusMode, leftPanelCollapsed, rightPanelCollapsed, mobilePanelOpen, closeMobilePanel } = useUIStore();
   const { messages, addMessage } = useChatStore();
 
   // Focus mode keyboard shortcut (F key).
@@ -59,9 +59,9 @@ export function AppShell() {
       <TopBar />
 
       <div className="flex-1 flex overflow-hidden">
-        {/* Left Panel */}
+        {/* Left Panel — desktop only */}
         {!focusMode && (
-          <div className={`${leftPanelCollapsed ? 'w-12' : 'w-80'} bg-codex border-r border-border overflow-y-auto transition-all duration-200`}>
+          <div className={`hidden lg:block ${leftPanelCollapsed ? 'w-12' : 'w-80'} bg-codex border-r border-border overflow-y-auto transition-all duration-200`}>
             {!leftPanelCollapsed && <WorldStateDashboard />}
           </div>
         )}
@@ -71,10 +71,20 @@ export function AppShell() {
           <NarrativeScroll />
         </div>
 
-        {/* Right Panel */}
+        {/* Right Panel — desktop only */}
         {!focusMode && (
-          <div className={`${rightPanelCollapsed ? 'w-12' : 'w-80'} bg-codex border-l border-border overflow-y-auto transition-all duration-200`}>
+          <div className={`hidden lg:block ${rightPanelCollapsed ? 'w-12' : 'w-80'} bg-codex border-l border-border overflow-y-auto transition-all duration-200`}>
             {!rightPanelCollapsed && <PanelRouter />}
+          </div>
+        )}
+
+        {/* Mobile drawer overlay */}
+        {mobilePanelOpen && (
+          <div className="lg:hidden fixed inset-0 z-50 flex">
+            <div className="absolute inset-0 bg-black/60" onClick={closeMobilePanel} />
+            <div className={`relative z-10 w-80 max-w-[85vw] bg-codex overflow-y-auto flex-shrink-0 ${mobilePanelOpen === 'right' ? 'ml-auto border-l border-border' : 'border-r border-border'}`}>
+              {mobilePanelOpen === 'left' ? <WorldStateDashboard /> : <PanelRouter />}
+            </div>
           </div>
         )}
       </div>
