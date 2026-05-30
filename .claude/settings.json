@@ -2,8 +2,13 @@
   "hooks": {
     "PreCompact": [
       {
-        "type": "command",
-        "command": "just capture-transcript"
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "just capture-transcript"
+          }
+        ]
       }
     ]
   }
