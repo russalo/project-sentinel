@@ -156,6 +156,15 @@ land back-to-back.
   other task, but there's no longer a special stack-decision gate.
 - `just` is the command runner. Add new recipes to `justfile` rather than creating
   standalone scripts unless the logic is complex enough to warrant a separate file.
+- **Local play/smoke sessions commit to the checked-out branch.** The
+  engine's `git-sync` writes a per-turn `[sentinel] session=… turn=…`
+  commit to whatever branch is checked out — normally `master` — on every
+  turn. Running a playthrough locally therefore pollutes `master` and
+  diverges it from origin (this is exactly what produced the 22 stray
+  commits cleaned up on 2026-05-30). Run play/smoke sessions on a
+  throwaway branch, or reset/clean up afterward, and never push those
+  auto-commits. The `just reset-world` and smoke-harness items in
+  `docs/BACKLOG.md` are the durable fix.
 
 ---
 
