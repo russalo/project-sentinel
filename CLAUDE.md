@@ -46,7 +46,7 @@ an exception.
 
 **Allowed without approval:**
 - Reading files, exploring the codebase, running read-only commands
-- Writing or updating the plan file at `/root/.claude/plans/`
+- Writing or updating the plan file at `~/.claude/plans/`
 - Asking clarifying questions
 
 **Not allowed until the user says to proceed:**
@@ -231,7 +231,7 @@ the separation before editing.
 Sentinel is a two-node agentic system with a strict filesystem firewall between them. Understanding this split is required before editing anything in `engine/`, `mcp-servers/`, or `schemas/`.
 
 **The two nodes**
-- **Inference Node** (`engine/`) — pure-Python package that will house the DM, Fact-Extractor, and Lorekeeper agents. **Never granted direct filesystem access.** Generates narrative, then emits a structured `<world_update>` JSON payload. Currently scaffolding only — agent entry points raise `NotImplementedError`. See `engine/README.md` for the boundary contract.
+- **Inference Node** (`engine/`) — pure-Python package housing the DM and Fact-Extractor agents (the Lorekeeper is planned, not yet built — see `docs/BACKLOG.md`). **Never granted direct filesystem access.** Generates narrative, then emits a structured `<world_update>` JSON payload. Live and wired into the FastAPI backend; the engine→fs-manager→git-sync path runs end-to-end. See `engine/README.md` for the boundary contract.
 - **Infrastructure Node** (`mcp-servers/` + `infrastructure/`) — ChromaDB (for future RAG / Lorekeeper) + the git-backed hybrid filesystem under `data/`. The only path from Inference → disk.
 
 The two nodes communicate over a Tailscale mesh in production; locally they run side-by-side on the same host.

@@ -32,7 +32,7 @@ Per **[ADR 0001](docs/adr/0001-data-canonical-source-of-truth.md)**, canonical w
 
 Sentinel operates on a strict separation of concerns to enable seamless remote play via a Tailscale mesh network.
 
-1. **Inference Node** (`/engine`): A pure-Python package that will house the DM, Fact-Extractor, and Lorekeeper agents. It evaluates user input, queries the world state, and outputs rich narrative alongside machine-readable `<world_update>` tags. Currently scaffolding only — see `engine/README.md`.
+1. **Inference Node** (`/engine`): A pure-Python package housing the DM and Fact-Extractor agents (the Lorekeeper is planned — see `docs/BACKLOG.md`). It evaluates user input, queries the world state, and outputs rich narrative alongside machine-readable `<world_update>` tags. Live and wired into the FastAPI backend — see `engine/README.md`.
 2. **Infrastructure Node** (`/infrastructure` + `/mcp-servers`): ChromaDB (for future RAG / Lorekeeper), the git-backed hybrid filesystem under `data/`, and the two MCP servers that gate all writes.
 3. **The MCP Bridge** (`/mcp-servers`): The Inference Node *never* touches files directly. It issues structured requests to local MCP servers on the Infrastructure Node, which validate and execute every filesystem and git operation.
 
@@ -45,12 +45,12 @@ project-sentinel/
 │   └── state/                 # Machine-readable current world state (JSON)
 │       ├── core/              # Core entities, factions, sessions
 │       └── community/         # Community-pack state
-├── engine/                    # Inference Node (pure-Python, scaffolding)
+├── engine/                    # Inference Node (pure-Python, live)
 │   ├── types.py               # Config, WorldContext, DMTurnInput/Result
 │   ├── schema.py              # apply_world_update.schema.json loader + validator
 │   ├── llm.py                 # OpenAI client wrapper
 │   ├── prompts/dm.py          # DM system prompt
-│   ├── agents/                # dm.py, fact_extractor.py (stubs)
+│   ├── agents/                # dm.py, fact_extractor.py
 │   └── dispatch/              # httpx clients for fs-manager + git-sync
 ├── backend/                   # FastAPI production backend (:8001)
 │   ├── main.py                # App factory, uvicorn entry
@@ -61,7 +61,7 @@ project-sentinel/
 │   └── git-sync/              # :8012 — atomic per-turn git commits
 ├── infrastructure/            # Docker Compose (ChromaDB) + .env template
 ├── schemas/                   # Shared JSON Schema contracts (Draft 2020-12)
-├── apps/sentinel-ui/          # React 19 + Vite + Tailwind v4 frontend
+├── apps/sentinel-ui/          # React 19 + Vite + Tailwind v3 frontend
 ├── docs/
 │   ├── BACKLOG.md             # Open work items
 │   ├── ROADMAP.md             # Near-term execution plan
@@ -166,10 +166,12 @@ Exits 0 if all checks pass.
 
 ### Initialize the Inference Loop
 
-> **Status: not yet implemented.** The Inference Node — the orchestrator loop
-> that turns DM narrative into validated `<world_update>` payloads and dispatches
-> them across the MCP Bridge — lives in `engine/` as scaffolding today. Agent
-> entry points raise `NotImplementedError`. Track progress in `docs/BACKLOG.md`.
+> **Status: live.** The Inference Node — the orchestrator loop that turns DM
+> narrative into validated `<world_update>` payloads and dispatches them across
+> the MCP Bridge — runs in `engine/` and is wired into the FastAPI backend. Start
+> the backend (`just dev-backend`) and the frontend (`just dev-frontend`), or both
+> with `just dev`, then create a world to drive a turn end-to-end. The Lorekeeper
+> RAG step is the remaining unimplemented agent — track it in `docs/BACKLOG.md`.
 
 ---
 
@@ -188,7 +190,7 @@ Exits 0 if all checks pass.
 
 A reference implementation of Project Sentinel is available in this repository:
 
-- **Frontend** — `apps/sentinel-ui/` (`@sentinel/ui`) — React 19 + Vite + Tailwind v4, diegetic design system, World Creation flow, DM Persona system. Talks to the FastAPI backend via `fetch`-based SSE streaming. *(Note: the 1.0 frontend stack is not yet settled — see `docs/VISION.md`.)*
+- **Frontend** — `apps/sentinel-ui/` (`@sentinel/ui`) — React 19 + Vite + Tailwind v3, diegetic design system, World Creation flow, DM Persona system. Talks to the FastAPI backend via `fetch`-based SSE streaming. React is the ratified 1.0 frontend stack as of 2026-04-15 — see `docs/VISION.md` § "Resolved decisions".
 - **Backend** — `backend/` — FastAPI on `:8001`. Reads state directly from `data/state/*.json` per ADR 0001; calls the `engine/` package for DM turn handling and routes every write through `engine → fs-manager → git-sync`. No ORM, no database queries.
 - **Inference engine** — `engine/` — pure-Python package housing the DM agent, Fact-Extractor, and HTTP dispatcher for the MCP Bridge. Framework-agnostic; boundary-enforced.
 

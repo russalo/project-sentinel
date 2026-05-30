@@ -1,6 +1,22 @@
 # Project Sentinel — Frontend Plan
 
-**Status:** Planning | **Author:** Claude Code | **Date:** 2026-03-25
+> **⚠️ ARCHIVED — historical, do not follow as current guidance (2026-05-30).**
+>
+> This 2026-03-25 plan predates the stack pivot and no longer matches the shipped
+> frontend. It assumes React 18, TypeScript, shadcn/ui + Radix, a Django backend, an
+> Express `api-server` dev stub, and an `/api/v1` REST contract — **none of which are
+> true today.** The actual frontend is **React 19 + Vite + Tailwind v3 in JavaScript
+> (JSX)**, talking to a **FastAPI backend** (`/healthz`, `/api/session/new`,
+> `/api/stream`); React was ratified as the 1.0 stack on 2026-04-15.
+>
+> For current frontend reality see [`WORKSPACE.md`](./WORKSPACE.md); for the stack
+> decision and direction see [`VISION.md`](./VISION.md) § "Resolved decisions" and
+> [`ROADMAP.md`](./ROADMAP.md). The original content is preserved below **only** as a
+> record of the early design thinking.
+
+---
+
+**Status:** Archived (was: Planning) | **Author:** Claude Code | **Date:** 2026-03-25
 
 This document is the authoritative plan for the Project Sentinel frontend. It covers
 technology decisions, visual design system, component architecture, data flow, and

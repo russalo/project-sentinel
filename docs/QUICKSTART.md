@@ -207,7 +207,7 @@ Expected response (HTTP 422):
 
 | Want to... | Go here |
 |---|---|
-| Understand the full three-node architecture | [`ARCHITECTURE.md`](../ARCHITECTURE.md) |
+| Understand the full two-node architecture | [`ARCHITECTURE.md`](../ARCHITECTURE.md) |
 | Add lore, schemas, or MCP tools | [`CONTRIBUTING.md`](../CONTRIBUTING.md) |
 | Run the React frontend | [`apps/sentinel-ui/`](../apps/sentinel-ui/) — `just dev-frontend` |
 | Start the git-sync MCP server | `mcp-servers/git-sync/` — `just git-sync` |
