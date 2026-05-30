@@ -65,7 +65,7 @@
       "item.schema.json": "Schema for item state objects."
     },
     "engine": {
-      "description": "Inference Node (The Brain) — pure-Python package housing the DM, Fact-Extractor, and Lorekeeper agents. Does not import Django, touch disk, or call MCP servers; callers are responsible for side effects. Currently scaffolding only — agent entry points raise NotImplementedError pending the Fact-Extractor implementation and backend wiring.",
+      "description": "Inference Node (The Brain) — pure-Python package housing the DM and Fact-Extractor agents (the Lorekeeper is planned, not yet built). Does not touch disk or call MCP servers directly; callers are responsible for side effects. Live and wired into the FastAPI backend; only the Lorekeeper agent remains unimplemented.",
       "__init__.py": "Public API surface — re-exports Config, DMTurnInput, DMTurnResult, WorldContext, and validate/ValidationResult.",
       "types.py": "Plain dataclasses defining the engine's contract with callers (no Django models, no ORM coupling).",
       "schema.py": "Loads schemas/apply_world_update.schema.json and exposes validate() via the Draft 2020-12 validator.",
@@ -91,12 +91,12 @@
     "apps": {
       "description": "Client-side applications.",
       "sentinel-ui": {
-        "description": "React 19 + Vite + Tailwind v4 frontend. Diegetic design system, World Creation flow, DM Persona system. Talks to the FastAPI backend (backend/) over fetch + SSE; backend-agnostic by design.",
+        "description": "React 19 + Vite + Tailwind v3 frontend (JavaScript/JSX). Diegetic design system, World Creation flow, DM Persona system. Talks to the FastAPI backend (backend/) over fetch + SSE; backend-agnostic by design.",
         "src": "Application source — components, pages, Zustand stores, hooks, and API client.",
         "public": "Static assets.",
         "package.json": "Workspace package (@sentinel/ui). Declares dev server and build scripts.",
         "vite.config.js": "Vite build configuration.",
-        "tailwind.config.js": "Tailwind v4 theme configuration.",
+        "tailwind.config.js": "Tailwind v3 theme configuration.",
         "index.html": "SPA entry point."
       }
     },

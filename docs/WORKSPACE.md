@@ -9,7 +9,7 @@ _Last updated: 2026-05-30_
 
 ## Overview
 
-pnpm workspace monorepo. The frontend is TypeScript/React; the backend,
+pnpm workspace monorepo. The frontend is JavaScript/React (JSX); the backend,
 engine, and MCP servers are Python.
 
 This is an **AI-powered RPG World Engine** — a fully automated, persistent

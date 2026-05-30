@@ -6,23 +6,23 @@ Pure-Python core for the DM → Fact-Extractor → `<world_update>` pipeline.
 
 This package exists to keep the Inference Node independent of any specific
 web framework, storage layer, or deployment topology. It is invoked today as
-an in-process import from Django (`backend/`), but the design allows it to
-later be wrapped in a FastAPI service and run as a standalone node without
-touching the core logic.
+an in-process import from the FastAPI backend (`backend/`), and the same design
+allows it to later run as a standalone node — wrapped in its own service over
+the network — without touching the core logic.
 
 Everything in this package obeys four rules:
 
-1. **No imports from Django, `backend/`, `apps/`, or `artifacts/`.**
-   Enforced by `tests/engine/test_boundaries.py`. If you need Django
+1. **No imports from `backend/`, `apps/`, or any web framework.**
+   Enforced by `tests/engine/test_boundaries.py`. If you need backend
    models or settings inside `engine/`, the shape is wrong — pass plain
-   dataclasses in, return plain dataclasses out, and do the Django
-   translation in `backend/api/` where it belongs.
+   dataclasses in, return plain dataclasses out, and do the framework
+   translation in `backend/` where it belongs.
 
 2. **No `os.environ` reads.** All configuration arrives via `engine.Config`
    passed explicitly from the caller.
 
-3. **No runtime side effects.** `engine/` does not write to disk,
-   mutate databases, or make HTTP calls to the MCP servers. It produces
+3. **No runtime side effects.** `engine/` does not write to disk
+   or make HTTP calls to the MCP servers. It produces
    strings and structured payloads; the caller is responsible for
    dispatching them. Reading bundled schema/prompt resources (e.g.
    `schemas/apply_world_update.schema.json` loaded lazily by
@@ -30,9 +30,10 @@ Everything in this package obeys four rules:
    framework-agnostic initialization reads, not external state changes.
 
 4. **Streaming is a generator protocol, not a framework concern.**
-   `stream_turn(...)` yields tokens. Django wraps the generator in
-   `StreamingHttpResponse`; a future FastAPI adapter could wrap the same
-   generator in SSE. The engine doesn't know or care.
+   `stream_turn(...)` yields tokens. The FastAPI backend wraps the
+   generator in an SSE stream; any other transport (a test loop, a CLI,
+   a future standalone adapter) could wrap the same generator differently.
+   The engine doesn't know or care.
 
 ## Current status
 
@@ -74,8 +75,8 @@ Implemented:
   future FastAPI adapter) can consume it. Both functions accept
   optional `client=` injection for test mocking, matching the
   dispatcher's pattern.
-- `engine.prompts.dm.DM_SYSTEM_PROMPT` — ported verbatim from
-  `backend/api/dm_ai.py`
+- `engine.prompts.dm.DM_SYSTEM_PROMPT` — ported verbatim from the
+  legacy `backend/api/dm_ai.py` (since retired)
 
 Still stubbed:
 

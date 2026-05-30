@@ -52,7 +52,7 @@ You define the physical laws of the engine. You build the machine-readable JSON 
 
 You are the backend engineers extending the Brawn of the engine. You build the Python-based MCP servers that act as the bridge between the LLM's intent and the host's bare metal.
 
-- **Tasks:** Writing new MCP servers (e.g., `discord-broadcaster`, `weather-simulator`, `combat-roller`), optimizing PostgreSQL/ChromaDB queries, and hardening security.
+- **Tasks:** Writing new MCP servers (e.g., `discord-broadcaster`, `weather-simulator`, `combat-roller`), optimizing ChromaDB queries, and hardening security.
 - **Requirements:** Defensive programming. You must assume the Inference Node will occasionally hallucinate; your servers are the last line of defense. Every tool must validate its payload against a JSON Schema *before* executing any writes or queries.
 
 ---
@@ -136,8 +136,8 @@ just env
 ```
 
 Chezmoi reads `.chezmoi/dot_infrastructure/dot_env.tmpl` and writes
-`infrastructure/.env` with the correct values for your OS. Edit the generated
-file if you need a custom PostgreSQL password before continuing.
+`infrastructure/.env` with the correct values for your OS (Docker socket path,
+Python binary). You normally won't need to edit it by hand.
 
 ### Step 2: Start the Infrastructure Backbone (Docker)
 
@@ -161,14 +161,14 @@ If you are testing the split-node architecture (e.g., the Inference Node on
 one machine and the Infrastructure Node on another), ensure both machines are
 authenticated on your Tailscale network. Set `TAILSCALE_BIND_IP` in your
 `infrastructure/.env` to the Infrastructure Node's Tailscale IP (`100.x.y.z`).
-This restricts database traffic exclusively to your secure mesh — both nodes
+This restricts node-to-node traffic exclusively to your secure mesh — both nodes
 are invisible to the public internet.
 
 ### Step 5: Run the Reference Implementation
 
 ```bash
 just dev-frontend   # React frontend (@sentinel/ui in apps/sentinel-ui/)
-just dev-backend    # Express backend (api-server artifact)
+just dev-backend    # FastAPI backend (backend/, uvicorn on :8001)
 ```
 
 ---
@@ -179,7 +179,7 @@ The golden rule of Project Sentinel: **The AI is never granted raw filesystem ac
 
 Every single interaction between the Inference Node and the Infrastructure Node must pass through a strict JSON Schema validation layer.
 
-If you are a Technician writing a new MCP tool (e.g., a `trade_items` function), you **must** provide an accompanying JSON Schema file in `/schemas/`. Your Python server must validate the AI's payload against this schema *before* executing any database transactions or file writes.
+If you are a Technician writing a new MCP tool (e.g., a `trade_items` function), you **must** provide an accompanying JSON Schema file in `/schemas/`. Your Python server must validate the AI's payload against this schema *before* executing any file writes.
 
 ### Mandatory schema rules:
 
@@ -195,7 +195,7 @@ If you are a Technician writing a new MCP tool (e.g., a `trade_items` function),
 |---|---|---|
 | Core lore | `data/lore/core/` | `kebab-case.md` |
 | Community lore | `data/lore/community/<author>/` | `kebab-case.md` |
-| Core state | `data/state/` | `kebab-case.json` |
+| Core state | `data/state/core/` | `kebab-case.json` |
 | Community state | registered via `community.json` manifest | — |
 | JSON Schemas | `schemas/` | `snake_case.schema.json` |
 | MCP Servers | `mcp-servers/<name>/` | Python package |

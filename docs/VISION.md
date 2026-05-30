@@ -41,7 +41,7 @@ short retrospective so future agents can see how we got where we are.
 
 ### The 1.0 frontend stack → React (decided 2026-04-15)
 
-`apps/sentinel-ui/` is React 19 + Vite + Tailwind v4 + Zustand. The
+`apps/sentinel-ui/` is React 19 + Vite + Tailwind v3 + Zustand. The
 question sat as an open item for weeks — the app existed because the
 Replit-era scaffolding left it behind, not because a first-principles
 evaluation picked it, and the decision was deferred to avoid premature

@@ -32,6 +32,13 @@ data/
 
 ### RAG Index Namespace
 
+> **Status: design contract, not yet implemented.** ChromaDB runs as part of the
+> stack, but nothing reads from or writes to it in the turn loop yet — the
+> Lorekeeper agent (`engine/agents/lorekeeper.py`) does not exist. This section
+> specifies how the RAG layer *will* tag and prioritize documents when that work
+> lands (tracked in `docs/BACKLOG.md`); the namespace/priority rules below are the
+> contract it must honor, not a description of running behavior.
+
 All documents ingested into ChromaDB must be tagged with their namespace at the metadata level:
 
 ```json

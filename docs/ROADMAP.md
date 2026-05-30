@@ -141,10 +141,6 @@ Work that's actionable but waiting on a specific trigger or decision:
   implementation deferred. Waiting on: the first few live sessions that
   produce enough "DM mentioned it but didn't emit state" examples to
   validate the approach.
-- **`docs/WORKSPACE.md` rewrite** — stale against current reality (describes
-  Express 5, `artifacts/api-server/src/lib/dm-ai.ts`, etc.). Lower priority
-  than the README/ARCHITECTURE rewrite that shipped in PR #19 because
-  WORKSPACE.md has fewer readers.
 
 ---
 
