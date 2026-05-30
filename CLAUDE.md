@@ -254,7 +254,7 @@ The two nodes communicate over a Tailscale mesh in production; locally they run 
 
 **Backend** — `backend/` is a FastAPI app on `:8001`. It serves `GET /healthz`, `POST /api/session/new`, and `POST /api/stream` (SSE). It reads state from `data/state/*.json` directly, calls `engine/` for turn handling, and dispatches writes through `engine.apply_world_update` → fs-manager → git-sync. No ORM, no database queries.
 
-**Frontend** — `apps/sentinel-ui/` (`@sentinel/ui`), React 19 + Vite + Tailwind v4. Talks to the FastAPI backend via fetch + SSE. React is the ratified 1.0 frontend stack as of 2026-04-15 (see `docs/VISION.md` § "Resolved decisions"); normal feature-work rules apply.
+**Frontend** — `apps/sentinel-ui/` (`@sentinel/ui`), React 19 + Vite + Tailwind v3. Talks to the FastAPI backend via fetch + SSE. React is the ratified 1.0 frontend stack as of 2026-04-15 (see `docs/VISION.md` § "Resolved decisions"); normal feature-work rules apply.
 
 **Polyglot tooling**
 - pnpm workspace (Node 24, pnpm 10) — `pnpm-workspace.yaml` covers `apps/*` and `scripts`

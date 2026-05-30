@@ -27,7 +27,7 @@ export function NarrativeScroll() {
       <div className="flex gap-1 px-4 pt-3 pb-0 border-b border-border shrink-0">
         <button
           onClick={() => setActiveView('narrative')}
-          className={`px-3 py-2 lg:py-1 text-xs rounded-t transition-colors min-h-[2.5rem] lg:min-h-0 ${
+          className={`px-3 py-2 lg:py-1 text-xs rounded-t transition-colors min-h-[2.75rem] lg:min-h-0 ${
             activeView === 'narrative'
               ? 'bg-codex text-amber border border-b-codex border-border -mb-px'
               : 'text-ether hover:text-ink'
@@ -37,7 +37,7 @@ export function NarrativeScroll() {
         </button>
         <button
           onClick={() => setActiveView('system-log')}
-          className={`px-3 py-2 lg:py-1 text-xs rounded-t transition-colors flex items-center gap-1.5 min-h-[2.5rem] lg:min-h-0 ${
+          className={`px-3 py-2 lg:py-1 text-xs rounded-t transition-colors flex items-center gap-1.5 min-h-[2.75rem] lg:min-h-0 ${
             activeView === 'system-log'
               ? 'bg-codex text-amber border border-b-codex border-border -mb-px'
               : 'text-ether hover:text-ink'

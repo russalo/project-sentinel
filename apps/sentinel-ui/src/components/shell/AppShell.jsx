@@ -8,7 +8,7 @@ import { NarrativeScroll } from '../narrative/NarrativeScroll';
 import { PanelRouter } from '../panels/PanelRouter';
 
 export function AppShell() {
-  const { focusMode, toggleFocusMode, leftPanelCollapsed, rightPanelCollapsed, mobilePanelOpen, closeMobilePanel } = useUIStore();
+  const { focusMode, toggleFocusMode, leftPanelCollapsed, rightPanelCollapsed, mobilePanelOpen, openMobilePanel, closeMobilePanel, selectedEntity } = useUIStore();
   const { messages, addMessage } = useChatStore();
 
   // Focus mode keyboard shortcut (F key).
@@ -41,6 +41,31 @@ export function AppShell() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [toggleFocusMode]);
+
+  // Lock body scroll and handle Escape key while mobile drawer is open
+  useEffect(() => {
+    if (mobilePanelOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => { document.body.style.overflow = ''; };
+  }, [mobilePanelOpen]);
+
+  useEffect(() => {
+    if (!mobilePanelOpen) return;
+    const handleKeyDown = (e) => { if (e.key === 'Escape') closeMobilePanel(); };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [mobilePanelOpen, closeMobilePanel]);
+
+  // When an entity is selected from the left drawer, switch to the right drawer
+  // so the detail view in PanelRouter is visible.
+  useEffect(() => {
+    if (selectedEntity && mobilePanelOpen === 'left') {
+      openMobilePanel('right');
+    }
+  }, [selectedEntity, mobilePanelOpen, openMobilePanel]);
 
   // Add welcome message on mount
   useEffect(() => {
@@ -81,7 +106,7 @@ export function AppShell() {
         {/* Mobile drawer overlay */}
         {mobilePanelOpen && (
           <div className="lg:hidden fixed inset-0 z-50 flex">
-            <div className="absolute inset-0 bg-black/60" onClick={closeMobilePanel} />
+            <div className="absolute inset-0 bg-black/60" onClick={closeMobilePanel} aria-hidden="true" />
             <div className={`relative z-10 w-80 max-w-[85vw] bg-codex overflow-y-auto flex-shrink-0 ${mobilePanelOpen === 'right' ? 'ml-auto border-l border-border' : 'border-r border-border'}`}>
               {mobilePanelOpen === 'left' ? <WorldStateDashboard /> : <PanelRouter />}
             </div>
