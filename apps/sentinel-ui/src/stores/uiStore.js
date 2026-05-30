@@ -20,4 +20,9 @@ export const useUIStore = create((set) => ({
   // Focus mode (full narrative, no side panels)
   focusMode: false,
   toggleFocusMode: () => set((state) => ({ focusMode: !state.focusMode })),
+
+  // Mobile panel drawer ('left' | 'right' | null)
+  mobilePanelOpen: null,
+  openMobilePanel: (side) => set({ mobilePanelOpen: side }),
+  closeMobilePanel: () => set({ mobilePanelOpen: null }),
 }));

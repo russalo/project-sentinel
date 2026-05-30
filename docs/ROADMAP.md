@@ -4,7 +4,7 @@
 > stack and architecture assumed fixed. For the long-term direction and
 > open stack questions, see [`VISION.md`](./VISION.md).
 
-_Last updated: 2026-04-15_
+_Last updated: 2026-05-30_
 
 ---
 
@@ -61,6 +61,14 @@ _Last updated: 2026-04-15_
   exercised end-to-end (real file writes, real git commits) instead
   of just contract-tested via httpx.MockTransport from the engine
   side. The "MCP servers have no unit tests" gap is closed.
+- **Mobile-responsive chat layout shipped (2026-05-30).** The game UI
+  is now usable on phones. Side panels are hidden below the `lg`
+  breakpoint and accessible via `Users` / `BookOpen` icon buttons in
+  the TopBar that open a slide-in drawer with a backdrop-tap-to-dismiss
+  pattern. CommandBar gains `env(safe-area-inset-bottom)` for notched
+  iPhones. Tab touch targets, narrative padding, and Roll button label
+  are all responsive. `viewport-fit=cover` added to the HTML viewport
+  meta. `uiStore` gains `mobilePanelOpen` state.
 
 ---
 

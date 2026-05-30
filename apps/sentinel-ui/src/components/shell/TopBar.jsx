@@ -1,26 +1,34 @@
 import { useState } from 'react';
 import { usePersonaStore } from '../../stores/personaStore';
 import { useUIStore } from '../../stores/uiStore';
-import { Menu, Share2 } from 'lucide-react';
+import { Menu, Share2, Users, BookOpen } from 'lucide-react';
 import { PersonaSheet } from '../persona/PersonaSheet';
 import { SeedShareModal } from '../seed/SeedShareModal';
 import { StatusIndicator } from './StatusIndicator';
 
 export function TopBar({ worldName = 'The Shattered Expanse', seedString = 'ABC-DEF-GHI-JKL' }) {
   const { personaName, mood, isLocked, availableMoods } = usePersonaStore();
-  const { focusMode } = useUIStore();
+  const { focusMode, openMobilePanel } = useUIStore();
   const [personaSheetOpen, setPersonaSheetOpen] = useState(false);
   const [seedModalOpen, setSeedModalOpen] = useState(false);
 
   return (
     <>
-      <header className="bg-codex border-b border-border px-6 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <h1 className="font-cinzel text-2xl text-amber">⚔ SENTINEL</h1>
-          <div className="text-sm text-dust">{worldName}</div>
+      <header className="bg-codex border-b border-border px-4 lg:px-6 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          {/* Mobile: left panel toggle */}
+          <button
+            className="lg:hidden text-ink hover:text-amber transition-colors p-1"
+            onClick={() => openMobilePanel('left')}
+            aria-label="Open world state"
+          >
+            <Users size={20} />
+          </button>
+          <h1 className="font-cinzel text-xl lg:text-2xl text-amber">⚔ SENTINEL</h1>
+          <div className="hidden sm:block text-sm text-dust">{worldName}</div>
         </div>
 
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-3 lg:gap-6">
           {/* Focus mode indicator — only renders while focus mode is
               active. Tells the player they're in a degraded layout
               (side panels hidden) and how to get out. The keybinding
@@ -48,10 +56,10 @@ export function TopBar({ worldName = 'The Shattered Expanse', seedString = 'ABC-
           {/* Connection status */}
           <StatusIndicator />
 
-          {/* Seed string */}
+          {/* Seed string — hidden on small screens */}
           <button
             onClick={() => setSeedModalOpen(true)}
-            className="text-xs font-mono text-amber hover:text-amber/80 transition-colors flex items-center gap-1"
+            className="hidden sm:flex text-xs font-mono text-amber hover:text-amber/80 transition-colors items-center gap-1"
           >
             {seedString} <Share2 size={14} />
           </button>
@@ -62,14 +70,23 @@ export function TopBar({ worldName = 'The Shattered Expanse', seedString = 'ABC-
             className="text-sm hover:text-amber transition-colors"
           >
             <span className="text-amber font-medium">{personaName}</span>
-            <span className="text-dust mx-1">•</span>
-            <span className="text-dust">{mood}</span>
-            <span className="ml-2">
+            <span className="hidden sm:inline text-dust mx-1">•</span>
+            <span className="hidden sm:inline text-dust">{mood}</span>
+            <span className="ml-1">
               {isLocked ? '🔒' : '▾'}
             </span>
           </button>
 
-          <button className="text-ink hover:text-amber transition-colors">
+          {/* Mobile: right panel toggle */}
+          <button
+            className="lg:hidden text-ink hover:text-amber transition-colors p-1"
+            onClick={() => openMobilePanel('right')}
+            aria-label="Open codex"
+          >
+            <BookOpen size={20} />
+          </button>
+
+          <button className="hidden lg:block text-ink hover:text-amber transition-colors">
             <Menu size={20} />
           </button>
         </div>

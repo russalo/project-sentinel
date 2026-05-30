@@ -27,7 +27,7 @@ export function NarrativeScroll() {
       <div className="flex gap-1 px-4 pt-3 pb-0 border-b border-border shrink-0">
         <button
           onClick={() => setActiveView('narrative')}
-          className={`px-3 py-1 text-xs rounded-t transition-colors ${
+          className={`px-3 py-2 lg:py-1 text-xs rounded-t transition-colors min-h-[2.75rem] lg:min-h-0 ${
             activeView === 'narrative'
               ? 'bg-codex text-amber border border-b-codex border-border -mb-px'
               : 'text-ether hover:text-ink'
@@ -37,7 +37,7 @@ export function NarrativeScroll() {
         </button>
         <button
           onClick={() => setActiveView('system-log')}
-          className={`px-3 py-1 text-xs rounded-t transition-colors flex items-center gap-1.5 ${
+          className={`px-3 py-2 lg:py-1 text-xs rounded-t transition-colors flex items-center gap-1.5 min-h-[2.75rem] lg:min-h-0 ${
             activeView === 'system-log'
               ? 'bg-codex text-amber border border-b-codex border-border -mb-px'
               : 'text-ether hover:text-ink'
@@ -45,7 +45,7 @@ export function NarrativeScroll() {
         >
           System Log
           {unreadSystemLog > 0 && (
-            <span className="bg-amber text-void text-[10px] font-bold px-1 rounded-full leading-tight">
+            <span className="bg-amber text-void text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-tight">
               {unreadSystemLog}
             </span>
           )}
@@ -53,7 +53,7 @@ export function NarrativeScroll() {
       </div>
 
       {/* Narrative view — always mounted to preserve scroll position */}
-      <div ref={scrollRef} className={`flex flex-col p-6 gap-4 overflow-y-auto flex-1 ${activeView !== 'narrative' ? 'hidden' : ''}`}>
+      <div ref={scrollRef} className={`flex flex-col p-4 lg:p-6 gap-4 overflow-y-auto flex-1 ${activeView !== 'narrative' ? 'hidden' : ''}`}>
         {messages.length === 0 && (
           <div className="flex items-center justify-center h-full text-center text-dust">
             <div>
