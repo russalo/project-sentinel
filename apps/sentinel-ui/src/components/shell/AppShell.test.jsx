@@ -17,7 +17,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { StrictMode } from 'react'
-import { render } from '@testing-library/react'
+import { render, act } from '@testing-library/react'
 import { AppShell } from './AppShell'
 import { useChatStore } from '../../stores/chatStore'
 import { usePersonaStore } from '../../stores/personaStore'
@@ -64,5 +64,18 @@ describe('AppShell welcome message', () => {
   it('falls back to the store default author when no persona is set', () => {
     render(<AppShell />)
     expect(welcomeMessages()[0].author).toBe('Oracle')
+  })
+
+  it('re-seeds the welcome after the chat is cleared while mounted', () => {
+    render(<AppShell />)
+    expect(welcomeMessages()).toHaveLength(1)
+
+    // A real turn arrives, then the chat is cleared — the welcome
+    // should come back, matching the "empty chat always shows the
+    // welcome" behavior the StrictMode latch must not break.
+    act(() => useChatStore.getState().addMessage({ type: 'player', content: 'I look around.' }))
+    act(() => useChatStore.getState().clearMessages())
+
+    expect(welcomeMessages()).toHaveLength(1)
   })
 })

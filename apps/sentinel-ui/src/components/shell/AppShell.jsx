@@ -69,16 +69,20 @@ export function AppShell() {
     }
   }, [selectedEntity, mobilePanelOpen, openMobilePanel]);
 
-  // Add welcome message on mount.
+  // Seed the welcome message whenever the chat is empty.
   //
-  // The ref latch makes this fire at most once per mount. React 19
-  // StrictMode invokes effects twice in development, and the
-  // addMessage state update between the two firings is not synchronous
-  // — so a bare `messages.length === 0` guard lets both invocations
-  // see an empty list and seed two identical welcome messages. The ref
-  // is stable across the double-invocation, so the second pass
-  // short-circuits. The length check is retained so we never clobber an
-  // already-running conversation.
+  // The ref latch exists only to absorb React 19 StrictMode's dev-mode
+  // double-invocation of effects: the addMessage update between the two
+  // firings isn't synchronous, so a bare `messages.length === 0` guard
+  // lets both passes see an empty list and seed two identical welcomes.
+  // The ref is stable across the double-invocation, so the second pass
+  // short-circuits.
+  //
+  // The latch is disarmed as soon as the chat has content, so it never
+  // outlives the empty-state window it's guarding. This preserves the
+  // original behavior — an empty chat always shows the welcome — so a
+  // later clearMessages() re-seeds it, while the StrictMode double-add
+  // stays fixed.
   //
   // Author comes from the live persona store (same source TopBar reads)
   // so the welcome is attributed to the selected persona instead of a
@@ -86,16 +90,18 @@ export function AppShell() {
   // pre-session mount still renders a sensible author.
   const welcomeSeeded = useRef(false);
   useEffect(() => {
-    if (welcomeSeeded.current) return;
-    if (messages.length === 0) {
-      welcomeSeeded.current = true;
-      addMessage({
-        type: 'dm',
-        content: 'Welcome, traveler. The world awaits your next move.',
-        author: personaName,
-        timestamp: new Date(),
-      });
+    if (messages.length > 0) {
+      welcomeSeeded.current = false;
+      return;
     }
+    if (welcomeSeeded.current) return;
+    welcomeSeeded.current = true;
+    addMessage({
+      type: 'dm',
+      content: 'Welcome, traveler. The world awaits your next move.',
+      author: personaName,
+      timestamp: new Date(),
+    });
   }, [addMessage, messages.length, personaName]);
 
   return (
