@@ -145,9 +145,8 @@ land back-to-back.
 ## Things to Know About This Project
 
 - This is a cross-OS project. Do not write scripts or configs that assume linux-only.
-- Replit was the original development platform. We are migrating away from it.
-  Do not introduce new `@replit/*` dependencies. See `docs/BACKLOG.md` for the
-  full audit and removal plan.
+- Replit was the original development platform. Migration is complete.
+  Do not introduce new `@replit/*` dependencies.
 - **React is the 1.0 frontend.** Decided 2026-04-15 by the landing of
   `feat/panel-ux-entity-cards` — the "undecided, do not build new
   frontend features" gate that previously lived here is resolved. See
@@ -258,7 +257,7 @@ The two nodes communicate over a Tailscale mesh in production; locally they run 
 **Frontend** — `apps/sentinel-ui/` (`@sentinel/ui`), React 19 + Vite + Tailwind v4. Talks to the FastAPI backend via fetch + SSE. React is the ratified 1.0 frontend stack as of 2026-04-15 (see `docs/VISION.md` § "Resolved decisions"); normal feature-work rules apply.
 
 **Polyglot tooling**
-- pnpm workspace (Node 24, pnpm 10) — `pnpm-workspace.yaml` covers `apps/*`, `artifacts/*`, `lib/*`
+- pnpm workspace (Node 24, pnpm 10) — `pnpm-workspace.yaml` covers `apps/*` and `scripts`
 - Python 3.11+ for the MCP servers, the FastAPI backend, and the engine package — each has its own `requirements.txt`
 - `chezmoi` generates `infrastructure/.env` from `.chezmoi/dot_infrastructure/dot_env.tmpl` — that's why `just env` exists, and why you should never hand-write `infrastructure/.env`
 

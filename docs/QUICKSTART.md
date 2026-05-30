@@ -22,11 +22,11 @@ Welcome, Technician. This guide gets the **Infrastructure Node** running on your
 ## Step 1: Clone the Repository
 
 ```bash
-git clone https://github.com/russalo/present.git project-sentinel
+git clone https://github.com/russalo/project-sentinel.git project-sentinel
 cd project-sentinel
 ```
 
-> **Why this is cool:** The repo is a pnpm monorepo with TypeScript artifacts and Python MCP servers living side by side. You only need Python for the Infrastructure Node — the TypeScript frontend is a separate concern you can ignore entirely to start.
+> **Why this is cool:** The repo is a pnpm monorepo with a React frontend and Python MCP servers living side by side. You only need Python for the Infrastructure Node — the frontend is a separate concern you can ignore entirely to start.
 
 ---
 

@@ -62,9 +62,6 @@ scheduled. They stay here until they earn a spot on `docs/ROADMAP.md`.
 
 ## Documentation Drift
 
-- [ ] **`docs/WORKSPACE.md` is stale — rewrite against the current stack.** The document still lists "API framework: Express 5" and describes `artifacts/api-server/src/lib/dm-ai.ts` as the AI architecture — neither file nor framework exists any more. Rewrite against the current reality: FastAPI backend reading `data/state/*.json`, engine package as the Inference Node, the retired Django/Express/Drizzle/Postgres history collapsed to a one-line "previously" note. The README/ARCHITECTURE rewrite in the cleanup PR didn't touch this file.
-      _Discovered: 2026-04-13 | Updated: 2026-04-14 | Context: drift not addressed in the README+ARCHITECTURE rewrite; lower priority than those were because WORKSPACE.md has fewer readers_
-
 ---
 
 ## Engine Package

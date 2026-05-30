@@ -1,19 +1,26 @@
 # Workspace — Project Sentinel
 
-Developer context document. Covers stack, structure, database schema, AI
+Developer context document. Covers stack, structure, data storage, AI
 architecture, and API routes for contributors and AI coding agents.
+
+_Last updated: 2026-05-30_
 
 ---
 
 ## Overview
 
-pnpm workspace monorepo using TypeScript. Each package manages its own
-dependencies.
+pnpm workspace monorepo. The frontend is TypeScript/React; the backend,
+engine, and MCP servers are Python.
 
-This is an **AI-powered RPG World Engine** — a fully automated, persistent RPG
-interface where an AI Dungeon Master narrates the world and automatically
+This is an **AI-powered RPG World Engine** — a fully automated, persistent
+RPG interface where an AI Dungeon Master narrates the world and automatically
 updates world state (characters, locations, factions, items) after each player
-turn.
+turn. Canonical state lives on disk as JSON and Markdown under `data/`, version-
+controlled by git. No database in the turn loop.
+
+_Previously: Express 5 API server, PostgreSQL + Drizzle ORM. Both retired in
+ADR 0001 Phases 1–2 (2026-04-13). The old `artifacts/api-server/` and `lib/`
+packages are gone._
 
 ---
 
@@ -21,20 +28,22 @@ turn.
 
 | Concern | Choice | Notes |
 |---|---|---|
-| Monorepo | pnpm workspaces | `apps/*`, `artifacts/*`, `lib/*` |
+| Monorepo | pnpm workspaces | `apps/*`, `scripts` |
 | Node.js | 24 | |
-| Package manager | pnpm | |
-| TypeScript | 5.9 | |
-| API framework | Express 5 | `artifacts/api-server/` |
-| Database | PostgreSQL + Drizzle ORM | |
-| Validation | Zod (`zod/v4`), `drizzle-zod` | |
-| API codegen | Orval (from OpenAPI spec) | |
-| Build | esbuild (CJS bundle) | |
-| LLM orchestration | Project's own (see `lib/`) | Replit AI proxy removed — see BACKLOG |
-| Frontend | React 19 + Vite + Tailwind v4 | `apps/sentinel-ui/` (`@sentinel/ui`) |
-| Styling | Tailwind CSS v4 + Framer Motion | Diegetic design system |
+| Package manager | pnpm 10 | |
+| Frontend | React 19 + Vite + Tailwind v3 | `apps/sentinel-ui/` (`@sentinel/ui`) |
+| Styling | Tailwind CSS v3 | Custom design tokens (void, amber, codex…) |
 | State | Zustand | 5 stores: world, chat, player, ui, persona |
 | Routing | Wouter | Client-side, `/create` + `/` |
+| Backend | FastAPI | `backend/` — port `:8001` |
+| AI / Inference | Python engine package | `engine/` — DM agent + Fact-Extractor |
+| LLM proxy | LiteLLM | Model-agnostic; tested against Ollama locally |
+| MCP servers | Python / FastAPI | `mcp-servers/fs-manager` (`:8010`), `mcp-servers/git-sync` (`:8012`) |
+| Vector store | ChromaDB | Docker; reserved for future Lorekeeper RAG |
+| Python | 3.11+ | Backend, engine, MCP servers |
+| Schema validation | JSON Schema Draft 2020-12 + jsonschema | `schemas/apply_world_update.schema.json` |
+| Command runner | `just` | Cross-OS; all recipes in `justfile` |
+| Env generation | chezmoi | OS-aware `infrastructure/.env` |
 
 ---
 
@@ -43,126 +52,116 @@ turn.
 ```text
 project-sentinel/
 ├── apps/
-│   └── sentinel-ui/        # React frontend (@sentinel/ui)
-├── artifacts/
-│   └── api-server/         # Express API server (DM AI + world update routes)
-├── lib/                    # Shared libraries
-│   ├── api-spec/           # OpenAPI spec + Orval codegen config
-│   ├── api-client-react/   # Generated React Query hooks
-│   ├── api-zod/            # Generated Zod schemas from OpenAPI
-│   ├── db/                 # Drizzle ORM schema + DB connection
-│   └── integrations/       # LLM and external service clients
-├── scripts/                # Utility scripts
-├── pnpm-workspace.yaml     # pnpm workspace
-├── tsconfig.base.json      # Shared TS options
-├── tsconfig.json           # Root TS project references
-└── package.json            # Root package with hoisted devDeps
+│   └── sentinel-ui/        # React 19 + Vite frontend (@sentinel/ui)
+├── backend/                # FastAPI app — :8001 (session, stream, healthz)
+├── engine/                 # Pure-Python Inference Node package
+│   └── agents/             # dm.py, fact_extractor.py (lorekeeper.py stubbed)
+├── mcp-servers/
+│   ├── fs-manager/         # Writes data/state/*.json and data/lore/*.md — :8010
+│   └── git-sync/           # Atomic git commit after each world update — :8012
+├── data/
+│   ├── state/core/         # Machine-readable JSON world state (entities, sessions…)
+│   └── lore/core/          # Human-readable Markdown lore + presets (TOML)
+├── schemas/                # Shared JSON Schema contracts
+├── infrastructure/         # Docker Compose + chezmoi .env template
+├── scripts/                # Shell automation
+├── tests/                  # pytest suites (Python)
+├── docs/                   # BACKLOG, ROADMAP, VISION, ADRs, QUICKSTART
+├── justfile                # All dev recipes — run `just` for the list
+└── pnpm-workspace.yaml
 ```
 
 ---
 
-## Database Schema
+## Data Storage
 
-| Table | Purpose |
+No database. Per **ADR 0001**, `data/` is the canonical source of truth:
+
+| Path | Contents |
 |---|---|
-| `world_state` | Global world tracking (location, weather, time, tension 0–10) |
-| `sessions` | Game sessions (active/inactive) |
-| `turns` | Session turn log (player action + DM narrative + world_update JSON) |
-| `characters` | NPCs, player, enemies with status/health/location |
-| `locations` | Discovered/undiscovered locations with danger rating |
-| `factions` | Factions with player relation (−10 to 10) and power |
-| `items` | Items with rarity, magical flag, owner/location |
+| `data/state/core/entities/` | Character, NPC, enemy JSON files |
+| `data/state/core/locations/` | Location JSON files |
+| `data/state/core/factions/` | Faction JSON files |
+| `data/state/core/items/` | Item JSON files |
+| `data/state/core/world/state.json` | Global world state (location, tension, weather, time) |
+| `data/state/core/sessions/<uuid>.json` | Per-session turn log |
+| `data/lore/core/` | Markdown lore, session logs, preset TOML files |
+
+All writes go through `engine/` → `fs-manager` → `git-sync`. The backend
+never writes to `data/` directly. Every world update produces a git commit
+via `git-sync`, giving a full per-turn audit trail.
 
 ---
 
 ## AI Architecture
 
-### DM Persona (`artifacts/api-server/src/lib/dm-ai.ts`)
+### Two-node model
 
-- LLM client: project's own orchestration (Replit AI proxy replaced — see BACKLOG)
-- System prompt embeds: world context, recent turns, known entities
-- Every response includes a `<world_update>` JSON block
-- `processDmTurn()` — processes a player action, returns narrative + parsed updates
-- `generateWorldIntro()` — generates a new world opening with entities
+- **Inference Node** (`engine/`) — pure Python, never touches the filesystem.
+  Runs the DM and Fact-Extractor agents; emits structured `<world_update>` JSON.
+- **Infrastructure Node** (`mcp-servers/` + `data/`) — the only path from the
+  Inference Node to disk. Schema-gates every write.
 
-### World Updater (`artifacts/api-server/src/lib/world-updater.ts`)
+### Engine agents (`engine/agents/`)
 
-- `applyWorldUpdate()` — upserts characters/locations/factions/items from AI response
-- `getWorldContext()` — builds current world state for the DM prompt
+| Agent | File | Status |
+|---|---|---|
+| DM | `dm.py` | Live — `run_turn`, `stream_turn`, `generate_intro` |
+| Fact-Extractor | `fact_extractor.py` | Live — `extract` parses `<world_update>` tags |
+| Lorekeeper | `lorekeeper.py` | Stubbed — ChromaDB RAG, unscheduled |
 
-### DM Persona System (frontend)
+### Turn loop
 
-Two-layer system: **Persona Type** (genre-locked, set at world creation) +
-**Mood** (always changeable). See `apps/sentinel-ui/src/stores/personaStore.js`
-and `docs/FRONTEND_PLAN.md`.
+1. Player action → `engine.agents.dm` → narrative text + `<world_update>` block
+2. `engine.agents.fact_extractor` parses the block into an `apply_world_update` payload
+3. Payload validated against `schemas/apply_world_update.schema.json`
+   — invalid payloads are **rejected and fed back to the DM**, not silently dropped
+4. Dispatcher calls `fs-manager` to apply state changes, then `git-sync` to commit
+5. Next turn reads `data/state/*.json` directly (no cache layer)
+
+### Preset content (`data/lore/core/presets/`)
+
+TOML files for genres, personas, moods, and regions. `backend/presets.py`
+loads them at session-create time; `engine/agents/dm.py` injects the resolved
+fragments into the DM system prompt as a "WORLD FOUNDATIONS" block.
 
 ---
 
-## API Routes
-
-### Core game endpoints (`artifacts/api-server/`)
+## API Routes (`backend/`)
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/api/world` | World state summary |
-| `GET` | `/api/session` | Active session with full turn log |
-| `POST` | `/api/session/new` | Start a new session (AI generates opening) |
-| `POST` | `/api/session` | Submit a player turn (AI DM responds + updates world) |
-| `GET` | `/api/characters` | All characters |
-| `GET` | `/api/locations` | All locations |
-| `GET` | `/api/factions` | All factions |
-| `GET` | `/api/items` | All items |
-| `GET` | `/api/stream` | SSE DM narrative stream |
-
-### World creation / persona endpoints (stubs in `artifacts/api-server/`)
-
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/api/v1/dm/personas` | `DmPersona[]` — id, name, compatibleGenres, moods, description |
-| `POST` | `/api/v1/dm/persona` | Set persona type (when unlocked) |
-| `POST` | `/api/v1/dm/persona/mood` | Set mood (always allowed) |
-| `POST` | `/api/v1/world/seed/preview` | Live seed preview during world creation |
-| `POST` | `/api/v1/world/create` | Lock seed, create session, navigate to game |
-| `GET` | `/api/v1/world/seed` | Locked seed (public fields only) for active session |
+| `GET` | `/healthz` | Health check |
+| `POST` | `/api/session/new` | Start a new session — loads presets, calls DM intro, dispatches seed entities |
+| `POST` | `/api/stream` | Submit a player turn — SSE stream of DM tokens + `world_update` event |
 
 ---
 
-## Frontend Pages
+## Frontend Pages (`apps/sentinel-ui/`)
 
 | Route | Page | Description |
 |---|---|---|
-| `/create` | `WorldCreation` | Pre-game form: genre, tone, region, persona, mood, modifiers + live seed preview |
-| `/` | `AppShell` | 5-panel game console: left world state + center narrative + right panels |
-
----
-
-## TypeScript & Composite Projects
-
-Every package extends `tsconfig.base.json` which sets `composite: true`. The
-root `tsconfig.json` lists all packages as project references.
+| `/create` | `WorldCreation` | Pre-game form: genre, tone, region, persona, mood, modifiers |
+| `/` | `AppShell` | Game shell: responsive 3-panel layout (panels hidden on mobile, accessible via drawer) |
 
 ---
 
 ## Development
 
 ```bash
-# Generate API client code
-pnpm --filter @workspace/api-spec run codegen
+just env             # generate infrastructure/.env for your OS
+just install         # pnpm install + all Python deps
 
-# Push DB schema
-pnpm --filter @workspace/db run push
+just dev             # frontend + backend together
+just dev-frontend    # Vite dev server only
+just dev-backend     # FastAPI on :8001 only
 
-# Start API server (dev)
-just dev-backend
+just test            # Python schema tests + all JS tests
+just build           # pnpm build across workspace
+just typecheck       # pnpm typecheck (no emit)
 
-# Start frontend (dev)
-just dev-frontend
+just start           # full stack: Docker → MCP servers
+just health          # pass/fail table for every service
 ```
 
-For full cloud stack (PostgreSQL + ChromaDB + MCP servers):
-
-```bash
-just env      # generate infrastructure/.env for your OS
-just up       # start Docker services
-just health   # verify all services
-```
+See `CLAUDE.md` § "Common Commands" for the full reference.
