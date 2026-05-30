@@ -1,6 +1,7 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useUIStore } from '../../stores/uiStore';
 import { useChatStore } from '../../stores/chatStore';
+import { usePersonaStore } from '../../stores/personaStore';
 import { TopBar } from './TopBar';
 import { CommandBar } from './CommandBar';
 import { WorldStateDashboard } from '../world-state/WorldStateDashboard';
@@ -10,6 +11,7 @@ import { PanelRouter } from '../panels/PanelRouter';
 export function AppShell() {
   const { focusMode, toggleFocusMode, leftPanelCollapsed, rightPanelCollapsed, mobilePanelOpen, openMobilePanel, closeMobilePanel, selectedEntity } = useUIStore();
   const { messages, addMessage } = useChatStore();
+  const personaName = usePersonaStore((s) => s.personaName);
 
   // Focus mode keyboard shortcut (F key).
   //
@@ -67,17 +69,40 @@ export function AppShell() {
     }
   }, [selectedEntity, mobilePanelOpen, openMobilePanel]);
 
-  // Add welcome message on mount
+  // Seed the welcome message whenever the chat is empty.
+  //
+  // The ref latch exists only to absorb React 19 StrictMode's dev-mode
+  // double-invocation of effects: the addMessage update between the two
+  // firings isn't synchronous, so a bare `messages.length === 0` guard
+  // lets both passes see an empty list and seed two identical welcomes.
+  // The ref is stable across the double-invocation, so the second pass
+  // short-circuits.
+  //
+  // The latch is disarmed as soon as the chat has content, so it never
+  // outlives the empty-state window it's guarding. This preserves the
+  // original behavior — an empty chat always shows the welcome — so a
+  // later clearMessages() re-seeds it, while the StrictMode double-add
+  // stays fixed.
+  //
+  // Author comes from the live persona store (same source TopBar reads)
+  // so the welcome is attributed to the selected persona instead of a
+  // hardcoded "Oracle". The store defaults to "Oracle", so a
+  // pre-session mount still renders a sensible author.
+  const welcomeSeeded = useRef(false);
   useEffect(() => {
-    if (messages.length === 0) {
-      addMessage({
-        type: 'dm',
-        content: 'Welcome, traveler. The world awaits your next move.',
-        author: 'Oracle',
-        timestamp: new Date(),
-      });
+    if (messages.length > 0) {
+      welcomeSeeded.current = false;
+      return;
     }
-  }, [addMessage, messages.length]);
+    if (welcomeSeeded.current) return;
+    welcomeSeeded.current = true;
+    addMessage({
+      type: 'dm',
+      content: 'Welcome, traveler. The world awaits your next move.',
+      author: personaName,
+      timestamp: new Date(),
+    });
+  }, [addMessage, messages.length, personaName]);
 
   return (
     <div className="flex flex-col h-screen bg-void">
