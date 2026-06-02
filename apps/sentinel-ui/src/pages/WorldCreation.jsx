@@ -139,8 +139,9 @@ export default function WorldCreation() {
       setSessionId(data.sessionId);
       setCharacter(creation.characterName || 'Traveler', creation.characterClass || 'Adventurer');
       // Persist the world name here — worldCreationStore is reset() below,
-      // so the TopBar reads it from playerStore on the game screen.
-      setWorldName(creation.worldName || 'Unnamed World');
+      // so the TopBar reads it from playerStore on the game screen. Trim so
+      // a whitespace-only name falls back rather than persisting blank.
+      setWorldName(creation.worldName?.trim() || 'Unnamed World');
 
       // Sync the persona display store from the player's selection.
       // The backend gets persona_id + mood from the POST body and

@@ -11,13 +11,18 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { TopBar } from './TopBar'
 import { usePlayerStore } from '../../stores/playerStore'
+import { usePersonaStore } from '../../stores/personaStore'
+import { useUIStore } from '../../stores/uiStore'
 
 vi.mock('../persona/PersonaSheet', () => ({ PersonaSheet: () => null }))
 vi.mock('../seed/SeedShareModal', () => ({ SeedShareModal: () => null }))
 vi.mock('./StatusIndicator', () => ({ StatusIndicator: () => null }))
 
 beforeEach(() => {
+  // Reset the stores TopBar reads, so tests don't leak state into each other.
   usePlayerStore.setState({ worldName: '' })
+  usePersonaStore.setState({ personaName: 'Oracle', mood: 'neutral', isLocked: true })
+  useUIStore.setState({ focusMode: false })
 })
 
 describe('TopBar world name', () => {

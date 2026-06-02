@@ -50,7 +50,10 @@ export function PanelRouter() {
     );
   }
 
-  const activeTabConfig = TABS.find(t => t.id === activeTab);
+  // Fall back to the first tab if activeTab is unknown (e.g. a stale
+  // 'quests'/'map' value from before those tabs were removed), so the
+  // content area never renders blank.
+  const activeTabConfig = TABS.find(t => t.id === activeTab) ?? TABS[0];
   const ActiveComponent = activeTabConfig?.component;
 
   return (
