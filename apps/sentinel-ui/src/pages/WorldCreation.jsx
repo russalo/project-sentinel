@@ -84,7 +84,7 @@ async function generateSeedPreview(formData) {
 export default function WorldCreation() {
   const [, navigate] = useLocation();
   const creation = useWorldCreationStore();
-  const { setSessionId, setCharacter } = usePlayerStore();
+  const { setSessionId, setCharacter, setWorldName } = usePlayerStore();
   const { addMessage, clearMessages } = useChatStore();
   const [isGenerating, setIsGenerating] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
@@ -138,6 +138,9 @@ export default function WorldCreation() {
 
       setSessionId(data.sessionId);
       setCharacter(creation.characterName || 'Traveler', creation.characterClass || 'Adventurer');
+      // Persist the world name here — worldCreationStore is reset() below,
+      // so the TopBar reads it from playerStore on the game screen.
+      setWorldName(creation.worldName || 'Unnamed World');
 
       // Sync the persona display store from the player's selection.
       // The backend gets persona_id + mood from the POST body and

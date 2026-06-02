@@ -8,7 +8,7 @@ export const useUIStore = create((set) => ({
   toggleRightPanel: () => set((state) => ({ rightPanelCollapsed: !state.rightPanelCollapsed })),
 
   // Right panel active tab
-  activeTab: 'codex', // 'codex', 'inventory', 'quests', 'map'
+  activeTab: 'codex', // 'codex' | 'inventory'
   setActiveTab: (tab) => set({ activeTab: tab }),
 
   // Selected entity for right-panel detail view

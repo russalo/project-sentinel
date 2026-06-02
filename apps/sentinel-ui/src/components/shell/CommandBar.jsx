@@ -1,4 +1,4 @@
-import { Send, Dices } from 'lucide-react';
+import { Send } from 'lucide-react';
 import { useState } from 'react';
 import { useChatStore } from '../../stores/chatStore';
 import { usePlayerStore } from '../../stores/playerStore';
@@ -52,10 +52,6 @@ export function CommandBar() {
           <Send size={16} />
         </button>
       </div>
-      <button className="px-3 lg:px-4 py-2.5 bg-border text-ink rounded hover:bg-border/80 transition-colors flex items-center gap-1.5">
-        <Dices size={16} />
-        <span className="hidden sm:inline">Roll</span>
-      </button>
     </footer>
   );
 }
