@@ -38,7 +38,7 @@ install: env
 
 # ─── Cloud Environment ────────────────────────────────────────────────────────
 
-# Spin up the full cloud stack: Docker → PostgreSQL + ChromaDB → all MCP servers
+# Spin up the full cloud stack: Docker → ChromaDB → all MCP servers
 start: env
     bash scripts/start-cloud.sh
 
@@ -52,7 +52,7 @@ health:
 
 # ─── Docker ───────────────────────────────────────────────────────────────────
 
-# Start infrastructure containers (PostgreSQL + ChromaDB)
+# Start infrastructure containers (ChromaDB)
 up:
     cd infrastructure && docker compose up -d
 
@@ -159,9 +159,12 @@ end-session:
 check-structure:
     bash scripts/check-structure.sh
 
+# Reset world state to an empty baseline for an isolated smoke-test run (flags: --snapshot NAME, --no-commit)
+reset-world *args:
+    "{{ python_bin }}" scripts/reset-world.py {{ args }}
+
 # ─── Git Hooks ────────────────────────────────────────────────────────────────
 
-# Post-merge hook: reinstall locked deps + apply DB migrations
+# Post-merge hook: reinstall locked deps
 post-merge:
     pnpm install --frozen-lockfile
-    pnpm --filter db push
