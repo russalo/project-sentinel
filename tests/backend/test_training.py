@@ -106,8 +106,11 @@ def test_list_uses_filename_stem_as_canonical_id(client, tmp_data_dir):
     )
     listed = client.get("/api/sessions").json()
     assert listed[0]["sessionId"] == _UUID
-    # And that id resolves on the detail endpoint.
-    assert client.get(f"/api/sessions/{_UUID}").status_code == 200
+    # And that id resolves on the detail endpoint, which also returns the
+    # canonical (filename) id — not the mismatched JSON "WRONG".
+    detail = client.get(f"/api/sessions/{_UUID}")
+    assert detail.status_code == 200
+    assert detail.json()["sessionId"] == _UUID
 
 
 def test_list_orders_most_recent_first(client, tmp_data_dir):

@@ -27,8 +27,11 @@ _ENTITY_KEYS = ("characters", "locations", "factions", "items")
 _LABEL_MAX = 16
 
 
-def safe_label(name: str | None, fallback: str) -> str:
-    """Turn a display name into a file-observer-detectable speaker label."""
+def safe_label(name: Any, fallback: str) -> str:
+    """Turn a display name into a file-observer-detectable speaker label.
+
+    Accepts any type — non-string values (malformed session data) fall back.
+    """
     if not isinstance(name, str):
         return fallback
     cleaned = re.sub(r"[^A-Za-z0-9_]", "_", name.strip()).strip("_")

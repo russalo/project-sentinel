@@ -24,6 +24,14 @@ router = APIRouter(prefix="/api")
 _SESSIONS_REL = "state/core/sessions"
 
 
+def _safe_mtime(path) -> float:
+    """Modification time, or 0 if the file vanished between glob and stat."""
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
 def _session_to_dict(session: session_state.Session) -> dict:
     """The plain dict shape backend.datasets builders expect."""
     return {
@@ -43,11 +51,7 @@ def list_sessions(request: Request) -> list[dict]:
     summaries: list[dict] = []
     if sessions_dir.is_dir():
         # Most-recently-modified first, so fresh sessions surface at the top.
-        for path in sorted(
-            sessions_dir.glob("*.json"),
-            key=lambda p: p.stat().st_mtime,
-            reverse=True,
-        ):
+        for path in sorted(sessions_dir.glob("*.json"), key=_safe_mtime, reverse=True):
             try:
                 raw = json.loads(path.read_text(encoding="utf-8"))
             except (json.JSONDecodeError, OSError):
@@ -79,7 +83,9 @@ def get_session(session_id: str, request: Request) -> dict:
     if session is None:
         raise HTTPException(status_code=404, detail="session not found")
     return {
-        "sessionId": session.session_id,
+        # The requested id is the canonical (filename) one, consistent with
+        # list_sessions; the JSON body's session_id could disagree.
+        "sessionId": session_id,
         "worldName": session.world_name,
         "persona": session.dm_persona_name,
         "character": session.player_character_name,
