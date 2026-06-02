@@ -42,7 +42,12 @@ def list_sessions(request: Request) -> list[dict]:
     sessions_dir = settings.data_dir / _SESSIONS_REL
     summaries: list[dict] = []
     if sessions_dir.is_dir():
-        for path in sorted(sessions_dir.glob("*.json")):
+        # Most-recently-modified first, so fresh sessions surface at the top.
+        for path in sorted(
+            sessions_dir.glob("*.json"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        ):
             try:
                 raw = json.loads(path.read_text(encoding="utf-8"))
             except (json.JSONDecodeError, OSError):
@@ -52,7 +57,10 @@ def list_sessions(request: Request) -> list[dict]:
             turns = raw.get("turns") if isinstance(raw.get("turns"), list) else []
             summaries.append(
                 {
-                    "sessionId": raw.get("session_id", path.stem),
+                    # The filename stem is the canonical id — read_session() keys
+                    # off it, so using the JSON field could yield an id whose
+                    # detail/export links 404.
+                    "sessionId": path.stem,
                     "worldName": raw.get("world_name", ""),
                     "persona": raw.get("dm_persona_name", ""),
                     "character": raw.get("player_character_name", ""),

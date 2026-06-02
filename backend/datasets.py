@@ -29,7 +29,7 @@ _LABEL_MAX = 16
 
 def safe_label(name: str | None, fallback: str) -> str:
     """Turn a display name into a file-observer-detectable speaker label."""
-    if not name:
+    if not isinstance(name, str):
         return fallback
     cleaned = re.sub(r"[^A-Za-z0-9_]", "_", name.strip()).strip("_")
     if not cleaned:
@@ -114,7 +114,10 @@ def build_schema_examples(session: dict) -> tuple[list[dict], int]:
         # Fold this turn's entities into the running "known" set so the NEXT
         # turn's world_before reflects state before it.
         for key in _ENTITY_KEYS:
-            for entity in hint.get(key, []) or []:
+            value = hint.get(key)
+            if not isinstance(value, list):
+                continue  # tolerate malformed (non-list) collections
+            for entity in value:
                 if isinstance(entity, dict) and entity.get("name"):
                     seen[key].add(entity["name"])
 

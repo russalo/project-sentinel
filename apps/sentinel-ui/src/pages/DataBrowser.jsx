@@ -41,6 +41,7 @@ export default function DataBrowser() {
   const openSession = (id) => {
     setLoadingDetail(true);
     setSelected(null);
+    setError(null);
     apiClient
       .get(`/sessions/${id}`)
       .then(setSelected)
@@ -142,7 +143,7 @@ export default function DataBrowser() {
               </div>
               <ol className="space-y-4">
                 {selected.turns.map((t, i) => (
-                  <li key={t.id ?? i} className="border-b border-border pb-3 last:border-0">
+                  <li key={t.turn_number ?? i} className="border-b border-border pb-3 last:border-0">
                     <div className="text-xs text-amber/80 mb-1">Turn {t.turn_number ?? i}</div>
                     {t.player_action && (
                       <p className="text-sm text-dust italic mb-1">▸ {t.player_action}</p>
