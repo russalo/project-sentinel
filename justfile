@@ -100,6 +100,13 @@ build-site:
 export-training-data:
     "{{ python_bin }}" scripts/export_training_data.py
 
+# Observe the exported chatlog corpus with file-observer → a deterministic
+# manifest + report under datasets/observed/ (chatlog detection, author /
+# structure signals) to characterize the corpus before external training.
+# Requires `pip install file-observer`. Run `just export-training-data` first.
+observe-datasets:
+    fo datasets/chatlogs --specialists -o datasets/observed
+
 # TypeScript typecheck only (no emit)
 typecheck:
     pnpm typecheck

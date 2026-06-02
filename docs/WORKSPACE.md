@@ -163,7 +163,24 @@ just typecheck       # pnpm typecheck (no emit)
 
 just start           # full stack: Docker → MCP servers
 just health          # pass/fail table for every service
+
+just export-training-data  # recorded sessions → datasets/ (schema + chatlogs)
+just observe-datasets      # file-observer manifest of the chatlog corpus
 ```
+
+## Training-data pipeline
+
+Mock human+AI sessions recorded through the normal play loop become training
+data via two steps (both write to the gitignored `datasets/`):
+
+1. **`just export-training-data`** — reads `data/state/core/sessions/*.json` and
+   writes `datasets/schema/*.jsonl` (narrative→`apply_world_update` recognition
+   examples) + `datasets/chatlogs/*.md` (speaker-labelled transcripts).
+2. **`just observe-datasets`** — runs [file-observer](https://pypi.org/project/file-observer/)
+   (`fo`) over `datasets/chatlogs/` and writes a deterministic manifest + report
+   to `datasets/observed/` (chatlog detection, author/structure signals) to
+   characterize the corpus before external training. Requires `pip install
+   file-observer`.
 
 ## Building the dev site
 
