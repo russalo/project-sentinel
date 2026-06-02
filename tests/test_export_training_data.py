@@ -142,3 +142,44 @@ def test_safe_label_sanitises_for_detector():
     # Capitalised start, <=16 chars, only [A-Za-z0-9_].
     label = exporter.safe_label("a-very-long-persona-name-here", "DM")
     assert _SPEAKER_RE.match(label + ": x") and len(label) <= 16
+
+
+def test_rerun_clears_stale_output(tmp_path):
+    _make_tree(tmp_path)
+    out = tmp_path / "datasets"
+    exporter.export(tmp_path, out)
+    stale = out / "schema" / "deleted-session.jsonl"
+    stale.write_text("stale\n", encoding="utf-8")
+    # Re-running export must not leave the stale file behind.
+    exporter.export(tmp_path, out)
+    assert not stale.exists()
+    assert (out / "schema" / f"{_UUID}.jsonl").exists()
+
+
+def test_tolerates_malformed_world_updates(tmp_path):
+    sdir = tmp_path / "data" / "state" / "core" / "sessions"
+    sdir.mkdir(parents=True)
+    session = {
+        "session_id": _UUID,
+        "world_name": "Glitch",
+        "turns": [
+            # world_updates as a list / None — must not crash; just no target.
+            {
+                "turn_number": 0,
+                "player_action": "look",
+                "narrative": "Static.",
+                "world_updates": ["oops"],
+            },
+            {
+                "turn_number": 1,
+                "player_action": "wait",
+                "narrative": "More static.",
+                "world_updates": None,
+            },
+        ],
+    }
+    (sdir / f"{_UUID}.json").write_text(json.dumps(session), encoding="utf-8")
+    stats = exporter.export(tmp_path, tmp_path / "datasets")
+    # No schema-valid targets, but the chatlog transcript still emits.
+    assert stats["skipped"] == 2
+    assert (tmp_path / "datasets" / "chatlogs" / f"{_UUID}.md").exists()

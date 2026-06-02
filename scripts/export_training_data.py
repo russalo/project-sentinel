@@ -33,6 +33,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shutil
 import sys
 from pathlib import Path
 
@@ -102,7 +103,9 @@ def build_schema_examples(session: dict) -> tuple[list[dict], int]:
     seen: dict[str, set] = {k: set() for k in _ENTITY_KEYS}
 
     for turn in session.get("turns", []):
-        hint = turn.get("world_updates") or {}
+        hint = turn.get("world_updates")
+        if not isinstance(hint, dict):
+            hint = {}  # tolerate malformed LLM output (list/str/None)
         narrative = turn.get("narrative", "") or ""
         # Reconstruct the DM block and run the real extractor → canonical payload.
         raw = f"{narrative}\n<world_update>\n{json.dumps(hint)}\n</world_update>"
@@ -144,8 +147,12 @@ def export(root: Path, out: Path) -> dict:
     sessions_dir = root / _SESSIONS_REL
     schema_dir = out / "schema"
     chatlog_dir = out / "chatlogs"
-    schema_dir.mkdir(parents=True, exist_ok=True)
-    chatlog_dir.mkdir(parents=True, exist_ok=True)
+    # Clear prior output so a re-run reflects exactly the current sessions —
+    # no stale files left behind by deleted/renamed sessions.
+    for managed in (schema_dir, chatlog_dir):
+        if managed.exists():
+            shutil.rmtree(managed)
+        managed.mkdir(parents=True, exist_ok=True)
 
     stats = {"sessions": 0, "examples": 0, "skipped": 0, "chatlogs": 0}
     for path in sorted(sessions_dir.glob("*.json")):
@@ -153,7 +160,9 @@ def export(root: Path, out: Path) -> dict:
             session = json.loads(path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             continue
-        if not isinstance(session, dict) or not session.get("turns"):
+        if not isinstance(session, dict) or not isinstance(session.get("turns"), list):
+            continue
+        if not session["turns"]:
             continue
         sid = session.get("session_id", path.stem)
         stats["sessions"] += 1
