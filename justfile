@@ -88,6 +88,12 @@ git-sync:
 build:
     pnpm build
 
+# Build the frontend for the tailnet dev site → apps/sentinel-ui/dist (served by
+# Caddy at sentinel.dev.russalo.com). Production mode bakes VITE_API_URL from
+# apps/sentinel-ui/.env.production so the served UI calls the same origin.
+build-site:
+    pnpm --filter @sentinel/ui build
+
 # TypeScript typecheck only (no emit)
 typecheck:
     pnpm typecheck
@@ -100,7 +106,7 @@ dev-frontend:
 
 # Start the FastAPI backend on :8001 (per ADR 0001 Phase 1)
 dev-backend:
-    uvicorn backend.main:app --host 127.0.0.1 --port 8001 --reload
+    uvicorn backend.main:app --host 127.0.0.1 --port 8001 --reload --proxy-headers --forwarded-allow-ips=127.0.0.1
 
 # Install backend Python dependencies (FastAPI stack)
 install-backend:
