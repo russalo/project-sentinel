@@ -94,6 +94,12 @@ build:
 build-site:
     pnpm --filter @sentinel/ui build
 
+# Export recorded mock sessions → datasets/ (schema JSONL + raw chatlogs).
+# Schema examples train narrative→world_update recognition; chatlogs are
+# file-observer-detectable transcripts. Needs the backend Python env active.
+export-training-data:
+    "{{ python_bin }}" scripts/export_training_data.py
+
 # TypeScript typecheck only (no emit)
 typecheck:
     pnpm typecheck

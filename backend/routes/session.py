@@ -147,6 +147,9 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
         started_at=started_at,
         turns=[turn_zero],
         active=True,
+        player_character_name=body.player_character_name,
+        # Prefer the resolved persona display name; fall back to the id.
+        dm_persona_name=body.persona_name or body.persona_id or "",
     )
 
     # Writing the session file is the critical durability step: if
