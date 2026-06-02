@@ -142,6 +142,10 @@ def test_safe_label_sanitises_for_detector():
     # Capitalised start, <=16 chars, only [A-Za-z0-9_].
     label = exporter.safe_label("a-very-long-persona-name-here", "DM")
     assert _SPEAKER_RE.match(label + ": x") and len(label) <= 16
+    # Non-string names (malformed data) fall back rather than crashing.
+    assert exporter.safe_label(123, "DM") == "DM"
+    assert exporter.safe_label(None, "Player") == "Player"
+    assert exporter.safe_label(["x"], "DM") == "DM"
 
 
 def test_rerun_clears_stale_output(tmp_path):
@@ -176,10 +180,18 @@ def test_tolerates_malformed_world_updates(tmp_path):
                 "narrative": "More static.",
                 "world_updates": None,
             },
+            {
+                # A dict hint whose collection is the wrong type — the
+                # entity-fold must not raise on a non-list value.
+                "turn_number": 2,
+                "player_action": "blink",
+                "narrative": "Flicker.",
+                "world_updates": {"characters": 5},
+            },
         ],
     }
     (sdir / f"{_UUID}.json").write_text(json.dumps(session), encoding="utf-8")
     stats = exporter.export(tmp_path, tmp_path / "datasets")
     # No schema-valid targets, but the chatlog transcript still emits.
-    assert stats["skipped"] == 2
+    assert stats["skipped"] == 3
     assert (tmp_path / "datasets" / "chatlogs" / f"{_UUID}.md").exists()

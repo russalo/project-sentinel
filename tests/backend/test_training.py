@@ -93,3 +93,38 @@ def test_export_rejects_bad_format(client, tmp_data_dir):
     _write_session(tmp_data_dir)
     r = client.get(f"/api/sessions/{_UUID}/export", params={"format": "bogus"})
     assert r.status_code == 422  # Query pattern validation
+
+
+def test_list_uses_filename_stem_as_canonical_id(client, tmp_data_dir):
+    # If the JSON session_id disagrees with the filename, the summary must use
+    # the filename stem — that's what read_session keys off, so detail/export
+    # links built from it resolve instead of 404ing.
+    sessions = tmp_data_dir / "state" / "core" / "sessions"
+    (sessions / f"{_UUID}.json").write_text(
+        json.dumps({"session_id": "WRONG", "world_name": "W", "turns": []}),
+        encoding="utf-8",
+    )
+    listed = client.get("/api/sessions").json()
+    assert listed[0]["sessionId"] == _UUID
+    # And that id resolves on the detail endpoint, which also returns the
+    # canonical (filename) id — not the mismatched JSON "WRONG".
+    detail = client.get(f"/api/sessions/{_UUID}")
+    assert detail.status_code == 200
+    assert detail.json()["sessionId"] == _UUID
+
+
+def test_list_orders_most_recent_first(client, tmp_data_dir):
+    import os
+
+    sessions = tmp_data_dir / "state" / "core" / "sessions"
+    older = "11111111-1111-4111-8111-111111111111"
+    newer = "22222222-2222-4222-8222-222222222222"
+    for sid in (older, newer):
+        (sessions / f"{sid}.json").write_text(
+            json.dumps({"session_id": sid, "world_name": sid[:4], "turns": []}),
+            encoding="utf-8",
+        )
+    os.utime(sessions / f"{older}.json", (1_000_000, 1_000_000))
+    os.utime(sessions / f"{newer}.json", (2_000_000, 2_000_000))
+    ids = [s["sessionId"] for s in client.get("/api/sessions").json()]
+    assert ids == [newer, older]
