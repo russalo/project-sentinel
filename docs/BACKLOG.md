@@ -454,6 +454,9 @@ turn-finalization code path and share the same visual primitives.
 
 **Relation to the Entity Sweeper item in "Engine Package":** Items #2 and #3 here (suggested actions, exits) are things the DM mentions in prose but doesn't always emit as state — the same pattern as the cloak case that motivated the Entity Sweeper. The Sweeper's second-pass extraction model could generate these as a fallback when the DM forgets. Item #1 (turn-delta feedback) is orthogonal — pure frontend derivation, no extraction needed.
 
+- [ ] **`StatusIndicator` connection status is non-functional.** `apps/sentinel-ui/src/components/shell/StatusIndicator.jsx` renders a connection indicator whose state never updates — `setConnected` is never called and the `useEffect` import is unused (surfaces as 2 eslint `no-unused-vars` errors; eslint isn't gated in CI, so it slipped through). It's a static badge masquerading as live connection state — the same "false UI" class as the Map/Roll/seed items cleaned up in the kill-false-UI PR, just one that wasn't in that PR's scope. Fix: wire it to the real SSE/stream connection state (the `useDMStream` hook already tracks streaming/error state — surface connected/streaming/error there and consume it here), or remove the indicator until that state exists. Pairs naturally with the "SSE resilience + connection-status UI" upgrade idea.
+      _Discovered: 2026-06-02 | Context: surfaced by eslint while killing false UI; StatusIndicator was out of that PR's scope but is the same problem._
+
 ---
 
 ## Developer Experience

@@ -1,13 +1,18 @@
 import { useState } from 'react';
 import { usePersonaStore } from '../../stores/personaStore';
+import { usePlayerStore } from '../../stores/playerStore';
 import { useUIStore } from '../../stores/uiStore';
 import { Menu, Share2, Users, BookOpen } from 'lucide-react';
 import { PersonaSheet } from '../persona/PersonaSheet';
 import { SeedShareModal } from '../seed/SeedShareModal';
 import { StatusIndicator } from './StatusIndicator';
 
-export function TopBar({ worldName = 'The Shattered Expanse', seedString = 'ABC-DEF-GHI-JKL' }) {
+// NOTE: seedString is still a placeholder — world-seed persistence/sharing
+// isn't built yet (see docs/BACKLOG.md § "World Identity & Multi-Session").
+// The seed-share UI is intentionally kept as a visible reminder of that gap.
+export function TopBar({ seedString = 'ABC-DEF-GHI-JKL' }) {
   const { personaName, mood, isLocked, availableMoods } = usePersonaStore();
+  const worldName = usePlayerStore((s) => s.worldName) || 'The Shattered Expanse';
   const { focusMode, openMobilePanel } = useUIStore();
   const [personaSheetOpen, setPersonaSheetOpen] = useState(false);
   const [seedModalOpen, setSeedModalOpen] = useState(false);

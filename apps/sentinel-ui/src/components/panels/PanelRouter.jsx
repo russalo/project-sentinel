@@ -2,15 +2,13 @@ import { useUIStore } from '../../stores/uiStore';
 import { useWorldStore } from '../../stores/worldStore';
 import { CodexPanel } from './CodexPanel';
 import { InventoryPanel } from './InventoryPanel';
-import { QuestLogPanel } from './QuestLogPanel';
-import { MapPanel } from './MapPanel';
 import { EntityCard } from './EntityCard';
 
+// Only tabs backed by real session state are listed. Quests and Map were
+// removed (no data model yet) rather than shown as empty/fabricated panels.
 const TABS = [
   { id: 'codex',     label: 'Codex',  component: CodexPanel },
   { id: 'inventory', label: 'Inv',    component: InventoryPanel },
-  { id: 'quests',    label: 'Quests', component: QuestLogPanel },
-  { id: 'map',       label: 'Map',    component: MapPanel },
 ];
 
 const COLLECTIONS = {
@@ -52,7 +50,10 @@ export function PanelRouter() {
     );
   }
 
-  const activeTabConfig = TABS.find(t => t.id === activeTab);
+  // Fall back to the first tab if activeTab is unknown (e.g. a stale
+  // 'quests'/'map' value from before those tabs were removed), so the
+  // content area never renders blank.
+  const activeTabConfig = TABS.find(t => t.id === activeTab) ?? TABS[0];
   const ActiveComponent = activeTabConfig?.component;
 
   return (
