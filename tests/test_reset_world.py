@@ -17,6 +17,7 @@ def _load_module():
     # The script has a hyphen in its name (scripts/ convention), so it
     # can't be imported normally — load it by path.
     spec = importlib.util.spec_from_file_location("reset_world_script", _SCRIPT)
+    assert spec and spec.loader, f"could not load module spec for {_SCRIPT}"
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module

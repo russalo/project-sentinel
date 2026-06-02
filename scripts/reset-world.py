@@ -50,6 +50,19 @@ _KEEP = {".gitkeep"}
 _BASELINE_WORLD: dict = {}
 
 
+def _reset_pathspecs() -> list[str]:
+    """The exact git pathspecs reset_world() mutates.
+
+    Used to scope ``git add``/``commit`` to the reset's domain so a reset run
+    never sweeps in unrelated edits the caller may have under ``data/`` (e.g.
+    in-progress canonical lore/preset/community changes).
+    """
+    specs = [f"data/state/core/{sub}" for sub in _STATE_SUBDIRS]
+    specs += [f"data/lore/core/{sub}" for sub in _LORE_SUBDIRS]
+    specs.append("data/state/core/world/state.json")
+    return specs
+
+
 def _repo_root(override: str | None) -> Path:
     if override:
         return Path(override).resolve()
@@ -67,9 +80,11 @@ def _clear_dir(directory: Path) -> list[Path]:
     for entry in sorted(directory.iterdir()):
         if entry.name in _KEEP:
             continue
-        if entry.is_dir():
+        if entry.is_dir() and not entry.is_symlink():
             shutil.rmtree(entry)
         else:
+            # Files and symlinks (including symlinks to directories, which
+            # shutil.rmtree would raise on) are removed with unlink().
             entry.unlink()
         removed.append(entry)
     return removed
@@ -99,12 +114,19 @@ def reset_world(root: Path) -> list[Path]:
 
 
 def _git(root: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        ["git", "-C", str(root), *args],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
+    try:
+        return subprocess.run(
+            ["git", "-C", str(root), *args],
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+    except FileNotFoundError:
+        sys.exit("error: 'git' not found — install Git and ensure it is on PATH.")
+    except subprocess.CalledProcessError as exc:
+        sys.stderr.write(exc.stderr or f"git {' '.join(args)} failed\n")
+        sys.exit(1)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -147,16 +169,27 @@ def main(argv: list[str] | None = None) -> int:
         "world/state.json reset to empty baseline."
     )
 
-    _git(root, "add", "data/")
+    # Stage / inspect / commit ONLY the reset's own paths, so a run never
+    # sweeps in unrelated edits elsewhere under data/.
+    specs = _reset_pathspecs()
+    _git(root, "add", "--", *specs)
     if args.no_commit:
         print("staged the reset (--no-commit); review and commit when ready.")
         return 0
 
-    if not _git(root, "status", "--porcelain").stdout.strip():
+    if not _git(root, "status", "--porcelain", "--", *specs).stdout.strip():
         print("nothing to commit — world already at baseline.")
         return 0
 
-    _git(root, "commit", "-s", "-m", "chore(world): reset to empty baseline")
+    _git(
+        root,
+        "commit",
+        "-s",
+        "-m",
+        "chore(world): reset to empty baseline",
+        "--",
+        *specs,
+    )
     print("committed: chore(world): reset to empty baseline")
     return 0
 
