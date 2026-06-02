@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { usePersonaStore } from '../../stores/personaStore';
 import { usePlayerStore } from '../../stores/playerStore';
 import { useUIStore } from '../../stores/uiStore';
-import { Menu, Share2, Users, BookOpen } from 'lucide-react';
+import { Link } from 'wouter';
+import { Menu, Share2, Users, BookOpen, Database } from 'lucide-react';
 import { PersonaSheet } from '../persona/PersonaSheet';
 import { SeedShareModal } from '../seed/SeedShareModal';
 import { StatusIndicator } from './StatusIndicator';
@@ -60,6 +61,15 @@ export function TopBar({ seedString = 'ABC-DEF-GHI-JKL' }) {
 
           {/* Connection status */}
           <StatusIndicator />
+
+          {/* Training-data browser */}
+          <Link
+            href="/data"
+            className="text-dust hover:text-amber transition-colors"
+            aria-label="Training data"
+          >
+            <Database size={18} />
+          </Link>
 
           {/* Seed string — hidden on small screens */}
           <button

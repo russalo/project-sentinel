@@ -25,7 +25,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import Settings
-from .routes import health, session, stream
+from .routes import health, session, stream, training
 
 
 def create_app() -> FastAPI:
@@ -61,6 +61,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(session.router)
     app.include_router(stream.router)
+    app.include_router(training.router)
 
     return app
 
