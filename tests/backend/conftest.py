@@ -70,7 +70,7 @@ def app(test_settings, fake_openai, fake_dispatch_log, fake_commit_log, monkeypa
     """
     from fastapi import FastAPI
 
-    from backend.routes import health, session, stream
+    from backend.routes import health, session, stream, training
 
     import engine
     import engine.agents.dm as dm_module
@@ -130,6 +130,7 @@ def app(test_settings, fake_openai, fake_dispatch_log, fake_commit_log, monkeypa
     app.include_router(health.router)
     app.include_router(session.router)
     app.include_router(stream.router)
+    app.include_router(training.router)
     return app
 
 
