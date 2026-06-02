@@ -158,10 +158,25 @@ just dev-backend     # FastAPI on :8001 only
 
 just test            # Python schema tests + all JS tests
 just build           # pnpm build across workspace
+just build-site      # frontend → dist/ for the tailnet dev site
 just typecheck       # pnpm typecheck (no emit)
 
 just start           # full stack: Docker → MCP servers
 just health          # pass/fail table for every service
 ```
+
+## Building the dev site
+
+The tailnet dev site at `sentinel.dev.russalo.com` is served by Caddy on
+`origin-core`: `/api/*` and `/healthz` reverse-proxy to the FastAPI backend on
+`127.0.0.1:8001`; everything else is static files from
+`apps/sentinel-ui/dist/`. Run `just build-site` to (re)generate that `dist/`.
+
+The frontend reads its API base from `VITE_API_URL`, baked in at build time.
+`apps/sentinel-ui/.env.production` (committed — the URL is public, not secret)
+pins it to `https://sentinel.dev.russalo.com/api` so the served UI calls the
+same origin (Caddy proxies `/api/*` to the backend) rather than the visitor's
+own `localhost`. A local `just dev-frontend` ignores this — it uses the
+`http://localhost:8001/api` fallback in `src/api/client.js`.
 
 See `CLAUDE.md` § "Common Commands" for the full reference.
