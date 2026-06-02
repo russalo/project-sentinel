@@ -122,6 +122,21 @@ def _make_turn_input(player_action: str = "I look around.") -> DMTurnInput:
     )
 
 
+# ── DM system prompt content ────────────────────────────────────────
+
+
+def test_dm_prompt_includes_state_discipline_walls():
+    """Presence guard for the three 'wall' rules added to curb the
+    2026-04-15 smoke-test failure modes (over-eager reference resolution,
+    lazy fabrication of prior values, ungrounded numeric deltas). This
+    asserts the rule text is present — not that the model obeys it;
+    behavioral efficacy is measured by the smoke harness, not here."""
+    assert "STATE DISCIPLINE" in DM_SYSTEM_PROMPT
+    assert "Entity singularity" in DM_SYSTEM_PROMPT
+    assert "No invented history" in DM_SYSTEM_PROMPT
+    assert "Grounded numbers" in DM_SYSTEM_PROMPT
+
+
 # ── _build_messages ─────────────────────────────────────────────────
 
 
