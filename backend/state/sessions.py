@@ -61,6 +61,11 @@ class Session:
     started_at: str
     turns: list[dict[str, Any]] = field(default_factory=list)
     active: bool = True
+    # Speaker identities, captured at creation so recorded transcripts
+    # can be labelled with who actually spoke (the player's character and
+    # the active DM persona) rather than generic "Player"/"DM".
+    player_character_name: str = ""
+    dm_persona_name: str = ""
 
 
 def session_file_path(data_dir: Path, session_id: str) -> Path:
@@ -106,6 +111,8 @@ def read_session(data_dir: Path, session_id: str) -> Session | None:
         started_at=raw.get("started_at", ""),
         turns=raw.get("turns", []) if isinstance(raw.get("turns"), list) else [],
         active=bool(raw.get("active", True)),
+        player_character_name=raw.get("player_character_name", ""),
+        dm_persona_name=raw.get("dm_persona_name", ""),
     )
 
 
@@ -133,6 +140,8 @@ def _build_session_payload(session: Session, log_entry: str, turn_number: int) -
                     "started_at": session.started_at,
                     "turns": session.turns,
                     "active": session.active,
+                    "player_character_name": session.player_character_name,
+                    "dm_persona_name": session.dm_persona_name,
                 },
             }
         ],

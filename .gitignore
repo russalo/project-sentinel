@@ -56,6 +56,9 @@ __pycache__/
 .venv/
 venv/
 
+# Exported training datasets (build artifact — regenerate with `just export-training-data`)
+datasets/
+
 # Secrets — never commit environment files
 infrastructure/.env
 
