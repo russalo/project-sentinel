@@ -107,22 +107,35 @@ def _acquire_world_lock(world_id: str | None) -> "FileLock":
     return lock
 
 
-def _require_world_id_when_isolated(world_id: str | None) -> None:
-    """In per-world mode a write MUST carry a world_id (ADR 0002 isolation).
+def _require_world_id_when_isolated(world_id: str | None) -> str | None:
+    """In per-world mode, require + **canonicalize** world_id; returns it.
 
     With ``SENTINEL_WORLDS_ROOT`` set, a missing ``world_id`` would make
     ``_resolve_world_root`` fall back to the shared ``REPO_ROOT`` — writing one
-    world's state into the shared tree (inter-world leak / master-pollution).
-    Reject it so the fallback can only happen in legacy shared mode (WORLDS_ROOT
-    unset), where it is the intended behavior. A *present* world_id is
-    canonicalized + traversal-checked by ``_resolve_world_root``.
+    world's state into the shared tree (inter-world leak / master-pollution) —
+    so a missing id is a 422. A present id is canonicalized to its standard
+    hyphenated form here (early 422 on a non-UUID), so the lock and the resolved
+    world root use one spelling — no fragmentation. In shared mode (WORLDS_ROOT
+    unset) the id is advisory and returned unchanged.
     """
-    if WORLDS_ROOT and not world_id:
+    if not WORLDS_ROOT:
+        return world_id
+    if not world_id:
         raise HTTPException(
             status_code=422,
             detail={
                 "code": "MISSING_WORLD_ID",
                 "detail": "world_id is required when SENTINEL_WORLDS_ROOT is set.",
+            },
+        )
+    try:
+        return str(uuid.UUID(world_id))
+    except (ValueError, AttributeError, TypeError):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "INVALID_WORLD_ID",
+                "detail": f"world_id is not a valid UUID: {world_id!r}",
             },
         )
 
@@ -481,7 +494,7 @@ async def apply_world_update(request: Request):
     # it and resolves the world's tree; defaults to REPO_ROOT when WORLDS_ROOT
     # is unset or no world_id is given (today's single-shared-tree behavior).
     world_id = request.query_params.get("world_id")
-    _require_world_id_when_isolated(world_id)
+    world_id = _require_world_id_when_isolated(world_id)
     world_root = _resolve_world_root(world_id)
 
     # Payload-level namespace authorization. Default to "community" when

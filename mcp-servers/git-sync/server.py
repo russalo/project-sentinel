@@ -110,23 +110,36 @@ def _acquire_world_lock(world_id: str | None) -> FileLock:
     return lock
 
 
-def _require_world_id_when_isolated(world_id: str | None) -> None:
-    """In per-world mode a write MUST carry a world_id (ADR 0002 isolation).
+def _require_world_id_when_isolated(world_id: str | None) -> str | None:
+    """In per-world mode, require + **canonicalize** world_id; returns it.
 
     With ``SENTINEL_WORLDS_ROOT`` set, a missing ``world_id`` would make
     ``get_repo``/``_world_repo_path`` fall back to the shared ``REPO_ROOT`` —
-    committing world state onto the checked-out code branch (the
-    master-pollution hazard) and leaking across the world boundary. Reject it
-    so the fallback can only happen in legacy shared mode (WORLDS_ROOT unset),
-    where it is the intended behavior. A *present* world_id is canonicalized +
-    traversal-checked downstream by ``_world_repo_path``.
+    committing world state onto the checked-out code branch (master-pollution)
+    and leaking across the world boundary — so a missing id is a 422. A present
+    id is canonicalized to its standard hyphenated form here (early 422 on a
+    non-UUID), so the lock, the repo path, AND the commit-message tag all use
+    one spelling — no fragmentation across non-canonical spellings. In shared
+    mode (WORLDS_ROOT unset) the id is advisory and returned unchanged.
     """
-    if WORLDS_ROOT and not world_id:
+    if not WORLDS_ROOT:
+        return world_id
+    if not world_id:
         raise HTTPException(
             status_code=422,
             detail={
                 "code": "MISSING_WORLD_ID",
                 "detail": "world_id is required when SENTINEL_WORLDS_ROOT is set.",
+            },
+        )
+    try:
+        return str(uuid.UUID(world_id))
+    except (ValueError, AttributeError, TypeError):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "INVALID_WORLD_ID",
+                "detail": f"world_id is not a valid UUID: {world_id!r}",
             },
         )
 
@@ -303,6 +316,10 @@ async def teardown_world(body: dict):
             status_code=422,
             detail={"code": "MISSING_WORLD_ID", "detail": "world_id is required."},
         )
+    # Canonicalize early in per-world mode (no-op in shared mode where world_id
+    # is present): the lock key, _world_repo_path, and the response all use one
+    # spelling. _world_repo_path re-validates + traversal-checks before rmtree.
+    world_id = _require_world_id_when_isolated(world_id)
 
     # Lock keyed by world (file in <WORLDS_ROOT>/.locks/, OUTSIDE the world tree)
     # so a teardown can't rmtree a tree mid-commit, and the lock file itself
@@ -395,7 +412,7 @@ async def commit_snapshot(body: dict):
             status_code=422,
             detail={"code": "MISSING_SESSION_ID", "detail": "session_id is required."},
         )
-    _require_world_id_when_isolated(world_id)
+    world_id = _require_world_id_when_isolated(world_id)
 
     lock = _acquire_world_lock(world_id)
     try:
@@ -512,7 +529,7 @@ async def rollback_to(body: dict):
             detail={"code": "MISSING_HASH", "detail": "commit_hash is required."},
         )
     world_id = body.get("world_id")
-    _require_world_id_when_isolated(world_id)
+    world_id = _require_world_id_when_isolated(world_id)
 
     lock = _acquire_world_lock(world_id)
     try:
