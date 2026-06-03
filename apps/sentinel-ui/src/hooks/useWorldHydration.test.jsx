@@ -17,6 +17,7 @@ import { apiClient } from '../api/client'
 import { useWorldHydration } from './useWorldHydration'
 import { usePlayerStore } from '../stores/playerStore'
 import { usePersonaStore } from '../stores/personaStore'
+import { useWorldStore } from '../stores/worldStore'
 import { useChatStore } from '../stores/chatStore'
 
 const WORLD_ID = '9b3c1d2e-4f5a-4b6c-8d7e-0a1b2c3d4e5f'
@@ -38,6 +39,7 @@ const WORLD_PAYLOAD = {
 beforeEach(() => {
   apiClient.get.mockReset()
   useChatStore.getState().clearMessages()
+  useWorldStore.getState().reset()
   usePlayerStore.setState({
     sessionId: null,
     worldId: null,
@@ -87,6 +89,17 @@ describe('useWorldHydration', () => {
     const players = useChatStore.getState().messages.filter((m) => m.type === 'player')
     expect(players).toHaveLength(1)
     expect(players[0].content).toBe('[Session Start] is a weird thing to say')
+  })
+
+  it('resets worldStore so a previous world does not bleed into the panels', async () => {
+    // Previous world's entities are in the panels.
+    useWorldStore.getState().addCharacter({ id: 'c1', name: 'OldWorldNPC' })
+    apiClient.get.mockResolvedValue(WORLD_PAYLOAD)
+
+    renderHook(() => useWorldHydration(WORLD_ID))
+    await waitFor(() => expect(usePlayerStore.getState().sessionId).toBeTruthy())
+
+    expect(useWorldStore.getState().characters).toEqual([])
   })
 
   it('does not re-fetch when the store already holds this world', async () => {

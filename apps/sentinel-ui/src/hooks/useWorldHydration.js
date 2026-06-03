@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { apiClient } from '../api/client';
 import { usePlayerStore } from '../stores/playerStore';
 import { usePersonaStore } from '../stores/personaStore';
+import { useWorldStore } from '../stores/worldStore';
 import { useChatStore, stripWorldUpdate } from '../stores/chatStore';
 
 // Hydrate the game from a world's URL (ADR 0002 Slice 4).
@@ -19,11 +20,14 @@ export function useWorldHydration(worldId) {
     // double-seed the scroll.
     if (usePlayerStore.getState().worldId === worldId) return;
 
-    // Commit to (re)hydrating. Clear the previous world's scroll *now*, before
-    // the await, so old chat never lingers across a world switch or a failed
-    // load (a cross-world bleed), and flag `hydrating` so the welcome-seed
-    // effect stays quiet during the fetch instead of flashing a placeholder.
+    // Commit to (re)hydrating. Clear the previous world's scroll AND world
+    // state *now*, before the await, so neither lingers across a world switch
+    // or a failed load. Resetting worldStore is essential: applyUpdate upserts,
+    // so without it the new world's first world_update would merge into the old
+    // world's entities (cross-world bleed in the panels). Flag `hydrating` so
+    // the welcome-seed effect stays quiet during the fetch.
     useChatStore.getState().clearMessages();
+    useWorldStore.getState().reset();
     usePlayerStore.getState().setHydrating(true);
 
     let cancelled = false;
