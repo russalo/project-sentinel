@@ -214,3 +214,69 @@ def test_find_world_session_bad_world_id_returns_none(tmp_path):
     assert (
         find_world_session(str(tmp_path), "../escape", default_data_dir=DEFAULT) is None
     )
+
+
+# ── iter_worlds (the "my worlds" picker) ──────────────────────────────
+
+from backend.state.world_root import iter_worlds  # noqa: E402
+
+
+def test_iter_worlds_legacy_groups_by_world_id(tmp_path):
+    """Legacy/shared mode: one entry per stored world_id, latest session kept."""
+    shared = tmp_path / "data"
+    sdir = shared / "state" / "core" / "sessions"
+    sdir.mkdir(parents=True)
+    wa = "aaaaaaaa-0000-0000-0000-000000000000"
+    wb = "bbbbbbbb-0000-0000-0000-000000000000"
+    _seed(sdir, "11111111-2222-3333-4444-555555555555", world_id=wa)
+    _seed(sdir, "22222222-2222-3333-4444-555555555555", world_id=wb)
+    # A second session for world A (same world → still one entry).
+    _seed(sdir, "33333333-2222-3333-4444-555555555555", world_id=wa)
+    # A session with no world_id is skipped (no world URL to resume to).
+    _seed(sdir, "44444444-2222-3333-4444-555555555555", world_id="")
+
+    got = iter_worlds(None, default_data_dir=shared)
+    world_ids = {w for (w, _d, _s) in got}
+    assert world_ids == {wa, wb}
+
+
+def test_iter_worlds_per_world_lists_each_dir(tmp_path):
+    worlds = tmp_path / "worlds"
+    wa = "aaaaaaaa-0000-0000-0000-000000000000"
+    wb = "bbbbbbbb-0000-0000-0000-000000000000"
+    _seed(
+        worlds / wa / "data" / "state" / "core" / "sessions",
+        "11111111-2222-3333-4444-555555555555",
+    )
+    _seed(
+        worlds / wb / "data" / "state" / "core" / "sessions",
+        "22222222-2222-3333-4444-555555555555",
+    )
+    got = iter_worlds(str(worlds), default_data_dir=DEFAULT)
+    assert {w for (w, _d, _s) in got} == {wa, wb}
+    # data_dir points at each world's own tree.
+    by_world = {w: d for (w, d, _s) in got}
+    assert by_world[wa] == worlds / wa / "data"
+
+
+def test_iter_worlds_orders_most_recent_first(tmp_path):
+    import os
+    import time
+
+    shared = tmp_path / "data"
+    sdir = shared / "state" / "core" / "sessions"
+    sdir.mkdir(parents=True)
+    old_w = "aaaaaaaa-0000-0000-0000-000000000000"
+    new_w = "bbbbbbbb-0000-0000-0000-000000000000"
+    _seed(sdir, "11111111-2222-3333-4444-555555555555", world_id=old_w)
+    _seed(sdir, "22222222-2222-3333-4444-555555555555", world_id=new_w)
+    past = time.time() - 100
+    os.utime(sdir / "11111111-2222-3333-4444-555555555555.json", (past, past))
+
+    got = iter_worlds(None, default_data_dir=shared)
+    assert [w for (w, _d, _s) in got][0] == new_w
+
+
+def test_iter_worlds_empty(tmp_path):
+    assert iter_worlds(None, default_data_dir=tmp_path / "nope") == []
+    assert iter_worlds(str(tmp_path / "nope"), default_data_dir=DEFAULT) == []

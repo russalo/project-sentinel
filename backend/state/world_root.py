@@ -167,11 +167,104 @@ def find_world_session(
     if not candidates:
         return None
 
-    def _mtime(p: Path) -> float:
-        try:
-            return p.stat().st_mtime
-        except OSError:
-            return 0.0
-
-    latest = max(candidates, key=_mtime)
+    latest = max(candidates, key=_safe_mtime)
     return data_dir, latest.stem
+
+
+def _safe_mtime(p: Path) -> float:
+    try:
+        return p.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
+def iter_worlds(
+    worlds_root: str | None,
+    *,
+    default_data_dir: Path,
+) -> list[tuple[str, Path, str]]:
+    """Discover all worlds for the "my worlds" picker (ADR 0002 Slice 5).
+
+    Returns ``(world_id, data_dir, session_id)`` for each world's most-recent
+    session, ordered most-recently-played first (by session-file mtime). The
+    caller ``read_session(data_dir, session_id)`` for display metadata.
+
+    In per-world mode (``worlds_root`` set) each child dir under the worlds root
+    is one world; its dir name is the ``world_id`` and must be a canonical UUID
+    (``init_world`` provisions it that way). In legacy/shared mode the one tree
+    holds many worlds' sessions, so group by the session's stored ``world_id``
+    and keep the latest per world. **The emitted ``world_id`` is always a
+    validated, canonical UUID** so the picker's ``/w/<world_id>`` link always
+    round-trips through ``GET /api/world/<world_id>``; non-UUID dirs / stored
+    ids and worlds with no session are skipped.
+    """
+    found: list[tuple[str, Path, str, float]] = []  # + mtime for ordering
+
+    def _canonical_uuid(value: str) -> str | None:
+        try:
+            return str(uuid.UUID(value))
+        except (ValueError, AttributeError, TypeError):
+            return None
+
+    if worlds_root:
+        base = Path(worlds_root)
+        if not base.is_dir():
+            return []
+        try:
+            children = sorted(base.iterdir())
+        except OSError:
+            return []
+        for child in children:
+            if not child.is_dir():
+                continue
+            # The dir name must be a canonical UUID. A non-canonical name (a
+            # stray/manually-created dir) can't be resolved by
+            # find_world_session anyway (it builds the canonical path), so skip
+            # it rather than surface a /w/<name> link that won't round-trip.
+            world_id = _canonical_uuid(child.name)
+            if world_id is None or world_id != child.name:
+                continue
+            session = find_world_session(
+                worlds_root, world_id, default_data_dir=default_data_dir
+            )
+            if session is None:
+                continue
+            data_dir, session_id = session
+            mtime = _safe_mtime(data_dir / _SESSIONS_REL / f"{session_id}.json")
+            found.append((world_id, data_dir, session_id, mtime))
+    else:
+        sessions_dir = default_data_dir / _SESSIONS_REL
+        if not sessions_dir.is_dir():
+            return []
+        # Group shared-tree sessions by stored world_id, keeping the latest.
+        latest_by_world: dict[str, tuple[str, float]] = {}
+        try:
+            paths = list(sessions_dir.glob("*.json"))
+        except OSError:
+            return []
+        for path in paths:
+            try:
+                raw = json.loads(path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                continue
+            if not isinstance(raw, dict):
+                continue
+            # Validate the stored world_id is a UUID (skip non-UUID), but emit
+            # it VERBATIM — find_world_session (legacy mode) matches sessions by
+            # an exact `raw["world_id"] == world_id` compare, so canonicalizing
+            # here would emit a /w/<id> link that no longer matches its own
+            # stored spelling and 404s on resume. (Our minting is already
+            # canonical; this only matters for hand-edited/imported ids.)
+            stored = raw.get("world_id")
+            if not stored or _canonical_uuid(stored) is None:
+                continue
+            world_id = stored
+            mtime = _safe_mtime(path)
+            prev = latest_by_world.get(world_id)
+            if prev is None or mtime > prev[1]:
+                latest_by_world[world_id] = (path.stem, mtime)
+        for world_id, (session_id, mtime) in latest_by_world.items():
+            found.append((world_id, default_data_dir, session_id, mtime))
+
+    found.sort(key=lambda t: t[3], reverse=True)
+    return [(w, d, s) for (w, d, s, _m) in found]

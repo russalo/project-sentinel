@@ -61,6 +61,34 @@ def test_get_world_returns_session_for_hydration(client, tmp_data_dir):
     assert "Kael" in names
 
 
+def test_list_worlds(client, tmp_data_dir):
+    """GET /api/worlds lists one summary per world, most-recent first."""
+    import os
+    import time
+
+    wa = "aaaaaaaa-0000-0000-0000-000000000000"
+    wb = "bbbbbbbb-0000-0000-0000-000000000000"
+    _seed_session(
+        tmp_data_dir, session_id="11111111-1111-1111-1111-111111111111", world_id=wa
+    )
+    _seed_session(
+        tmp_data_dir, session_id="22222222-2222-2222-2222-222222222222", world_id=wb
+    )
+    sdir = tmp_data_dir / "state" / "core" / "sessions"
+    past = time.time() - 100
+    os.utime(sdir / "11111111-1111-1111-1111-111111111111.json", (past, past))
+
+    body = client.get("/api/worlds").json()
+    assert [w["worldId"] for w in body] == [wb, wa]  # most-recent first
+    assert body[0]["worldName"] == "Saltmarsh"
+    assert body[0]["character"] == "Russalo"
+    assert body[0]["turnCount"] == 2
+
+
+def test_list_worlds_empty(client, tmp_data_dir):
+    assert client.get("/api/worlds").json() == []
+
+
 def test_get_world_404_when_no_session_for_world(client, tmp_data_dir):
     # A session exists, but for a DIFFERENT world.
     _seed_session(tmp_data_dir, world_id="00000000-0000-0000-0000-000000000000")

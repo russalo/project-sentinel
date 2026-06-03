@@ -14,9 +14,37 @@ from fastapi import APIRouter, HTTPException, Request
 
 from ..state import sessions as session_state
 from ..state.world_context import load_world_context
-from ..state.world_root import find_world_session
+from ..state.world_root import find_world_session, iter_worlds
 
 router = APIRouter(prefix="/api")
+
+
+@router.get("/worlds")
+def list_worlds(request: Request) -> list[dict]:
+    """Summaries of every world for the "my worlds" picker (ADR 0002 Slice 5).
+
+    Most-recently-played first. Each entry links to ``/w/<worldId>`` in the UI.
+    Empty list when no worlds exist (the picker shows a create CTA).
+    """
+    settings = request.app.state.settings
+    out: list[dict] = []
+    for world_id, data_dir, session_id in iter_worlds(
+        settings.worlds_root, default_data_dir=settings.data_dir
+    ):
+        session = session_state.read_session(data_dir, session_id)
+        if session is None:
+            continue
+        out.append(
+            {
+                "worldId": world_id,
+                "worldName": session.world_name,
+                "persona": session.dm_persona_name,
+                "character": session.player_character_name,
+                "turnCount": len(session.turns or []),
+                "startedAt": session.started_at,
+            }
+        )
+    return out
 
 
 @router.get("/world/{world_id}")
