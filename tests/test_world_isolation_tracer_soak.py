@@ -48,6 +48,7 @@ ROUNDS = 3
 def _load_server(rel_path: str, mod_name: str):
     """Load a server.py under a unique module name (both live at `server`)."""
     spec = importlib.util.spec_from_file_location(mod_name, REPO / rel_path)
+    assert spec and spec.loader, f"could not load module spec for {REPO / rel_path}"
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod

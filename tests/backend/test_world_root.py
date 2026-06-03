@@ -124,7 +124,45 @@ def test_find_session_data_dir_locates_world_holding_the_file(tmp_path):
 def test_find_session_data_dir_missing_returns_none(tmp_path):
     sid = "11111111-2222-3333-4444-555555555555"
     (tmp_path / "w" / "data").mkdir(parents=True)
-    assert find_session_data_dir(str(tmp_path), sid, default_data_dir=DEFAULT) is None
+    # Not in any world tree and not in the (non-existent) default → None.
+    missing_default = tmp_path / "no-default"
+    assert (
+        find_session_data_dir(str(tmp_path), sid, default_data_dir=missing_default)
+        is None
+    )
+
+
+def test_find_session_data_dir_falls_back_to_shared_tree(tmp_path):
+    """A pre-cutover session in the shared tree still resolves after WORLDS_ROOT
+    is set — graceful migration, not a hard break."""
+    sid = "11111111-2222-3333-4444-555555555555"
+    worlds = tmp_path / "worlds"
+    worlds.mkdir()
+    # A provisioned world that does NOT hold this session.
+    (worlds / "the-world" / "data" / "state" / "core" / "sessions").mkdir(parents=True)
+    # The session lives in the legacy shared tree.
+    shared = tmp_path / "shared-data"
+    sdir = shared / "state" / "core" / "sessions"
+    sdir.mkdir(parents=True)
+    (sdir / f"{sid}.json").write_text("{}")
+
+    got = find_session_data_dir(str(worlds), sid, default_data_dir=shared)
+    assert got == shared
+
+
+def test_find_session_data_dir_prefers_world_over_shared(tmp_path):
+    """If the session is in a world tree, that wins over the shared fallback."""
+    sid = "11111111-2222-3333-4444-555555555555"
+    worlds = tmp_path / "worlds"
+    wdir = worlds / "the-world" / "data" / "state" / "core" / "sessions"
+    wdir.mkdir(parents=True)
+    (wdir / f"{sid}.json").write_text("{}")
+    shared = tmp_path / "shared-data"
+    (shared / "state" / "core" / "sessions").mkdir(parents=True)
+    (shared / "state" / "core" / "sessions" / f"{sid}.json").write_text("{}")
+
+    got = find_session_data_dir(str(worlds), sid, default_data_dir=shared)
+    assert got == worlds / "the-world" / "data"
 
 
 def test_find_session_data_dir_rejects_non_uuid(tmp_path):

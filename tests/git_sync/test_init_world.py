@@ -26,6 +26,20 @@ def worlds_root(git_sync_module, monkeypatch, tmp_path):
     return root
 
 
+# ── /health reflects per-world mode (cutover verification) ────────────
+
+
+def test_health_reports_worlds_root_true_when_set(client, worlds_root):
+    assert client.get("/health").json()["worlds_root"] is True
+
+
+def test_health_reports_worlds_root_false_when_unset(
+    client, git_sync_module, monkeypatch
+):
+    monkeypatch.setattr(git_sync_module, "WORLDS_ROOT", None)
+    assert client.get("/health").json()["worlds_root"] is False
+
+
 # ── No-op pre-cutover ─────────────────────────────────────────────────
 
 

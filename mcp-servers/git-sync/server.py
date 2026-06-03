@@ -94,7 +94,16 @@ def get_repo(world_id: str | None = None) -> git.Repo:
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "server": "git-sync", "version": "0.1.0"}
+    # `worlds_root` lets operators verify all three services agree on the
+    # per-world cutover (ADR 0002): backend, fs-manager, and git-sync must all
+    # have SENTINEL_WORLDS_ROOT set, or writes/reads split across trees. See
+    # `docs/WORKSPACE.md` § "Per-world isolation cutover".
+    return {
+        "status": "ok",
+        "server": "git-sync",
+        "version": "0.1.0",
+        "worlds_root": bool(WORLDS_ROOT),
+    }
 
 
 @app.post("/tools/init_world")

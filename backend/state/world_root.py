@@ -76,7 +76,13 @@ def iter_session_data_dirs(
     base = Path(worlds_root)
     if not base.is_dir():
         return []
-    return [child / "data" for child in sorted(base.iterdir()) if child.is_dir()]
+    try:
+        children = sorted(base.iterdir())
+    except OSError:
+        # Removed/permission-changed mid-scan — degrade to "no worlds" rather
+        # than crashing the listing/lookup endpoints.
+        return []
+    return [child / "data" for child in children if child.is_dir()]
 
 
 def find_session_data_dir(
@@ -103,4 +109,11 @@ def find_session_data_dir(
     ):
         if (data_dir / _SESSIONS_REL / f"{session_id}.json").is_file():
             return data_dir
+    # Graceful migration: a session created before the cutover still lives in
+    # the shared tree (its world_id is empty, so its writes also go there).
+    # Fall back to it so pre-cutover sessions keep working after
+    # SENTINEL_WORLDS_ROOT is set, instead of 404-ing. New per-world sessions
+    # are found in their own tree by the loop above, so this never shadows them.
+    if (default_data_dir / _SESSIONS_REL / f"{session_id}.json").is_file():
+        return default_data_dir
     return None
