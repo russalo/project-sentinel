@@ -16,6 +16,13 @@ export const apiClient = {
     if (!res.ok) throw new Error(`API error: ${res.status}`);
     return res.json();
   },
+
+  async delete(endpoint) {
+    const res = await fetch(`${API_BASE}${endpoint}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error(`API error: ${res.status}`);
+    const text = await res.text();
+    return text ? JSON.parse(text) : {};
+  },
 };
 
 export { API_BASE };

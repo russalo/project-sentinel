@@ -156,3 +156,67 @@ def test_init_world_invalid_world_id_422_and_writes_nothing(client, worlds_root,
     assert resp.status_code in (422, 403)
     # No stray directory created for a rejected id.
     assert sum(1 for _ in worlds_root.rglob("*")) == before
+
+
+# ── teardown_world (ADR 0002 Slice 5 — hard delete) ───────────────────
+
+
+def test_teardown_world_removes_repo(client, worlds_root):
+    """Per-world mode: rmtree the world's repo."""
+    client.post("/tools/init_world", json={"world_id": WORLD_UUID})
+    assert (worlds_root / WORLD_UUID).is_dir()
+
+    resp = client.post("/tools/teardown_world", json={"world_id": WORLD_UUID})
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "removed"
+    assert not (worlds_root / WORLD_UUID).exists()
+
+
+def test_teardown_world_not_found_is_ok(client, worlds_root):
+    resp = client.post("/tools/teardown_world", json={"world_id": WORLD_UUID})
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "not_found"
+
+
+def test_teardown_world_missing_world_id_422(client, worlds_root):
+    assert client.post("/tools/teardown_world", json={}).status_code == 422
+
+
+@pytest.mark.parametrize("bad", ["not-a-uuid", "../../../etc", "/etc/passwd", ".."])
+def test_teardown_world_bad_id_rejected_and_removes_nothing(client, worlds_root, bad):
+    # Seed a real world so we can prove a traversal id doesn't nuke it.
+    client.post("/tools/init_world", json={"world_id": WORLD_UUID})
+    before = sorted(p.name for p in worlds_root.iterdir())
+
+    resp = client.post("/tools/teardown_world", json={"world_id": bad})
+    assert resp.status_code in (422, 403)
+    # The real world (and everything else under the root) is untouched.
+    assert sorted(p.name for p in worlds_root.iterdir()) == before
+    assert (worlds_root / WORLD_UUID).is_dir()
+
+
+def test_teardown_world_legacy_removes_session(
+    client, git_sync_module, monkeypatch, tmp_path
+):
+    """Legacy mode (WORLDS_ROOT unset): git rm the world's session file."""
+    monkeypatch.setattr(git_sync_module, "WORLDS_ROOT", None)
+    # git_sync_module.REPO_ROOT is the tmp git repo (conftest). Seed a session.
+    repo_root = git_sync_module.REPO_ROOT
+    sid = "11111111-2222-3333-4444-555555555555"
+    sessions = repo_root / "data" / "state" / "core" / "sessions"
+    sessions.mkdir(parents=True, exist_ok=True)
+    sfile = sessions / f"{sid}.json"
+    sfile.write_text('{"world_id": "w"}', encoding="utf-8")
+    import git as _git
+
+    repo = _git.Repo(repo_root)
+    repo.git.add("data/")
+    repo.git.commit("-m", "seed session")
+    assert sfile.exists()
+
+    resp = client.post(
+        "/tools/teardown_world", json={"world_id": "w", "session_id": sid}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "removed"
+    assert not sfile.exists()

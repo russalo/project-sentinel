@@ -62,7 +62,14 @@ def test_settings(tmp_data_dir: Path):
 
 
 @pytest.fixture
-def app(test_settings, fake_openai, fake_dispatch_log, fake_commit_log, monkeypatch):
+def app(
+    test_settings,
+    fake_openai,
+    fake_dispatch_log,
+    fake_commit_log,
+    fake_teardown_log,
+    monkeypatch,
+):
     """Build a FastAPI app that uses the injected settings + fakes.
 
     Also monkey-patches the engine's dm.build_client and the
@@ -128,6 +135,18 @@ def app(test_settings, fake_openai, fake_dispatch_log, fake_commit_log, monkeypa
 
     monkeypatch.setattr(git_sync_module, "commit_snapshot", fake_commit_snapshot)
     monkeypatch.setattr(engine, "commit_snapshot", fake_commit_snapshot)
+
+    # Stub teardown_world (Slice 5) — capture + report removed, no real git-sync.
+    def fake_teardown_world(
+        config, *, world_id, session_id=None, client=None, timeout=30.0
+    ):
+        fake_teardown_log.append({"world_id": world_id, "session_id": session_id})
+        return engine.DispatchResult(
+            ok=True, status_code=200, body={"status": "removed", "world_id": world_id}
+        )
+
+    monkeypatch.setattr(git_sync_module, "teardown_world", fake_teardown_world)
+    monkeypatch.setattr(engine, "teardown_world", fake_teardown_world)
 
     # Build the app with the test settings already loaded.
     app = FastAPI()
@@ -221,4 +240,9 @@ def fake_dispatch_log() -> list:
 
 @pytest.fixture
 def fake_commit_log() -> list:
+    return []
+
+
+@pytest.fixture
+def fake_teardown_log() -> list:
     return []

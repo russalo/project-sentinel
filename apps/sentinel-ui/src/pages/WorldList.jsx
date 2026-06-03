@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'wouter';
-import { Globe, Plus, Database, RefreshCw } from 'lucide-react';
+import { Globe, Plus, Database, RefreshCw, Trash2 } from 'lucide-react';
 import { apiClient } from '../api/client';
 
 // The "my worlds" landing (ADR 0002 Slice 5). Lists provisioned worlds from
@@ -39,6 +39,21 @@ export default function WorldList() {
     setWorlds(null);
     setError(null);
     fetchWorlds();
+  };
+
+  // Hard delete (ADR 0002 Slice 5), gated behind a confirmation since it's
+  // irreversible. On success, refresh the list so the world drops out.
+  const handleDelete = async (w) => {
+    const name = w.worldName || 'Unnamed World';
+    if (!window.confirm(`Delete "${name}"? This permanently removes the world and cannot be undone.`)) {
+      return;
+    }
+    try {
+      await apiClient.delete(`/world/${w.worldId}`);
+      refresh();
+    } catch (e) {
+      setError(String(e));
+    }
   };
 
   useEffect(() => {
@@ -109,25 +124,32 @@ export default function WorldList() {
             {worlds
               .filter((w) => w && typeof w === 'object' && w.worldId)
               .map((w) => (
-              <li key={w.worldId}>
-                <Link
-                  href={`/w/${w.worldId}`}
-                  className="block border border-border rounded bg-codex px-4 py-3 hover:border-amber transition-colors"
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="font-medium truncate">
-                      {w.worldName || 'Unnamed World'}
-                    </span>
-                    <span className="text-xs text-dust whitespace-nowrap">
-                      {w.turnCount} {w.turnCount === 1 ? 'turn' : 'turns'}
-                    </span>
-                  </div>
-                  <div className="text-xs text-dust mt-1 truncate">
-                    {[w.character, w.persona].filter(Boolean).join(' · ') || '—'}
-                  </div>
-                </Link>
-              </li>
-            ))}
+                <li key={w.worldId} className="flex items-stretch gap-2">
+                  <Link
+                    href={`/w/${w.worldId}`}
+                    className="flex-1 min-w-0 block border border-border rounded bg-codex px-4 py-3 hover:border-amber transition-colors"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="font-medium truncate">
+                        {w.worldName || 'Unnamed World'}
+                      </span>
+                      <span className="text-xs text-dust whitespace-nowrap">
+                        {w.turnCount} {w.turnCount === 1 ? 'turn' : 'turns'}
+                      </span>
+                    </div>
+                    <div className="text-xs text-dust mt-1 truncate">
+                      {[w.character, w.persona].filter(Boolean).join(' · ') || '—'}
+                    </div>
+                  </Link>
+                  <button
+                    onClick={() => handleDelete(w)}
+                    aria-label={`Delete ${w.worldName || 'Unnamed World'}`}
+                    className="px-3 border border-border rounded bg-codex text-dust hover:text-blood hover:border-blood transition-colors"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </li>
+              ))}
           </ul>
         )}
       </div>

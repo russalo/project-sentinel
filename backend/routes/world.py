@@ -10,8 +10,10 @@ the chat scroll and continue play. Read-only; resolves the world's own tree
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Request
+import engine
+from fastapi import APIRouter, HTTPException, Request, status
 
+from ..engine_bridge import build_engine_config
 from ..state import sessions as session_state
 from ..state.world_context import load_world_context
 from ..state.world_root import find_world_session, iter_worlds
@@ -45,6 +47,34 @@ def list_worlds(request: Request) -> list[dict]:
             }
         )
     return out
+
+
+@router.delete("/world/{world_id}")
+def delete_world(world_id: str, request: Request) -> dict:
+    """Permanently delete a world (ADR 0002 Slice 5 — hard delete).
+
+    Resolves the world's session first (404 if the world has none), then routes
+    the removal through git-sync (per-world: rmtree the repo; legacy: git rm the
+    session). All data mutation stays in git-sync — the backend never removes
+    files directly. The frontend gates this behind a confirmation.
+    """
+    settings = request.app.state.settings
+    found = find_world_session(
+        settings.worlds_root, world_id, default_data_dir=settings.data_dir
+    )
+    if found is None:
+        raise HTTPException(status_code=404, detail="world not found")
+    _data_dir, session_id = found
+
+    result = engine.teardown_world(
+        build_engine_config(settings), world_id=world_id, session_id=session_id
+    )
+    if not result.ok:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"world teardown failed: {result.error}",
+        )
+    return {"worldId": world_id, "status": result.body.get("status", "removed")}
 
 
 @router.get("/world/{world_id}")

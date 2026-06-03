@@ -10,7 +10,12 @@ import httpx
 import pytest
 
 from engine import Config
-from engine.dispatch.git_sync import DispatchResult, commit_snapshot, init_world
+from engine.dispatch.git_sync import (
+    DispatchResult,
+    commit_snapshot,
+    init_world,
+    teardown_world,
+)
 
 VALID_SESSION_ID = "11111111-2222-3333-4444-555555555555"
 
@@ -378,6 +383,60 @@ def test_init_world_network_error_returns_status_zero():
     assert result.ok is False
     assert result.status_code == 0
     assert "network error" in result.error
+
+
+def test_teardown_world_posts_world_id_and_session_id():
+    import json
+
+    captured = {}
+    world_id = "9b3c1d2e-4f5a-4b6c-8d7e-0a1b2c3d4e5f"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["body"] = json.loads(request.content.decode())
+        return httpx.Response(200, json={"status": "removed", "world_id": world_id})
+
+    result = teardown_world(
+        _config("http://git-sync.test"),
+        world_id=world_id,
+        session_id=VALID_SESSION_ID,
+        client=_client_returning(handler),
+    )
+    assert result.ok is True
+    assert result.body["status"] == "removed"
+    assert captured["url"] == "http://git-sync.test/tools/teardown_world"
+    assert captured["body"] == {"world_id": world_id, "session_id": VALID_SESSION_ID}
+
+
+def test_teardown_world_omits_session_id_when_none():
+    import json
+
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content.decode())
+        return httpx.Response(200, json={"status": "removed"})
+
+    teardown_world(_config(), world_id="w", client=_client_returning(handler))
+    assert "session_id" not in captured["body"]
+
+
+def test_teardown_world_not_found_is_success():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"status": "not_found"})
+
+    result = teardown_world(_config(), world_id="w", client=_client_returning(handler))
+    assert result.ok is True
+    assert result.body["status"] == "not_found"
+
+
+def test_teardown_world_error_returns_ok_false():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, json={"detail": {"code": "GIT_ERROR"}})
+
+    result = teardown_world(_config(), world_id="w", client=_client_returning(handler))
+    assert result.ok is False
+    assert result.status_code == 500
 
 
 if __name__ == "__main__":  # pragma: no cover

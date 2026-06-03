@@ -221,3 +221,62 @@ def init_world(
     finally:
         if owns_client:
             client.close()
+
+
+def teardown_world(
+    config: Config,
+    *,
+    world_id: str,
+    session_id: str | None = None,
+    client: httpx.Client | None = None,
+    timeout: float = 30.0,
+) -> DispatchResult:
+    """Permanently remove a world via git-sync's /tools/teardown_world (ADR 0002).
+
+    Per-world mode removes the world's repo; legacy mode removes its session
+    file (identified by ``session_id``, which the backend resolves). Destructive
+    — ``world_id``/``session_id`` are UUID-validated server-side before any
+    removal. Same structured-result / test-injection contract as the others;
+    ``status=not_found`` (HTTP 200) for an already-absent world is a success.
+    """
+    base = config.git_sync_url.rstrip("/")
+    url = f"{base}/tools/teardown_world"
+    payload: dict[str, Any] = {"world_id": world_id}
+    if session_id is not None:
+        payload["session_id"] = session_id
+
+    owns_client = client is None
+    if owns_client:
+        client = httpx.Client(timeout=timeout)
+
+    try:
+        try:
+            response = client.post(url, json=payload)
+        except httpx.RequestError as exc:
+            return DispatchResult(
+                ok=False,
+                status_code=0,
+                body={},
+                error=f"network error: {exc}",
+            )
+
+        try:
+            body = response.json()
+            if not isinstance(body, dict):
+                body = {"raw": body}
+        except ValueError:
+            body = {"raw": response.text}
+
+        if response.is_success:
+            return DispatchResult(ok=True, status_code=response.status_code, body=body)
+
+        detail = body.get("detail", body.get("raw", "unknown error"))
+        return DispatchResult(
+            ok=False,
+            status_code=response.status_code,
+            body=body,
+            error=f"git-sync rejected teardown_world ({response.status_code}): {detail}",
+        )
+    finally:
+        if owns_client:
+            client.close()

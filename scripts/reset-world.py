@@ -160,12 +160,19 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Stage the reset but do not commit it.",
     )
+    parser.add_argument(
+        "--teardown",
+        action="store_true",
+        help="With --world-id: permanently REMOVE the world's tree (rmtree), "
+        "not just reset its state. Irreversible (ADR 0002 Slice 5).",
+    )
     args = parser.parse_args(argv)
 
     if args.world_id:
-        # World-scoped reset (ADR 0002): the "root" is the world's own repo at
-        # <worlds-root>/<world-id>. world_id is a path component → UUID-validate
-        # and assert containment, same boundary as the servers.
+        # World-scoped reset/teardown (ADR 0002): the "root" is the world's own
+        # repo at <worlds-root>/<world-id>. world_id is a path component →
+        # UUID-validate and assert containment, same boundary as the servers
+        # (critical before an rmtree).
         worlds_root = args.worlds_root or os.environ.get("SENTINEL_WORLDS_ROOT")
         if not worlds_root:
             print(
@@ -189,6 +196,13 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 2
+        if args.teardown:
+            shutil.rmtree(root)
+            print(f"teardown: removed world {canonical} ({root}).")
+            return 0
+    elif args.teardown:
+        print("error: --teardown requires --world-id.", file=sys.stderr)
+        return 2
     else:
         root = _repo_root(args.root)
         if not (root / "data" / "state" / "core").is_dir():
