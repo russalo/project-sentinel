@@ -220,3 +220,25 @@ def test_teardown_world_legacy_removes_session(
     assert resp.status_code == 200
     assert resp.json()["status"] == "removed"
     assert not sfile.exists()
+
+
+def test_teardown_world_legacy_removes_untracked_session(
+    client, git_sync_module, monkeypatch
+):
+    """Legacy teardown must handle a session file that's on disk but UNTRACKED
+    (its creating commit failed — commit_snapshot is fire-and-log). `git rm`
+    would 500 on it; teardown unlinks + `git rm --cached --ignore-unmatch`."""
+    monkeypatch.setattr(git_sync_module, "WORLDS_ROOT", None)
+    repo_root = git_sync_module.REPO_ROOT
+    sid = "22222222-3333-4444-5555-666666666666"
+    sessions = repo_root / "data" / "state" / "core" / "sessions"
+    sessions.mkdir(parents=True, exist_ok=True)
+    sfile = sessions / f"{sid}.json"
+    sfile.write_text('{"world_id": "w"}', encoding="utf-8")  # NOT committed
+
+    resp = client.post(
+        "/tools/teardown_world", json={"world_id": "w", "session_id": sid}
+    )
+    assert resp.status_code == 200  # not a 500
+    assert resp.json()["status"] == "removed"
+    assert not sfile.exists()  # gone from disk regardless of tracked status

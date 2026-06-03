@@ -62,9 +62,14 @@ def delete_world(world_id: str, request: Request) -> dict:
     found = find_world_session(
         settings.worlds_root, world_id, default_data_dir=settings.data_dir
     )
-    if found is None:
+    session_id = found[1] if found is not None else None
+
+    # Per-world mode: the repo dir is the source of truth, so we can tear down a
+    # world even if it has no session yet (an orphan from an intro that 502'd
+    # mid-creation). Legacy mode has nothing to remove without a session, so a
+    # missing session is a genuine 404.
+    if found is None and not settings.worlds_root:
         raise HTTPException(status_code=404, detail="world not found")
-    _data_dir, session_id = found
 
     result = engine.teardown_world(
         build_engine_config(settings), world_id=world_id, session_id=session_id
@@ -74,6 +79,9 @@ def delete_world(world_id: str, request: Request) -> dict:
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"world teardown failed: {result.error}",
         )
+    # git-sync reports not_found when the world dir was already absent → 404.
+    if result.body.get("status") == "not_found":
+        raise HTTPException(status_code=404, detail="world not found")
     return {"worldId": world_id, "status": result.body.get("status", "removed")}
 
 

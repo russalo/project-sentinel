@@ -208,7 +208,9 @@ async def teardown_world(body: dict):
     try:
         if WORLDS_ROOT:
             repo_path = _world_repo_path(world_id)  # UUID + traversal validated
-            if not repo_path.exists():
+            # is_dir() (not exists()): a non-directory at the path → not_found,
+            # not a confusing 500 from rmtree(NotADirectoryError).
+            if not repo_path.is_dir():
                 return {"status": "not_found", "world_id": repo_path.name}
             shutil.rmtree(repo_path)
             logger.info(f"teardown_world — removed world={repo_path.name[:8]}")
@@ -239,8 +241,23 @@ async def teardown_world(body: dict):
         removed = [rel for rel in rels if (REPO_ROOT / rel).exists()]
         if not removed:
             return {"status": "not_found", "session_id": session_id}
-        repo.git.rm("--", *removed)
-        repo.git.commit("-m", f"[sentinel] teardown session={session_id[:8]}")
+        # Remove from the working tree first, then drop any *tracked* ones from
+        # the index. `git rm <tracked> <untracked>` fails the whole command (and
+        # leaves the tracked file behind) — and a session whose creating commit
+        # failed (commit_snapshot is fire-and-log) is on disk but untracked. So
+        # unlink unconditionally, then `git rm --cached --ignore-unmatch` to
+        # de-index the tracked ones without erroring on the untracked.
+        for rel in removed:
+            (REPO_ROOT / rel).unlink()
+        repo.git.rm("--cached", "--ignore-unmatch", "--", *removed)
+        # Commit ONLY the teardown's own pathspecs — `git commit -m` (no paths)
+        # would sweep in anything else already staged (e.g. a concurrent
+        # commit_snapshot's `git add data/`). Skip the commit when those paths
+        # had nothing staged (an all-untracked session — already unlinked).
+        if repo.git.diff("--cached", "--name-only", "--", *removed).strip():
+            repo.git.commit(
+                "-m", f"[sentinel] teardown session={session_id[:8]}", "--", *removed
+            )
         logger.info(f"teardown_world — removed legacy session={session_id[:8]}")
         return {"status": "removed", "session_id": session_id, "removed": removed}
     except HTTPException:
