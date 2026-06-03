@@ -71,10 +71,10 @@ export default function DataBrowser() {
             <RefreshCw size={16} />
           </button>
           <Link
-            href={worldId ? `/w/${worldId}` : '/create'}
+            href={worldId ? `/w/${worldId}` : '/'}
             className="text-sm text-dust hover:text-amber flex items-center gap-1 transition-colors"
           >
-            <ArrowLeft size={14} /> {worldId ? 'Back to game' : 'New world'}
+            <ArrowLeft size={14} /> {worldId ? 'Back to game' : 'Worlds'}
           </Link>
         </div>
       </header>
