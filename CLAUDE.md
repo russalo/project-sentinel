@@ -127,6 +127,73 @@ land back-to-back.
 
 ---
 
+## Reviewing changes (decorrelated swarm)
+
+For anything cross-cutting (multi-subsystem, public-facing, concurrency),
+run a **decorrelated review swarm** — reviewers that fail *differently*, so
+each catches what the author (you) and the others miss:
+
+1. **`/code-review master...HEAD`** (in-house) — best at sibling-path
+   completeness ("hardened A, missed B/C") and logic. (Default branch is
+   `master`; adjust the base if you branched from elsewhere.)
+2. **Cross-model (Gemini)** — invoke the `gemini` CLI read-only (`--approval-mode
+   plan --skip-trust`) with the diff + a falsify prompt. It reads `GEMINI.md` at
+   the repo root for auditor instructions + the hunt list. Best at attacking
+   premises a same-model reviewer inherited. Chunk by subsystem; for a sliced
+   change, add one **integration pass aimed at the seam** where slices meet.
+   *(On origin-core, a ready wrapper — `gem.sh`, flash; fall back from pro on
+   "Invalid stream" — lives in the sibling File Observer project at
+   `/srv/projects/pkplab/scanner/scratch/review/`; it is external to this repo.)*
+3. **PR bots** (Codex / Gemini Code Assist / Copilot) — open a PR. Best at
+   doc/code drift after reworks.
+
+Disciplines (more important than the tools): **falsify-first**; treat tests/
+corpus as **biased** (construct the input they omit); **triage = verification**
+(repro a finding in ~10 lines → real or dropped; act on a reproduction, never on
+a tag — bots over-tag and re-flag fixed issues); **convergence across layers =
+strongest real-bug signal**; **re-run the full suite + a real-flow check after
+every fix round**, gated (cheap suite every round; expensive check at round
+boundaries and mandatory before merge — never skipped). Per-PR review + a final
+integration pass for sliced features.
+
+### Failure patterns this codebase exhibits (hunt these first)
+
+Seeded from real bugs; update each release. The cross-model auditor's copy lives
+in `GEMINI.md`.
+
+- **Inter-world / cross-boundary state bleed** — state/context/RNG/transcript
+  leaking across worlds or sessions (shared mutable globals, a fixed path not
+  scoped by `world_id`, a cache keyed without the world). This is the
+  cross-session contamination that motivated ADR 0002, generalized to the
+  multi-tenancy boundary. *Prove it deterministically with a tracer soak — stub
+  the DM with a per-world token and assert no cross-world leak; never against a
+  live LLM.*
+- **Sibling-path incompleteness** — a fix on path A while siblings B/C keep the
+  bug (e.g. the `list_sessions`→`get_session` canonical-id miss).
+- **Doc/code drift after reworks** — comments/docs/ADRs describing a superseded
+  design (engine "scaffolding," Tailwind v4, Express/Django in CONTRIBUTING).
+- **Schema-gate bypass** — a write path reaching fs-manager without
+  `apply_world_update.schema.json` validation, or treating a rejection as fatal
+  instead of feeding it back to the DM.
+- **git-sync committing to the checked-out branch** — the `master`-pollution
+  hazard during play/recording.
+- **Malformed-LLM-output intolerance** — non-`dict` `world_update`, non-`list`
+  collections.
+- **Path traversal via id interpolation** — `session_id`/`world_id` as path
+  components; UUID-validate (`_require_uuid`) before building any path, in the
+  backend AND the MCP servers.
+- **No cross-process locking** — in-process locks don't serialize backend /
+  fs-manager / git-sync.
+- **Determinism where it's asserted** — anything claimed deterministic that
+  depends on dict/set iteration, time, randomness, or filesystem ordering.
+- **Stale-cache-after-redeploy** — a cached `index.html` pointing at a purged
+  hashed bundle → blank page.
+- **Provider/API param compat** (`max_completion_tokens` vs `max_tokens`);
+  **env/setup fragility** (PEP 668, missing venv, bare `pip`/`uvicorn` in
+  recipes); **biased validation corpus** (one smoke transcript ≠ coverage).
+
+---
+
 ## Directory Conventions
 
 - `docs/` — project documentation (BACKLOG.md, ROADMAP.md, VISION.md, QUICKSTART.md, ADRs)
