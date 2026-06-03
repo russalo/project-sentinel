@@ -54,6 +54,7 @@ def test_settings(tmp_data_dir: Path):
         fs_manager_url="http://fs-manager.test",
         git_sync_url="http://git-sync.test",
         data_dir=tmp_data_dir,
+        worlds_root=None,
         cors_allowed_origins=("*",),
         cors_allow_all_origins=True,
         debug=True,

@@ -40,6 +40,7 @@ from ..engine_bridge import build_engine_config
 from ..schemas import StreamRequest
 from ..state import sessions as session_state
 from ..state.world_context import load_world_context
+from ..state.world_root import resolve_world_data_dir
 
 router = APIRouter(prefix="/api")
 
@@ -80,7 +81,24 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
     settings: Settings = request.app.state.settings
     config = build_engine_config(settings)
 
-    session = session_state.read_session(settings.data_dir, body.session_id)
+    # Resolve the world's own data tree (ADR 0002 Slice 3). With
+    # SENTINEL_WORLDS_ROOT set, the session file and world state live under
+    # <worlds_root>/<world_id>/data, so reads must be world-scoped — the
+    # client carries the world_id it got from POST /api/session/new. With the
+    # env unset (today's default), this returns the shared tree and world_id
+    # is ignored. A malformed world_id raises ValueError → treat as not-found
+    # (same posture as a bad session_id) rather than leaking the reason.
+    try:
+        data_dir = resolve_world_data_dir(
+            settings.worlds_root, body.world_id, default_data_dir=settings.data_dir
+        )
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Session not found or inactive",
+        )
+
+    session = session_state.read_session(data_dir, body.session_id)
     if session is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -101,7 +119,7 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
         for t in session.turns[-5:]
     ]
     world_context = load_world_context(
-        settings.data_dir,
+        data_dir,
         session_id=body.session_id,
         recent_turns=recent,
     )

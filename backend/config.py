@@ -9,9 +9,9 @@ from these settings and hands it in.
 
 Reads ``OPENAI_API_KEY``, ``OPENAI_BASE_URL``, ``DM_MODEL``,
 ``DM_MAX_COMPLETION_TOKENS``, ``FS_MANAGER_URL``, ``GIT_SYNC_URL``,
-``CORS_ALLOWED_ORIGINS``, and ``SENTINEL_DEBUG`` from
-``infrastructure/.env`` via python-dotenv. Set ``SENTINEL_SKIP_ENV_CHECK=1``
-to bypass the .env requirement in CI.
+``CORS_ALLOWED_ORIGINS``, ``SENTINEL_WORLDS_ROOT``, and ``SENTINEL_DEBUG``
+from ``infrastructure/.env`` via python-dotenv. Set
+``SENTINEL_SKIP_ENV_CHECK=1`` to bypass the .env requirement in CI.
 """
 
 import os
@@ -62,6 +62,13 @@ class Settings:
     git_sync_url: str
 
     data_dir: Path
+    # Per-world isolation root (ADR 0002 Slice 3). When set, the backend reads
+    # each world's tree at ``<worlds_root>/<world_id>/data`` (resolved via
+    # ``backend.state.world_root.resolve_world_data_dir``) instead of the single
+    # shared ``data_dir``. ``None`` (the default) keeps today's shared-tree
+    # behavior — the cutover is an operational flip of ``SENTINEL_WORLDS_ROOT``,
+    # the same env var the MCP servers already read.
+    worlds_root: str | None
 
     cors_allowed_origins: tuple[str, ...]
     cors_allow_all_origins: bool
@@ -96,6 +103,7 @@ class Settings:
             fs_manager_url=_env("FS_MANAGER_URL", "http://127.0.0.1:8010"),
             git_sync_url=_env("GIT_SYNC_URL", "http://127.0.0.1:8012"),
             data_dir=DATA_DIR,
+            worlds_root=_env("SENTINEL_WORLDS_ROOT"),
             cors_allowed_origins=tuple(
                 _env(
                     "CORS_ALLOWED_ORIGINS",

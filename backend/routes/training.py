@@ -18,6 +18,7 @@ from fastapi.responses import Response
 
 from .. import datasets as ds
 from ..state import sessions as session_state
+from ..state.world_root import find_session_data_dir, iter_session_data_dirs
 
 router = APIRouter(prefix="/api")
 
@@ -45,33 +46,44 @@ def _session_to_dict(session: session_state.Session) -> dict:
 
 @router.get("/sessions")
 def list_sessions(request: Request) -> list[dict]:
-    """Summaries of every recorded session (no turn bodies)."""
+    """Summaries of every recorded session (no turn bodies).
+
+    Scans the shared tree, or — once SENTINEL_WORLDS_ROOT is set (ADR 0002
+    Slice 3) — every provisioned world's sessions dir, so the browser keeps
+    listing all sessions across worlds after the cutover.
+    """
     settings = request.app.state.settings
-    sessions_dir = settings.data_dir / _SESSIONS_REL
+    candidates = []
+    for data_dir in iter_session_data_dirs(
+        settings.worlds_root, default_data_dir=settings.data_dir
+    ):
+        sessions_dir = data_dir / _SESSIONS_REL
+        if sessions_dir.is_dir():
+            candidates.extend(sessions_dir.glob("*.json"))
     summaries: list[dict] = []
-    if sessions_dir.is_dir():
-        # Most-recently-modified first, so fresh sessions surface at the top.
-        for path in sorted(sessions_dir.glob("*.json"), key=_safe_mtime, reverse=True):
-            try:
-                raw = json.loads(path.read_text(encoding="utf-8"))
-            except (json.JSONDecodeError, OSError):
-                continue
-            if not isinstance(raw, dict):
-                continue
-            turns = raw.get("turns") if isinstance(raw.get("turns"), list) else []
-            summaries.append(
-                {
-                    # The filename stem is the canonical id — read_session() keys
-                    # off it, so using the JSON field could yield an id whose
-                    # detail/export links 404.
-                    "sessionId": path.stem,
-                    "worldName": raw.get("world_name", ""),
-                    "persona": raw.get("dm_persona_name", ""),
-                    "character": raw.get("player_character_name", ""),
-                    "turnCount": len(turns),
-                    "startedAt": raw.get("started_at", ""),
-                }
-            )
+    # Most-recently-modified first, so fresh sessions surface at the top —
+    # across all worlds, not just within one.
+    for path in sorted(candidates, key=_safe_mtime, reverse=True):
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        if not isinstance(raw, dict):
+            continue
+        turns = raw.get("turns") if isinstance(raw.get("turns"), list) else []
+        summaries.append(
+            {
+                # The filename stem is the canonical id — read_session() keys
+                # off it, so using the JSON field could yield an id whose
+                # detail/export links 404.
+                "sessionId": path.stem,
+                "worldName": raw.get("world_name", ""),
+                "persona": raw.get("dm_persona_name", ""),
+                "character": raw.get("player_character_name", ""),
+                "turnCount": len(turns),
+                "startedAt": raw.get("started_at", ""),
+            }
+        )
     return summaries
 
 
@@ -79,7 +91,14 @@ def list_sessions(request: Request) -> list[dict]:
 def get_session(session_id: str, request: Request) -> dict:
     """Full session with its turn log, for the detail view."""
     settings = request.app.state.settings
-    session = session_state.read_session(settings.data_dir, session_id)
+    data_dir = find_session_data_dir(
+        settings.worlds_root, session_id, default_data_dir=settings.data_dir
+    )
+    session = (
+        session_state.read_session(data_dir, session_id)
+        if data_dir is not None
+        else None
+    )
     if session is None:
         raise HTTPException(status_code=404, detail="session not found")
     return {
@@ -102,7 +121,14 @@ def export_session(
 ) -> Response:
     """Download a session as a training artifact (schema JSONL or chatlog)."""
     settings = request.app.state.settings
-    session = session_state.read_session(settings.data_dir, session_id)
+    data_dir = find_session_data_dir(
+        settings.worlds_root, session_id, default_data_dir=settings.data_dir
+    )
+    session = (
+        session_state.read_session(data_dir, session_id)
+        if data_dir is not None
+        else None
+    )
     if session is None:
         raise HTTPException(status_code=404, detail="session not found")
     session_dict = _session_to_dict(session)
