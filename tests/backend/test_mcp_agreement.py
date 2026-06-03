@@ -56,3 +56,13 @@ def test_raises_when_a_server_is_unreachable(test_settings):
 def test_raises_on_non_dict_health_body(test_settings):
     with pytest.raises(RuntimeError):
         verify_world_mode_agreement(_per_world(test_settings), fetch=lambda url: "nope")
+
+
+@pytest.mark.parametrize("truthy_nonbool", ["false", "true", 1, [True]])
+def test_truthy_nonbool_worlds_root_is_not_agreement(test_settings, truthy_nonbool):
+    # The /health contract is a real bool; a truthy non-bool (notably the string
+    # "false") must not be read as agreement.
+    with pytest.raises(RuntimeError):
+        verify_world_mode_agreement(
+            _per_world(test_settings), fetch=lambda url: {"worlds_root": truthy_nonbool}
+        )

@@ -52,6 +52,16 @@ def test_all_interfaces_bind_refused(server, host, monkeypatch):
         server._check_bind_host(host)
 
 
-def test_all_interfaces_allowed_with_explicit_optin(server, monkeypatch):
-    monkeypatch.setenv("SENTINEL_ALLOW_PUBLIC_BIND", "1")
-    server._check_bind_host("0.0.0.0")  # opted in — no raise
+@pytest.mark.parametrize("falsey", ["0", "false", "", "no", "off"])
+def test_optin_falsey_values_still_refuse(server, falsey, monkeypatch):
+    # The footgun: SENTINEL_ALLOW_PUBLIC_BIND=0 must NOT enable the override
+    # (a bare truthiness check on os.environ.get would treat "0" as set).
+    monkeypatch.setenv("SENTINEL_ALLOW_PUBLIC_BIND", falsey)
+    with pytest.raises(SystemExit):
+        server._check_bind_host("0.0.0.0")
+
+
+@pytest.mark.parametrize("truthy", ["1", "true", "TRUE", "yes", "on"])
+def test_optin_truthy_values_allow(server, truthy, monkeypatch):
+    monkeypatch.setenv("SENTINEL_ALLOW_PUBLIC_BIND", truthy)
+    server._check_bind_host("0.0.0.0")  # explicitly opted in — no raise

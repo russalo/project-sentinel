@@ -13,6 +13,16 @@ servers expose that flag for exactly this purpose.
 
 No-op when ``SENTINEL_WORLDS_ROOT`` is unset (the default) — shared mode needs no
 agreement, and dev/test setups without the MCP servers running aren't pinged.
+
+Residual (deferred — see docs/BACKLOG.md): this checks per-world *presence*
+(``worlds_root: true`` on both), not that all three are pointed at the **same**
+root path. A misconfig where the backend has ``/a`` but an MCP server has ``/b``
+would pass here yet still split-brain. Catching that needs ``/health`` to expose
+a root *identity* to compare — a protocol change with real symlink/mount-
+comparison fragility (a false mismatch would wrongly refuse a valid deploy).
+The common misconfig (one service per-world, another shared) **is** caught; the
+same-config-everywhere invariant is otherwise enforced operationally by Slice C's
+systemd units setting one env value for all three.
 """
 
 from __future__ import annotations
@@ -27,8 +37,15 @@ logger = logging.getLogger(__name__)
 
 
 def _default_fetch(url: str, *, timeout: float = 5.0) -> dict:
-    """GET ``url`` and parse the JSON body. Raises on transport/parse failure."""
-    with urllib.request.urlopen(url, timeout=timeout) as resp:  # noqa: S310 (trusted internal URL)
+    """GET ``url`` and parse the JSON body. Raises on transport/parse failure.
+
+    Only ``http(s)`` is allowed — the URLs are operator config (the MCP base
+    URLs), not user input, but pinning the scheme keeps a misconfigured
+    ``file://`` from reading a local file instead of failing loudly.
+    """
+    if not url.startswith(("http://", "https://")):
+        raise ValueError(f"refusing non-HTTP health URL: {url!r}")
+    with urllib.request.urlopen(url, timeout=timeout) as resp:  # noqa: S310 (scheme pinned above)
         return json.loads(resp.read().decode("utf-8"))
 
 
@@ -56,7 +73,9 @@ def verify_world_mode_agreement(settings: Settings, *, fetch=_default_fetch) -> 
                 f"/health is unreachable at {url}: {exc}. All three services must "
                 f"be up and agree before the cutover."
             ) from exc
-        if not (isinstance(body, dict) and body.get("worlds_root")):
+        # Strict `is True` — the /health contract is a real bool; a truthy
+        # non-bool (e.g. the string "false", or 1) must NOT be read as agreement.
+        if not (isinstance(body, dict) and body.get("worlds_root") is True):
             raise RuntimeError(
                 f"per-world mode is on (SENTINEL_WORLDS_ROOT set) but {name} "
                 f"reports worlds_root=false — the services disagree on per-world "

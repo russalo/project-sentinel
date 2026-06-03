@@ -587,9 +587,13 @@ def _check_bind_host(host: str) -> None:
     deliberate choice); ``0.0.0.0``/``::`` (every interface) is the accidental
     public-exposure footgun this guards against.
     """
-    if host in _ALL_INTERFACES_HOSTS and not os.environ.get(
-        "SENTINEL_ALLOW_PUBLIC_BIND"
-    ):
+    allow_public = os.environ.get("SENTINEL_ALLOW_PUBLIC_BIND", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    if host in _ALL_INTERFACES_HOSTS and not allow_public:
         raise SystemExit(
             f"fs-manager: refusing to bind {host!r} — the MCP write layer must stay "
             "loopback/tailnet-only (ADR 0003 §3; Caddy must never proxy :8010). "
