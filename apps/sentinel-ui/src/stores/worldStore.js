@@ -1,5 +1,17 @@
 import { create } from 'zustand';
 
+// Map a numeric tension (0–10, as load_world_context / the DM hint emit) to the
+// label band WorldMetrics renders. worldStore's tension contract is a string
+// label (its default is 'calm'); a resumed world's canonical tension is an int,
+// so normalize it here. A string passed through unchanged (idempotent).
+function tensionLabel(t) {
+  if (typeof t !== 'number') return t;
+  if (t >= 9) return 'critical';
+  if (t >= 6) return 'high';
+  if (t >= 3) return 'moderate';
+  return 'calm';
+}
+
 export const useWorldStore = create((set) => ({
   // World metadata
   worldName: '',
@@ -72,11 +84,13 @@ export const useWorldStore = create((set) => ({
     if (!worldState || typeof worldState !== 'object') return {};
     const arr = (v) => (Array.isArray(v) ? v : []);
     return {
-      worldName: worldState.worldName ?? state.worldName,
+      // worldName is session-owned (playerStore) — don't mirror it here, where
+      // ctx.world_name can be the 'Unknown Realm' placeholder before any
+      // world/state.json exists, creating a split-brain with the real name.
       currentLocation: worldState.currentLocation ?? state.currentLocation,
       timeOfDay: worldState.timeOfDay ?? state.timeOfDay,
       weather: worldState.weather ?? state.weather,
-      tension: worldState.tension ?? state.tension,
+      tension: worldState.tension != null ? tensionLabel(worldState.tension) : state.tension,
       characters: arr(worldState.characters),
       locations: arr(worldState.locations),
       factions: arr(worldState.factions),

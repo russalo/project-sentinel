@@ -82,6 +82,8 @@ describe('useWorldHydration', () => {
     // World-state panels rehydrated.
     expect(useWorldStore.getState().characters).toEqual([{ name: 'Kael', status: 'alive' }])
     expect(useWorldStore.getState().currentLocation).toBe('The Docks')
+    // Numeric tension (3) normalized to the label band WorldMetrics renders.
+    expect(useWorldStore.getState().tension).toBe('moderate')
     // hydrating flag cleared when done.
     expect(usePlayerStore.getState().hydrating).toBe(false)
 
