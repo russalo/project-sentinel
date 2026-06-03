@@ -6,7 +6,7 @@
  * create CTA.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import WorldList from './WorldList'
 import { API_BASE } from '../api/client'
