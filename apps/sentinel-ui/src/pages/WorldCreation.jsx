@@ -84,7 +84,7 @@ async function generateSeedPreview(formData) {
 export default function WorldCreation() {
   const [, navigate] = useLocation();
   const creation = useWorldCreationStore();
-  const { setSessionId, setCharacter, setWorldName } = usePlayerStore();
+  const { setSessionId, setWorldId, setCharacter, setWorldName } = usePlayerStore();
   const { addMessage, clearMessages } = useChatStore();
   const [isGenerating, setIsGenerating] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
@@ -137,6 +137,10 @@ export default function WorldCreation() {
       });
 
       setSessionId(data.sessionId);
+      // Set worldId before navigating to /w/<worldId> so the hydration hook
+      // sees "already loaded this world" and skips re-fetching (the chat is
+      // seeded below from data.turns).
+      setWorldId(data.worldId);
       setCharacter(creation.characterName || 'Traveler', creation.characterClass || 'Adventurer');
       // Persist the world name here — worldCreationStore is reset() below,
       // so the TopBar reads it from playerStore on the game screen. Trim so
@@ -192,7 +196,7 @@ export default function WorldCreation() {
       }
 
       creation.reset();
-      navigate('/');
+      navigate(`/w/${data.worldId}`);
     } catch (err) {
       setStartError(err.message);
       setIsStarting(false);

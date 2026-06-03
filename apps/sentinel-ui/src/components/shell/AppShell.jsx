@@ -1,7 +1,9 @@
 import { useEffect, useRef } from 'react';
+import { useParams } from 'wouter';
 import { useUIStore } from '../../stores/uiStore';
 import { useChatStore } from '../../stores/chatStore';
 import { usePersonaStore } from '../../stores/personaStore';
+import { useWorldHydration } from '../../hooks/useWorldHydration';
 import { TopBar } from './TopBar';
 import { CommandBar } from './CommandBar';
 import { WorldStateDashboard } from '../world-state/WorldStateDashboard';
@@ -9,6 +11,11 @@ import { NarrativeScroll } from '../narrative/NarrativeScroll';
 import { PanelRouter } from '../panels/PanelRouter';
 
 export function AppShell() {
+  // Hydrate from /w/<worldId> on a fresh load / shared link / refresh (no-op
+  // when arriving from WorldCreation, which already populated the stores).
+  const { worldId } = useParams();
+  useWorldHydration(worldId);
+
   const { focusMode, toggleFocusMode, leftPanelCollapsed, rightPanelCollapsed, mobilePanelOpen, openMobilePanel, closeMobilePanel, selectedEntity } = useUIStore();
   const { messages, addMessage } = useChatStore();
   const personaName = usePersonaStore((s) => s.personaName);
