@@ -31,6 +31,9 @@ export function useWorldHydration(worldId) {
       try {
         const data = await apiClient.get(`/world/${worldId}`);
         if (cancelled) return;
+        if (!data || typeof data !== 'object') {
+          throw new Error('empty world response');
+        }
 
         const player = usePlayerStore.getState();
         player.setSessionId(data.sessionId);
@@ -52,6 +55,7 @@ export function useWorldHydration(worldId) {
         const chat = useChatStore.getState();
         chat.clearMessages();
         for (const turn of data.turns || []) {
+          if (!turn || typeof turn !== 'object') continue;
           const action = turn.player_action;
           const isSyntheticStart =
             turn.turn_number === 0 && action && action.startsWith('[Session Start]');

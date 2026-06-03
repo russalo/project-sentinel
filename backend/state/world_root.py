@@ -147,8 +147,14 @@ def find_world_session(
     sessions_dir = data_dir / _SESSIONS_REL
     if not sessions_dir.is_dir():
         return None
+    try:
+        paths = list(sessions_dir.glob("*.json"))
+    except OSError:
+        # Dir removed / permissions changed mid-scan → "no session" rather
+        # than a 500 on the resume path.
+        return None
     candidates = []
-    for path in sessions_dir.glob("*.json"):
+    for path in paths:
         if not worlds_root:
             # Shared tree → many worlds; keep only this world's sessions.
             try:
@@ -160,5 +166,12 @@ def find_world_session(
         candidates.append(path)
     if not candidates:
         return None
-    latest = max(candidates, key=lambda p: p.stat().st_mtime)
+
+    def _mtime(p: Path) -> float:
+        try:
+            return p.stat().st_mtime
+        except OSError:
+            return 0.0
+
+    latest = max(candidates, key=_mtime)
     return data_dir, latest.stem
