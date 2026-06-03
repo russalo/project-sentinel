@@ -1,0 +1,48 @@
+"""World hydration endpoint (ADR 0002 Slice 4).
+
+    GET /api/world/{world_id} → the world's current session for resume
+
+Backs the frontend's ``/w/<world_id>`` route: a fresh browser opening that URL
+has nothing stored locally, so it fetches the world's session here to rebuild
+the chat scroll and continue play. Read-only; resolves the world's own tree
+(or the shared tree pre-cutover) and returns the most-recent session.
+"""
+
+from __future__ import annotations
+
+from fastapi import APIRouter, HTTPException, Request
+
+from ..state import sessions as session_state
+from ..state.world_root import find_world_session
+
+router = APIRouter(prefix="/api")
+
+
+@router.get("/world/{world_id}")
+def get_world(world_id: str, request: Request) -> dict:
+    """The world's current session (id + metadata + turn log), for resume.
+
+    404 when the world has no session — a bad/unknown ``world_id`` and a
+    genuinely empty world are indistinguishable to a caller and get the same
+    response (the id is the only secret, same posture as session lookups).
+    """
+    settings = request.app.state.settings
+    found = find_world_session(
+        settings.worlds_root, world_id, default_data_dir=settings.data_dir
+    )
+    session = None
+    if found is not None:
+        data_dir, session_id = found
+        session = session_state.read_session(data_dir, session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="world not found")
+
+    return {
+        "worldId": world_id,
+        "sessionId": session.session_id,
+        "worldName": session.world_name,
+        "persona": session.dm_persona_name,
+        "character": session.player_character_name,
+        "startedAt": session.started_at,
+        "turns": session.turns,
+    }

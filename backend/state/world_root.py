@@ -23,6 +23,7 @@ framework-agnostic; route handlers translate it (typically to "not found" /
 400), and the headless export script can catch it too.
 """
 
+import json
 import uuid
 from pathlib import Path
 
@@ -117,3 +118,47 @@ def find_session_data_dir(
     if (default_data_dir / _SESSIONS_REL / f"{session_id}.json").is_file():
         return default_data_dir
     return None
+
+
+def find_world_session(
+    worlds_root: str | None,
+    world_id: str,
+    *,
+    default_data_dir: Path,
+) -> tuple[Path, str] | None:
+    """Locate a world's current session for hydration (ADR 0002 Slice 4).
+
+    Returns ``(data_dir, session_id)`` for the world's most-recent session, or
+    ``None`` if the world has none (or ``world_id`` is malformed). The caller
+    then ``read_session(data_dir, session_id)``.
+
+    In per-world mode (``worlds_root`` set) the world's own tree holds only that
+    world's sessions, so every session file qualifies. In legacy/shared mode the
+    one tree holds many worlds' sessions, so we filter by the stored
+    ``world_id`` field. ``world_id`` is UUID-validated (via
+    ``resolve_world_data_dir``) before any path is built.
+    """
+    try:
+        data_dir = resolve_world_data_dir(
+            worlds_root, world_id, default_data_dir=default_data_dir
+        )
+    except ValueError:
+        return None
+    sessions_dir = data_dir / _SESSIONS_REL
+    if not sessions_dir.is_dir():
+        return None
+    candidates = []
+    for path in sessions_dir.glob("*.json"):
+        if not worlds_root:
+            # Shared tree → many worlds; keep only this world's sessions.
+            try:
+                raw = json.loads(path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                continue
+            if not isinstance(raw, dict) or raw.get("world_id") != world_id:
+                continue
+        candidates.append(path)
+    if not candidates:
+        return None
+    latest = max(candidates, key=lambda p: p.stat().st_mtime)
+    return data_dir, latest.stem

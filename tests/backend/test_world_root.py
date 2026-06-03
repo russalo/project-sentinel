@@ -16,6 +16,7 @@ import pytest
 
 from backend.state.world_root import (
     find_session_data_dir,
+    find_world_session,
     iter_session_data_dirs,
     resolve_world_data_dir,
 )
@@ -169,4 +170,47 @@ def test_find_session_data_dir_rejects_non_uuid(tmp_path):
     assert (
         find_session_data_dir(str(tmp_path), "../escape", default_data_dir=DEFAULT)
         is None
+    )
+
+
+# ── find_world_session (Slice 4 hydration resolver) ───────────────────
+
+
+def _seed(sessions_dir, sid, world_id=""):
+    import json as _json
+
+    sessions_dir.mkdir(parents=True, exist_ok=True)
+    (sessions_dir / f"{sid}.json").write_text(
+        _json.dumps({"session_id": sid, "world_id": world_id}), encoding="utf-8"
+    )
+
+
+def test_find_world_session_per_world_mode(tmp_path):
+    """Per-world mode: the world's own tree holds only its sessions → returned."""
+    worlds = tmp_path / "worlds"
+    sid = "11111111-2222-3333-4444-555555555555"
+    _seed(worlds / WORLD_UUID / "data" / "state" / "core" / "sessions", sid)
+    got = find_world_session(str(worlds), WORLD_UUID, default_data_dir=DEFAULT)
+    assert got == (worlds / WORLD_UUID / "data", sid)
+
+
+def test_find_world_session_none_when_world_empty(tmp_path):
+    worlds = tmp_path / "worlds"
+    (worlds / WORLD_UUID / "data").mkdir(parents=True)
+    assert find_world_session(str(worlds), WORLD_UUID, default_data_dir=DEFAULT) is None
+
+
+def test_find_world_session_legacy_filters_by_stored_world_id(tmp_path):
+    """Legacy/shared mode: filter the one sessions dir by stored world_id."""
+    shared = tmp_path / "data"
+    sdir = shared / "state" / "core" / "sessions"
+    _seed(sdir, "11111111-2222-3333-4444-555555555555", world_id=WORLD_UUID)
+    _seed(sdir, "99999999-2222-3333-4444-555555555555", world_id="other")
+    got = find_world_session(None, WORLD_UUID, default_data_dir=shared)
+    assert got == (shared, "11111111-2222-3333-4444-555555555555")
+
+
+def test_find_world_session_bad_world_id_returns_none(tmp_path):
+    assert (
+        find_world_session(str(tmp_path), "../escape", default_data_dir=DEFAULT) is None
     )
