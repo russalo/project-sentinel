@@ -146,8 +146,10 @@ async def init_world(body: dict):
         with repo.config_writer() as cw:
             cw.set_value("user", "name", "Sentinel")
             cw.set_value("user", "email", "sentinel@localhost")
-        repo.index.add(["data/.gitkeep"])
-        repo.index.commit(f"[sentinel] world={canonical[:8]} init")
+        # Subprocess form (cwd=repo.working_dir) — safe when worlds are
+        # provisioned concurrently; see commit_snapshot's note on the cwd race.
+        repo.git.add("data/.gitkeep")
+        repo.git.commit("-m", f"[sentinel] world={canonical[:8]} init")
 
         logger.info(f"init_world — provisioned world={canonical[:8]} at {repo_path!s}")
         return {"status": "initialized", "world_id": canonical}
@@ -177,9 +179,16 @@ async def commit_snapshot(body: dict):
 
     try:
         repo = get_repo(world_id)
-        repo.index.add(["data/"])
+        # Stage + commit via the subprocess git (repo.git.*), NOT the in-memory
+        # IndexFile (repo.index.*). GitPython's IndexFile resolves working-tree
+        # paths relative to the *process* cwd, so concurrent commits to
+        # different per-world repos race on cwd and fail ("No such file" on a
+        # sibling world's path). The subprocess form runs each `git` with
+        # cwd=repo.working_dir, so per-world commits are independent and
+        # thread-safe — the isolation property the tracer soak asserts.
+        repo.git.add("data/")
 
-        if not repo.index.diff("HEAD"):
+        if not repo.git.diff("--cached", "--name-only").strip():
             return {"status": "no_changes", "message": "No changes to commit."}
 
         # `datetime.now(timezone.utc).isoformat(timespec='seconds')`
@@ -205,7 +214,7 @@ async def commit_snapshot(body: dict):
             f"Timestamp: {datetime.now(timezone.utc).isoformat(timespec='seconds')}"
         )
 
-        repo.index.commit(commit_message)
+        repo.git.commit("-m", commit_message)
         commit_hash = repo.head.commit.hexsha[:8]
 
         logger.info(
@@ -283,8 +292,8 @@ async def rollback_to(body: dict):
     try:
         repo = get_repo(body.get("world_id"))
         repo.git.checkout(commit_hash, "--", "data/")
-        repo.index.add(["data/"])
-        repo.index.commit(f"[sentinel] rollback to {commit_hash}")
+        repo.git.add("data/")
+        repo.git.commit("-m", f"[sentinel] rollback to {commit_hash}")
         return {"status": "rolled_back", "to_commit": commit_hash}
     except Exception as e:
         raise HTTPException(
