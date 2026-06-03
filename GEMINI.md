@@ -84,5 +84,11 @@ Seeded from real bugs; attack these first (they are where Sentinel breaks):
 - **Provider/API param compat** (e.g. `max_completion_tokens` vs `max_tokens`).
 - **Determinism where it's asserted** — anything claiming "deterministic" that
   depends on dict/set iteration, time, randomness, or filesystem ordering.
+- **Stale-cache-after-redeploy** — a served `index.html` (or any HTML) that can
+  reference a hashed asset purged by a rebuild → blank page; check cache headers.
+- **Env/setup fragility** — bare `pip`/`uvicorn` assuming an activated venv,
+  PEP 668 system-pip breakage, paths assuming a fixed repo layout.
+- **Biased validation** — a claim resting on "the tests/corpus pass" when the
+  corpus omits the breaking input class; name the input it doesn't contain.
 
 Keep this list current: when a new class of bug is found, add it.

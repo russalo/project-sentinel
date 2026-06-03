@@ -158,17 +158,20 @@ in memory for the full playbook.
 Seeded from real bugs; update each release. The cross-model auditor's copy lives
 in `GEMINI.md`.
 
-- **Inter-world isolation** — state/context/RNG/transcript bleeding across worlds
-  (shared mutable globals, a fixed path not scoped by `world_id`, a cache keyed
-  without the world). *Prove it deterministically with a tracer soak — stub the
-  DM with a per-world token and assert no cross-world leak; never against a live
-  LLM.*
+- **Inter-world / cross-boundary state bleed** — state/context/RNG/transcript
+  leaking across worlds or sessions (shared mutable globals, a fixed path not
+  scoped by `world_id`, a cache keyed without the world). This is the
+  cross-session contamination that motivated ADR 0002, generalized to the
+  multi-tenancy boundary. *Prove it deterministically with a tracer soak — stub
+  the DM with a per-world token and assert no cross-world leak; never against a
+  live LLM.*
 - **Sibling-path incompleteness** — a fix on path A while siblings B/C keep the
   bug (e.g. the `list_sessions`→`get_session` canonical-id miss).
 - **Doc/code drift after reworks** — comments/docs/ADRs describing a superseded
   design (engine "scaffolding," Tailwind v4, Express/Django in CONTRIBUTING).
-- **Shared-state bleed across boundaries** — the cross-session contamination that
-  motivated ADR 0002.
+- **Schema-gate bypass** — a write path reaching fs-manager without
+  `apply_world_update.schema.json` validation, or treating a rejection as fatal
+  instead of feeding it back to the DM.
 - **git-sync committing to the checked-out branch** — the `master`-pollution
   hazard during play/recording.
 - **Malformed-LLM-output intolerance** — non-`dict` `world_update`, non-`list`
@@ -178,6 +181,8 @@ in `GEMINI.md`.
   backend AND the MCP servers.
 - **No cross-process locking** — in-process locks don't serialize backend /
   fs-manager / git-sync.
+- **Determinism where it's asserted** — anything claimed deterministic that
+  depends on dict/set iteration, time, randomness, or filesystem ordering.
 - **Stale-cache-after-redeploy** — a cached `index.html` pointing at a purged
   hashed bundle → blank page.
 - **Provider/API param compat** (`max_completion_tokens` vs `max_tokens`);
