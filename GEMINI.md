@@ -66,6 +66,8 @@ Seeded from real bugs; attack these first (they are where Sentinel breaks):
   state, context, RNG, or transcript can leak into world B — shared mutable
   module/global state, a fixed path not scoped by `world_id`, a cache keyed
   without the world. This is the highest-value target during the isolation work.
+  A CI-gated tracer soak (`tests/test_world_isolation_tracer_soak.py`) proves
+  cross-world isolation deterministically — extend it for new boundaries.
 - **Sibling-path incompleteness.** A fix applied to one path while siblings keep
   the bug ("hardened A; B and C still wrong"). Grep for the sibling call sites.
 - **Path traversal via id interpolation.** `session_id` / `world_id` used to
@@ -75,6 +77,10 @@ Seeded from real bugs; attack these first (they are where Sentinel breaks):
 - **Concurrency / locking.** Unguarded concurrent writes; an in-process
   (`asyncio`/`threading`) lock where cross-process is required (backend,
   fs-manager, git-sync are separate processes — only a file lock serializes them).
+  Seeded: GitPython's in-memory index (`repo.index.add`/`commit`) resolves
+  working-tree paths against the **process cwd**, so concurrent commits to
+  different per-world repos race — use the subprocess form (`repo.git.add`/
+  `commit`). Same-**world** concurrent-commit serialization is still unguarded.
 - **Malformed-LLM-output intolerance.** Code that assumes the DM's `world_update`
   hint is well-formed — non-`dict` blocks, non-`list` collections, missing fields.
 - **Schema-gate bypass.** A write path that reaches fs-manager without the schema

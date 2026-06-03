@@ -167,7 +167,8 @@ in `GEMINI.md`.
   cross-session contamination that motivated ADR 0002, generalized to the
   multi-tenancy boundary. *Prove it deterministically with a tracer soak — stub
   the DM with a per-world token and assert no cross-world leak; never against a
-  live LLM.*
+  live LLM. The harness now exists at `tests/test_world_isolation_tracer_soak.py`
+  (CI-gated) — extend it for new boundaries rather than rebuilding.*
 - **Sibling-path incompleteness** — a fix on path A while siblings B/C keep the
   bug (e.g. the `list_sessions`→`get_session` canonical-id miss).
 - **Doc/code drift after reworks** — comments/docs/ADRs describing a superseded
@@ -176,14 +177,20 @@ in `GEMINI.md`.
   `apply_world_update.schema.json` validation, or treating a rejection as fatal
   instead of feeding it back to the DM.
 - **git-sync committing to the checked-out branch** — the `master`-pollution
-  hazard during play/recording.
+  hazard during play/recording (only while `SENTINEL_WORLDS_ROOT` is unset; once
+  set, per-turn commits go to each world's own repo outside the code repo).
 - **Malformed-LLM-output intolerance** — non-`dict` `world_update`, non-`list`
   collections.
 - **Path traversal via id interpolation** — `session_id`/`world_id` as path
   components; UUID-validate (`_require_uuid`) before building any path, in the
   backend AND the MCP servers.
 - **No cross-process locking** — in-process locks don't serialize backend /
-  fs-manager / git-sync.
+  fs-manager / git-sync. *Also seeded: GitPython's in-memory index
+  (`repo.index.add`/`commit`) resolves working-tree paths against the **process
+  cwd**, so concurrent commits to different per-world repos race — use the
+  subprocess form (`repo.git.add`/`commit`), which sets `cwd=repo.working_dir`.
+  Same-**world** concurrent-commit serialization is still unguarded (tracked in
+  `docs/BACKLOG.md`).*
 - **Determinism where it's asserted** — anything claimed deterministic that
   depends on dict/set iteration, time, randomness, or filesystem ordering.
 - **Stale-cache-after-redeploy** — a cached `index.html` pointing at a purged
@@ -332,7 +339,7 @@ The two nodes communicate over a Tailscale mesh in production; locally they run 
 - `data/{lore,state}/community/<pack>/` — community packs, additive only
 - Protected fields (`unique_id`, `world_seed`, `namespace`, `created_at`, `canon`, `core_faction_id`) are immutable to community payloads — enforced via `x-sentinel-protected: true` in the JSON schemas.
 
-**Backend** — `backend/` is a FastAPI app on `:8001`. It serves `GET /healthz`, `POST /api/session/new`, and `POST /api/stream` (SSE). It reads state from `data/state/*.json` directly, calls `engine/` for turn handling, and dispatches writes through `engine.apply_world_update` → fs-manager → git-sync. No ORM, no database queries. Per **[ADR 0002](docs/adr/0002-world-identity-and-isolation.md)**, every session is minted a `world_id` (UUID) that is threaded through both dispatch calls; when `SENTINEL_WORLDS_ROOT` is set, the MCP servers route to a per-world `data/` tree / git repo under it. The env var is **unset by default** (per-world routing dormant; single shared tree) until the ADR 0002 Slice 3 cutover.
+**Backend** — `backend/` is a FastAPI app on `:8001`. It serves `GET /healthz`, `POST /api/session/new`, and `POST /api/stream` (SSE). It reads mutable world state from the active world's `data/state/*.json` (the shared root when `SENTINEL_WORLDS_ROOT` is unset), while read-only shared assets (`schemas/`, presets, core-lore codex) always load from the repo root; it calls `engine/` for turn handling and dispatches writes through `engine.apply_world_update` → fs-manager → git-sync. No ORM, no database queries. Per **[ADR 0002](docs/adr/0002-world-identity-and-isolation.md)**, Slices 1–3 have landed: every session is minted a `world_id` (UUID) threaded through both dispatch calls, the backend resolves a turn's world from its `session_id`, and worlds are provisioned at creation (git-sync `init_world`); when `SENTINEL_WORLDS_ROOT` is set, the MCP servers **and** backend route to a per-world `data/` tree / git repo under it. The env var is **unset by default** (per-world routing dormant; single shared tree) — the cutover is now an operational env flip (see `docs/WORKSPACE.md` § "Per-world isolation cutover"), gated on the tracer-soak in `tests/test_world_isolation_tracer_soak.py`.
 
 **Frontend** — `apps/sentinel-ui/` (`@sentinel/ui`), React 19 + Vite + Tailwind v3. Talks to the FastAPI backend via fetch + SSE. React is the ratified 1.0 frontend stack as of 2026-04-15 (see `docs/VISION.md` § "Resolved decisions"); normal feature-work rules apply.
 
