@@ -133,23 +133,24 @@ narrative). The capability is built and dormant (env unset); the production
 cutover is a one-line env flip (`docs/WORKSPACE.md` § "Per-world isolation
 cutover").
 
+Landed since (Path A toward public readiness, 2026-06-03): the "my worlds"
+picker + hard-delete teardown (Slice 5); **per-world cross-process write
+locking** (ADR 0002 — a `filelock` shared by fs-manager + git-sync); and the
+**ADR 0003 access layer (Slices A+B)** — per-world HMAC session tokens, rate
+limits, and a global LLM-call ceiling, all opt-in/dormant by default.
+
 The remaining prerequisites before inviting public test users:
 
-- **Slice 5 — remaining world lifecycle:** a provisioning entry point,
-  archival / teardown (a world-scoped teardown beyond `just reset-world
-  --world-id`), and a "recent / my worlds" picker + resume/new-session UX so a
-  player can find an existing world from the UI (not just a saved URL). Residual
+- **Slice 5 — provisioning entry point** (the last lifecycle chunk). Residual
   resume-fidelity follow-ups: persona available-mood *list* + `day` persistence
   (both need the genesis/`world_seed` item), and `active`-vs-mtime session
   selection.
-- **Cross-process write locking** (ADR 0002): concurrent turns in one world can
-  still interleave/corrupt state — a per-world file lock must land before
-  multi-user exposure (the tracer soak proves cross-*world* isolation, not
-  same-world serialization). Tracked in [`BACKLOG.md`](./BACKLOG.md).
-- **[ADR 0003](./adr/0003-access-gating-and-public-exposure.md) implementation
-  (auth + public exposure):** the invite gate, per-world session token,
-  rate-limiting, the MCP network-isolation invariant, and systemd units — all
-  unbuilt; a hard gate before exposing the mockup URLs.
+- **[ADR 0003](./adr/0003-access-gating-and-public-exposure.md) Slice C (edge /
+  ops):** the Caddy invite gate, the MCP network-isolation invariant (assert
+  fs-manager/git-sync never bind `0.0.0.0`; Caddy never proxies `:8010`/`:8012`),
+  and systemd units — a hard gate before exposing the mockup URLs. Then the
+  operational cutover (set `SENTINEL_WORLDS_ROOT` + the token secret + tune the
+  rate limits, behind the tracer-soak).
 
 - Backlog: [`ADR 0002 implementation — remaining slices`](./BACKLOG.md),
   [`Auth strategy — implement ADR 0003`](./BACKLOG.md)

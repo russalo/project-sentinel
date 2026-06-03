@@ -184,13 +184,22 @@ in `GEMINI.md`.
 - **Path traversal via id interpolation** — `session_id`/`world_id` as path
   components; UUID-validate (`_require_uuid`) before building any path, in the
   backend AND the MCP servers.
-- **No cross-process locking** — in-process locks don't serialize backend /
-  fs-manager / git-sync. *Also seeded: GitPython's in-memory index
-  (`repo.index.add`/`commit`) resolves working-tree paths against the **process
-  cwd**, so concurrent commits to different per-world repos race — use the
-  subprocess form (`repo.git.add`/`commit`), which sets `cwd=repo.working_dir`.
-  Same-**world** concurrent-commit serialization is still unguarded (tracked in
-  `docs/BACKLOG.md`).*
+- **Cross-process locking** — in-process locks don't serialize backend /
+  fs-manager / git-sync. *Per-world cross-process locking landed (Path A/A1): a
+  portable `filelock` shared by fs-manager + git-sync (both derive the same
+  `<WORLDS_ROOT>/.locks/<world_id>.lock`, outside the world tree so teardown's
+  rmtree can't delete a held lock; shared mode → one global lock). New write
+  paths must take it (`_acquire_world_lock`) — don't add an unguarded write.
+  Also seeded: GitPython's in-memory index (`repo.index.add`/`commit`) resolves
+  working-tree paths against the **process cwd**, so concurrent commits race —
+  use the subprocess form (`repo.git.add`/`commit`, `cwd=repo.working_dir`).
+  Residual (deferred): the lock is per-operation, not held by the backend
+  across the apply→commit span — rare under one-player-per-world.*
+- **Per-world isolation fallback** — when `SENTINEL_WORLDS_ROOT` is set, a write
+  path with a **missing** `world_id` must NOT silently fall back to the shared
+  `REPO_ROOT` (inter-world leak / master-pollution). Require it (422) and
+  canonicalize (`str(uuid.UUID(...))`) at the route boundary; shared mode keeps
+  world_id advisory. *(`_require_world_id_when_isolated` in both MCP servers.)*
 - **Determinism where it's asserted** — anything claimed deterministic that
   depends on dict/set iteration, time, randomness, or filesystem ordering.
 - **Stale-cache-after-redeploy** — a cached `index.html` pointing at a purged
@@ -339,7 +348,7 @@ The two nodes communicate over a Tailscale mesh in production; locally they run 
 - `data/{lore,state}/community/<pack>/` — community packs, additive only
 - Protected fields (`unique_id`, `world_seed`, `namespace`, `created_at`, `canon`, `core_faction_id`) are immutable to community payloads — enforced via `x-sentinel-protected: true` in the JSON schemas.
 
-**Backend** — `backend/` is a FastAPI app on `:8001`. It serves `GET /healthz`, `POST /api/session/new`, `POST /api/stream` (SSE), `GET /api/world/{world_id}` (resume hydration — the world's session + world state), and `GET /api/sessions*` (the `/data` training browser). It reads mutable world state from the active world's `data/state/*.json` (the shared root when `SENTINEL_WORLDS_ROOT` is unset), while read-only shared assets (`schemas/`, presets, core-lore codex) always load from the repo root; it calls `engine/` for turn handling and dispatches writes through `engine.apply_world_update` → fs-manager → git-sync. No ORM, no database queries. Per **[ADR 0002](docs/adr/0002-world-identity-and-isolation.md)**, Slices 1–5 have landed (through resume completeness): every session is minted a `world_id` (UUID) threaded through both dispatch calls, the backend resolves a turn's world from its `session_id`, and worlds are provisioned at creation (git-sync `init_world`); when `SENTINEL_WORLDS_ROOT` is set, the MCP servers **and** backend route to a per-world `data/` tree / git repo under it. The env var is **unset by default** (per-world routing dormant; single shared tree) — the cutover is now an operational env flip (see `docs/WORKSPACE.md` § "Per-world isolation cutover"), gated on the tracer-soak in `tests/test_world_isolation_tracer_soak.py`.
+**Backend** — `backend/` is a FastAPI app on `:8001`. It serves `GET /healthz`, `POST /api/session/new`, `POST /api/stream` (SSE), `GET /api/world/{world_id}` (resume hydration — the world's session + world state), and `GET /api/sessions*` (the `/data` training browser). It reads mutable world state from the active world's `data/state/*.json` (the shared root when `SENTINEL_WORLDS_ROOT` is unset), while read-only shared assets (`schemas/`, presets, core-lore codex) always load from the repo root; it calls `engine/` for turn handling and dispatches writes through `engine.apply_world_update` → fs-manager → git-sync. No ORM, no database queries. Per **[ADR 0002](docs/adr/0002-world-identity-and-isolation.md)**, Slices 1–5 have landed (resume completeness, the "my worlds" picker, and hard-delete teardown; the Slice 5 provisioning entry point remains): every session is minted a `world_id` (UUID) threaded through both dispatch calls, the backend resolves a turn's world from its `session_id`, and worlds are provisioned at creation (git-sync `init_world`); when `SENTINEL_WORLDS_ROOT` is set, the MCP servers **and** backend route to a per-world `data/` tree / git repo under it. The env var is **unset by default** (per-world routing dormant; single shared tree) — the cutover is now an operational env flip (see `docs/WORKSPACE.md` § "Per-world isolation cutover"), gated on the tracer-soak in `tests/test_world_isolation_tracer_soak.py`. Per-world cross-process write locking (`filelock`, shared by fs-manager + git-sync) landed (Path A/A1). Per **[ADR 0003](docs/adr/0003-access-gating-and-public-exposure.md)** the access layer (Slices A+B) is in: per-world HMAC session tokens enforced on world-scoped routes, per-IP/per-world rate limits, and a global daily LLM-call ceiling — **all opt-in and dormant by default** (armed by `SENTINEL_SESSION_TOKEN_SECRET` / `SENTINEL_RL_*` / `SENTINEL_LLM_DAILY_CEILING`). The edge invite gate, the MCP network-isolation invariant, and systemd units (ADR 0003 Slice C) are the remaining public-exposure prerequisites.
 
 **Frontend** — `apps/sentinel-ui/` (`@sentinel/ui`), React 19 + Vite + Tailwind v3. Talks to the FastAPI backend via fetch + SSE. The game plays at a world's own URL — `/w/<world_id>` (wouter route) — so it's shareable and survives a refresh; on a fresh load the `useWorldHydration` hook rebuilds the scroll + world-state panels + persona from `GET /api/world/{world_id}`. `/` redirects to `/create`. React is the ratified 1.0 frontend stack as of 2026-04-15 (see `docs/VISION.md` § "Resolved decisions"); normal feature-work rules apply.
 
