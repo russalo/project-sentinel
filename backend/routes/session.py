@@ -128,7 +128,7 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
     #    as a system-like note if necessary. For now we just skip
     #    silently — observability is a later concern.
     if extracted.payload is not None:
-        engine.apply_world_update(config, extracted.payload)
+        engine.apply_world_update(config, extracted.payload, world_id=world_id)
 
     # 4. Build the session record with the opening turn.
     turn_zero = {

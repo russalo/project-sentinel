@@ -325,7 +325,7 @@ def test_stream_emits_error_when_session_write_fails(
     # The first dispatch (Fact-Extractor payload) still succeeds.
     calls = {"count": 0}
 
-    def failing_dispatch(config, payload, *, client=None, timeout=30.0):
+    def failing_dispatch(config, payload, *, world_id=None, client=None, timeout=30.0):
         calls["count"] += 1
         if calls["count"] == 1:
             return engine.DispatchResult(

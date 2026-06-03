@@ -186,7 +186,7 @@ def test_new_session_returns_502_when_session_write_fails(
     # still succeeds so we isolate the session-write failure path.
     calls = {"count": 0}
 
-    def failing_dispatch(config, payload, *, client=None, timeout=30.0):
+    def failing_dispatch(config, payload, *, world_id=None, client=None, timeout=30.0):
         calls["count"] += 1
         if calls["count"] == 1:
             return engine.DispatchResult(

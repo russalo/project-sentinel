@@ -14,6 +14,8 @@ Dependencies:
 
 import argparse
 import logging
+import os
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -28,6 +30,12 @@ logger = logging.getLogger("git-sync")
 
 REPO_ROOT = Path(__file__).parent.parent.parent
 
+# Per-world isolation (ADR 0002). When SENTINEL_WORLDS_ROOT is set, a commit
+# carrying a world_id targets that world's own repo at
+# <SENTINEL_WORLDS_ROOT>/<world_id>/ instead of the legacy shared REPO_ROOT.
+# Unset by default → today's behavior. Read at call time (tests monkeypatch).
+WORLDS_ROOT = os.environ.get("SENTINEL_WORLDS_ROOT")
+
 app = FastAPI(
     title="Sentinel git-sync MCP Server",
     description="Automated version control for Project Sentinel world state.",
@@ -35,8 +43,41 @@ app = FastAPI(
 )
 
 
-def get_repo() -> git.Repo:
-    return git.Repo(REPO_ROOT)
+def get_repo(world_id: str | None = None) -> git.Repo:
+    """Open the git repo for a request (ADR 0002).
+
+    With ``SENTINEL_WORLDS_ROOT`` set and a ``world_id`` given, opens that
+    world's own repo at ``<WORLDS_ROOT>/<world_id>/``; otherwise the legacy
+    shared ``REPO_ROOT``. ``world_id`` is a path component → UUID-validated
+    (422) and the resolved path is asserted under WORLDS_ROOT.
+    """
+    if not WORLDS_ROOT or not world_id:
+        return git.Repo(REPO_ROOT)
+    try:
+        # Canonicalize before it becomes a path component — uuid.UUID() accepts
+        # multiple spellings of the same value (no hyphens, braces, mixed case),
+        # which would otherwise route to distinct repos: fragmentation, one
+        # logical world split across duplicate trees. Mirrors fs-manager.
+        canonical_world_id = str(uuid.UUID(world_id))
+    except (ValueError, AttributeError, TypeError):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "INVALID_WORLD_ID",
+                "detail": f"world_id is not a valid UUID: {world_id!r}",
+            },
+        )
+    base = Path(WORLDS_ROOT).resolve()
+    repo_path = (base / canonical_world_id).resolve()
+    if repo_path.parent != base:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "PATH_VIOLATION",
+                "detail": f"Resolved world repo {repo_path!s} escapes SENTINEL_WORLDS_ROOT.",
+            },
+        )
+    return git.Repo(repo_path)
 
 
 @app.get("/health")
@@ -62,7 +103,7 @@ async def commit_snapshot(body: dict):
         )
 
     try:
-        repo = get_repo()
+        repo = get_repo(world_id)
         repo.index.add(["data/"])
 
         if not repo.index.diff("HEAD"):
@@ -79,7 +120,10 @@ async def commit_snapshot(body: dict):
         # world=<id[:8]> precedes session=... when a world_id is supplied, per
         # ADR 0002's commit-message format. Omitted (not blank) when absent, so
         # legacy single-world commits keep their existing shape.
-        world_tag = f"world={world_id[:8]} " if world_id else ""
+        # str() coerce before slicing: in the WORLDS_ROOT-unset path get_repo
+        # skips UUID validation, so a malformed non-string world_id from a
+        # direct client would otherwise raise TypeError on [:8] here.
+        world_tag = f"world={str(world_id)[:8]} " if world_id else ""
         full_world_line = f"Full world_id: {world_id}\n" if world_id else ""
         commit_message = (
             f"[sentinel] {world_tag}session={session_id[:8]} turn={turn_number} — {summary}\n\n"
@@ -103,11 +147,15 @@ async def commit_snapshot(body: dict):
         }
 
     except git.InvalidGitRepositoryError:
+        # Name the path that actually failed — with per-world routing the
+        # missing repo is usually <WORLDS_ROOT>/<world_id>, not REPO_ROOT, and
+        # a misattributed message sends operators looking in the wrong place.
+        missing = f"world {world_id}" if world_id else "REPO_ROOT"
         raise HTTPException(
             status_code=500,
             detail={
                 "code": "GIT_ERROR",
-                "detail": "Repository not found at REPO_ROOT.",
+                "detail": f"Repository not found at {missing}.",
             },
         )
     except Exception as e:
@@ -118,10 +166,12 @@ async def commit_snapshot(body: dict):
 
 
 @app.get("/tools/list_snapshots")
-async def list_snapshots(session_id: str | None = None, limit: int = 20):
+async def list_snapshots(
+    session_id: str | None = None, limit: int = 20, world_id: str | None = None
+):
     """List recent world state snapshots, optionally filtered by session."""
     try:
-        repo = get_repo()
+        repo = get_repo(world_id)
         commits = list(repo.iter_commits("HEAD", max_count=limit))
 
         results = []
@@ -158,7 +208,7 @@ async def rollback_to(body: dict):
         )
 
     try:
-        repo = get_repo()
+        repo = get_repo(body.get("world_id"))
         repo.git.checkout(commit_hash, "--", "data/")
         repo.index.add(["data/"])
         repo.index.commit(f"[sentinel] rollback to {commit_hash}")

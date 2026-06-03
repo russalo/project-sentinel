@@ -173,4 +173,6 @@ def write_session(
     payload = _build_session_payload(
         session, log_entry=log_entry, turn_number=turn_number
     )
-    return engine.apply_world_update(config, payload)
+    # Route the session-file write to the session's own world tree (ADR 0002);
+    # None → legacy shared root when the session predates world_id.
+    return engine.apply_world_update(config, payload, world_id=session.world_id or None)

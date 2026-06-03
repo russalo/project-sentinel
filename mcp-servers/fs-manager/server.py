@@ -15,7 +15,9 @@ Dependencies:
 import argparse
 import json
 import logging
+import os
 import re
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +34,14 @@ REPO_ROOT = Path(__file__).parent.parent.parent
 DATA_DIR = REPO_ROOT / "data"
 SCHEMA_DIR = REPO_ROOT / "schemas"
 SCHEMA_PATH = SCHEMA_DIR / "apply_world_update.schema.json"
+
+# Per-world isolation (ADR 0002). When SENTINEL_WORLDS_ROOT is set, a request
+# carrying a world_id writes to that world's own tree at
+# <SENTINEL_WORLDS_ROOT>/<world_id>/ instead of the legacy shared REPO_ROOT.
+# Unset by default → today's single-shared-tree behavior (Slice-2 is additive;
+# the cutover that sets this lives in a later slice). Read at call time so
+# tests can monkeypatch it.
+WORLDS_ROOT = os.environ.get("SENTINEL_WORLDS_ROOT")
 
 # Protected fields that can never be modified by any payload.
 # Enforced on BOTH create and update operations — see check_protected_fields
@@ -134,10 +144,11 @@ def validate_payload(payload: dict) -> None:
         )
 
 
-def _resolve_session_log_path(session_id: str) -> Path:
+def _resolve_session_log_path(session_id: str, root: Path | None = None) -> Path:
     """Resolve the session log path and confirm it stays inside sessions/.
 
-    Builds ``data/lore/core/sessions/<session_id>.md`` under ``REPO_ROOT``,
+    Builds ``data/lore/core/sessions/<session_id>.md`` under ``root`` (the
+    world's data root; defaults to the legacy shared ``REPO_ROOT``),
     resolves it (which canonicalizes any ``..`` segments), and asserts the
     parent directory is exactly the sessions directory. Any traversal
     attempt — even one that somehow bypassed the schema's format check —
@@ -152,9 +163,10 @@ def _resolve_session_log_path(session_id: str) -> Path:
     tests that monkeypatch ``REPO_ROOT`` to a tmp tree pick up the new
     location automatically.
     """
-    sessions_dir = (REPO_ROOT / "data" / "lore" / "core" / "sessions").resolve()
+    base = root if root is not None else REPO_ROOT
+    sessions_dir = (base / "data" / "lore" / "core" / "sessions").resolve()
     candidate = (
-        REPO_ROOT / "data" / "lore" / "core" / "sessions" / f"{session_id}.md"
+        base / "data" / "lore" / "core" / "sessions" / f"{session_id}.md"
     ).resolve()
     if candidate.parent != sessions_dir:
         raise HTTPException(
@@ -230,15 +242,62 @@ def validate_namespace(payload_namespace: str, target_file: str) -> None:
 # -------------------------------------------------------------------
 
 
-def execute_update(target_file: str, operation: str, data: Any) -> dict:
+def _resolve_world_root(world_id: str | None) -> Path:
+    """Resolve the data root for a request (ADR 0002).
+
+    When ``SENTINEL_WORLDS_ROOT`` is set AND a ``world_id`` is supplied, the
+    root is ``<WORLDS_ROOT>/<world_id>/`` — that world's own tree. Otherwise the
+    legacy shared ``REPO_ROOT`` (today's behavior; also the path when no
+    world_id is given). ``REPO_ROOT``/``WORLDS_ROOT`` are read at call time so
+    tests can monkeypatch them.
+
+    ``world_id`` becomes a filesystem path component, so it is a hard security
+    boundary: UUID-validated (422 on anything else — blocks ``..``/``/``), and
+    the resolved root is asserted to stay directly under WORLDS_ROOT.
+    """
+    if not WORLDS_ROOT or not world_id:
+        return REPO_ROOT
+    try:
+        # Canonicalize to the standard hyphenated lowercase form before it
+        # becomes a path component. uuid.UUID() accepts several spellings of
+        # the same value (no hyphens, braces, urn: prefix, mixed case), and
+        # using the raw string would route those to *different* directories —
+        # state fragmentation: two trees for one logical world.
+        canonical_world_id = str(uuid.UUID(world_id))
+    except (ValueError, AttributeError, TypeError):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "INVALID_WORLD_ID",
+                "detail": f"world_id is not a valid UUID: {world_id!r}",
+            },
+        )
+    base = Path(WORLDS_ROOT).resolve()
+    root = (base / canonical_world_id).resolve()
+    if root.parent != base:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "PATH_VIOLATION",
+                "detail": f"Resolved world root {root!s} escapes SENTINEL_WORLDS_ROOT.",
+            },
+        )
+    return root
+
+
+def execute_update(
+    target_file: str, operation: str, data: Any, root: Path | None = None
+) -> dict:
     """Execute a single file operation after all validation passes.
 
-    Protected-field enforcement runs unconditionally on both `create`
-    and `update` operations (the previous per-update `protected_check`
-    opt-out has been removed — protection is mandatory). `append` only
-    takes string data, so there's no dict to check.
+    ``root`` is the world's data root (defaults to ``REPO_ROOT`` — the legacy
+    shared tree — when not supplied). Protected-field enforcement runs
+    unconditionally on both `create` and `update` operations (the previous
+    per-update `protected_check` opt-out has been removed — protection is
+    mandatory). `append` only takes string data, so there's no dict to check.
     """
-    abs_path = REPO_ROOT / target_file
+    base = root if root is not None else REPO_ROOT
+    abs_path = base / target_file
     abs_path.parent.mkdir(parents=True, exist_ok=True)
 
     if operation == "create":
@@ -254,19 +313,24 @@ def execute_update(target_file: str, operation: str, data: Any) -> dict:
         content = (
             json.dumps(data, indent=2) if isinstance(data, (dict, list)) else str(data)
         )
-        abs_path.write_text(content)
+        # Pin utf-8 on every read/write: payloads carry LLM-generated text
+        # (emoji, smart quotes, non-ASCII names), and the project targets
+        # Windows too, where the default encoding is cp1252 — an unpinned
+        # write_text/open would raise UnicodeEncodeError or corrupt content.
+        abs_path.write_text(content, encoding="utf-8")
         return {"status": "created", "path": target_file}
 
     elif operation == "update":
         check_protected_fields(data, target_file)
 
         if abs_path.exists() and target_file.endswith(".json"):
-            existing = json.loads(abs_path.read_text())
+            existing = json.loads(abs_path.read_text(encoding="utf-8"))
             if isinstance(existing, dict) and isinstance(data, dict):
                 existing.update(data)
                 data = existing
         abs_path.write_text(
-            json.dumps(data, indent=2) if isinstance(data, (dict, list)) else str(data)
+            json.dumps(data, indent=2) if isinstance(data, (dict, list)) else str(data),
+            encoding="utf-8",
         )
         return {"status": "updated", "path": target_file}
 
@@ -279,7 +343,7 @@ def execute_update(target_file: str, operation: str, data: Any) -> dict:
                     "detail": "append operation requires string data.",
                 },
             )
-        with open(abs_path, "a") as f:
+        with open(abs_path, "a", encoding="utf-8") as f:
             f.write("\n" + data)
         return {"status": "appended", "path": target_file}
 
@@ -318,6 +382,13 @@ async def apply_world_update(request: Request):
 
     validate_payload(payload)
 
+    # Per-world routing (ADR 0002): world_id is passed as a query param — it's
+    # routing metadata (which world to write to), not update content, so it
+    # stays out of the schema-validated body. _resolve_world_root UUID-validates
+    # it and resolves the world's tree; defaults to REPO_ROOT when WORLDS_ROOT
+    # is unset or no world_id is given (today's single-shared-tree behavior).
+    world_root = _resolve_world_root(request.query_params.get("world_id"))
+
     # Payload-level namespace authorization. Default to "community" when
     # the field is absent — community is the least-privileged posture,
     # so unauthenticated or legacy payloads get the sandboxed behavior.
@@ -331,7 +402,7 @@ async def apply_world_update(request: Request):
 
         validate_path(target_file)
         validate_namespace(payload_namespace, target_file)
-        result = execute_update(target_file, operation, data)
+        result = execute_update(target_file, operation, data, root=world_root)
         results.append(result)
 
     # Append narrative to session log. The session_id has already been
@@ -339,9 +410,9 @@ async def apply_world_update(request: Request):
     # canonicalizes the path and re-verifies the parent is sessions/ —
     # a belt-and-suspenders pair so a malformed session_id can't escape
     # the sessions directory even if the schema-level check regresses.
-    abs_log = _resolve_session_log_path(payload["session_id"])
+    abs_log = _resolve_session_log_path(payload["session_id"], root=world_root)
     abs_log.parent.mkdir(parents=True, exist_ok=True)
-    with open(abs_log, "a") as f:
+    with open(abs_log, "a", encoding="utf-8") as f:
         f.write(f"\n\n---\n\n{payload['log_entry']}")
 
     logger.info(f"apply_world_update — success, {len(results)} operations executed.")
@@ -363,7 +434,7 @@ async def read_state(path: str):
             detail={"code": "NOT_FOUND", "detail": f"{path} does not exist."},
         )
 
-    content = abs_path.read_text()
+    content = abs_path.read_text(encoding="utf-8")
     if path.endswith(".json"):
         return {"path": path, "data": json.loads(content)}
     return {"path": path, "data": content}

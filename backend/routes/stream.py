@@ -144,7 +144,9 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
             turn_number=next_turn_number,
         )
         if extracted.payload is not None:
-            dispatch = engine.apply_world_update(config, extracted.payload)
+            dispatch = engine.apply_world_update(
+                config, extracted.payload, world_id=session.world_id or None
+            )
             if not dispatch.ok:
                 yield _sse_event(
                     {

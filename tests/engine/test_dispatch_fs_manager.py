@@ -212,5 +212,69 @@ def test_accepts_list_body_gracefully():
     assert result.body == {"raw": ["unexpected", "list"]}
 
 
+def test_world_id_omitted_from_query_when_none():
+    """No world_id → the request URL carries no query string at all, so a
+    legacy single-world fs-manager keeps writing the shared tree (ADR 0002
+    backward-compatibility). Falsify-first: this fails if the dispatcher ever
+    sends ``?world_id=`` or ``?world_id=None``."""
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["query"] = request.url.query.decode()
+        return httpx.Response(200, json={"success": True})
+
+    config = _config()
+    apply_world_update(config, {}, client=_client_returning(handler))
+
+    assert captured["query"] == ""
+    assert "world_id" not in captured["url"]
+
+
+def test_empty_world_id_omitted_from_query():
+    """Empty string must be treated like None (omitted), matching fs-manager's
+    `not world_id` legacy-root fallback. Otherwise the dispatcher would emit a
+    bare `?world_id=` that the server silently re-routes to the shared tree."""
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["query"] = request.url.query.decode()
+        return httpx.Response(200, json={"success": True})
+
+    config = _config()
+    apply_world_update(config, {}, world_id="", client=_client_returning(handler))
+
+    assert captured["query"] == ""
+
+
+def test_world_id_appended_as_query_param_when_supplied():
+    """ADR 0002: a supplied world_id rides as a ``?world_id=`` query param —
+    routing metadata, not schema body. The body must stay untouched."""
+    import json
+
+    captured = {}
+    world_id = "9b3c1d2e-4f5a-4b6c-8d7e-0a1b2c3d4e5f"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["world_id_param"] = request.url.params.get("world_id")
+        captured["body"] = request.content.decode()
+        return httpx.Response(200, json={"success": True})
+
+    config = _config()
+    apply_world_update(
+        config,
+        {"session_id": "abc", "updates": []},
+        world_id=world_id,
+        client=_client_returning(handler),
+    )
+
+    assert captured["world_id_param"] == world_id
+    assert f"world_id={world_id}" in captured["url"]
+    # world_id is routing metadata — it must NOT leak into the schema-validated
+    # body, or fs-manager's additionalProperties:false gate would reject it.
+    assert "world_id" not in json.loads(captured["body"])
+
+
 if __name__ == "__main__":  # pragma: no cover
     pytest.main([__file__, "-v"])
