@@ -94,7 +94,7 @@ export default function DataBrowser() {
               <li key={s.sessionId}>
                 <button
                   onClick={() => openSession(s.sessionId)}
-                  className={`w-full text-left px-2 py-2 rounded text-sm transition-colors ${
+                  className={`w-full text-left px-2 py-2 rounded text-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber ${
                     selected?.sessionId === s.sessionId
                       ? 'bg-amber text-void'
                       : 'hover:bg-border'
@@ -113,9 +113,9 @@ export default function DataBrowser() {
 
         <section className="bg-codex border border-border rounded p-4 min-h-[60vh]">
           {!selected && !loadingDetail && (
-            <p className="text-sm text-dust">
-              Select a session to view its captured turns and export training data.
-            </p>
+            <div className="text-center py-16 text-dust">
+              <p>Select a session to view its captured turns and export training data.</p>
+            </div>
           )}
           {loadingDetail && <p className="text-sm text-dust">Loading session…</p>}
           {selected && (

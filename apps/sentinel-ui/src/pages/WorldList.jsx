@@ -64,7 +64,7 @@ export default function WorldList() {
     <div className="min-h-screen bg-void text-ink p-6">
       <div className="max-w-3xl mx-auto">
         <header className="flex items-center justify-between mb-6">
-          <h1 className="text-xl font-semibold flex items-center gap-2">
+          <h1 className="font-cinzel text-2xl text-amber flex items-center gap-2">
             <Globe size={20} className="text-amber" /> Your Worlds
           </h1>
           <div className="flex items-center gap-3">
@@ -96,7 +96,7 @@ export default function WorldList() {
             "make a new world" CTA (which would just fail against the same down
             backend and misleads as if the account were simply empty). */}
         {worlds !== null && error && (
-          <div className="text-center py-16 border border-border rounded bg-codex">
+          <div className="text-center py-16 border border-blood/30 rounded bg-blood/10">
             <p className="text-blood mb-4">Could not load worlds: {error}</p>
             <button
               onClick={refresh}
@@ -127,7 +127,7 @@ export default function WorldList() {
                 <li key={w.worldId} className="flex items-stretch gap-2">
                   <Link
                     href={`/w/${w.worldId}`}
-                    className="flex-1 min-w-0 block border border-border rounded bg-codex px-4 py-3 hover:border-amber transition-colors"
+                    className="flex-1 min-w-0 block border border-border rounded bg-codex px-4 py-3 hover:border-amber transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber"
                   >
                     <div className="flex items-center justify-between gap-3">
                       <span className="font-medium truncate">
