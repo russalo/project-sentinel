@@ -62,6 +62,7 @@ def commit_snapshot(
     session_id: str,
     turn_number: int,
     summary: str,
+    world_id: str | None = None,
     client: httpx.Client | None = None,
     timeout: float = 30.0,
 ) -> DispatchResult:
@@ -122,6 +123,8 @@ def commit_snapshot(
         "turn_number": turn_number,
         "summary": normalized_summary,
     }
+    if world_id is not None:
+        payload["world_id"] = world_id
 
     owns_client = client is None
     if owns_client:

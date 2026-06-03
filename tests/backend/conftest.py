@@ -99,6 +99,7 @@ def app(test_settings, fake_openai, fake_dispatch_log, fake_commit_log, monkeypa
         session_id,
         turn_number,
         summary,
+        world_id=None,
         client=None,
         timeout=30.0,
     ):
@@ -108,6 +109,7 @@ def app(test_settings, fake_openai, fake_dispatch_log, fake_commit_log, monkeypa
                 "session_id": session_id,
                 "turn_number": turn_number,
                 "summary": summary,
+                "world_id": world_id,
             }
         )
         return engine.DispatchResult(

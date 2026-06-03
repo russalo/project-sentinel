@@ -62,6 +62,10 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
     config = build_engine_config(settings)
 
     session_id = str(uuid.uuid4())
+    # ADR 0002: every session belongs to a world. Minted here and threaded into
+    # the session record + git-sync commit messages. Per-world data isolation
+    # (routing reads/writes to the world's own tree) lands in a later slice.
+    world_id = str(uuid.uuid4())
     started_at = datetime.now(timezone.utc).isoformat()
 
     # Layer 2: resolve rich preset content for the four preset-backed
@@ -150,6 +154,7 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
         player_character_name=body.player_character_name,
         # Prefer the resolved persona display name; fall back to the id.
         dm_persona_name=body.persona_name or body.persona_id or "",
+        world_id=world_id,
     )
 
     # Writing the session file is the critical durability step: if
@@ -180,6 +185,7 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
         session_id=session_id,
         turn_number=0,
         summary=f"Session start: {body.world_name}",
+        world_id=world_id,
     )
     if not commit_result.ok:
         # Fire-and-log: the session is either created (on write
@@ -201,6 +207,7 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
 
     return NewSessionResponse(
         session_id=session_id,
+        world_id=world_id,
         turns=[TurnResponse(**turn_zero)],
         started_at=started_at,
         world_name=body.world_name,

@@ -53,6 +53,7 @@ async def commit_snapshot(body: dict):
     session_id = body.get("session_id")
     turn_number = body.get("turn_number", 0)
     summary = body.get("summary", "World state update")
+    world_id = body.get("world_id")
 
     if not session_id:
         raise HTTPException(
@@ -75,8 +76,14 @@ async def commit_snapshot(body: dict):
         # consistent across logs (the default microseconds resolution
         # produces variable-length strings depending on whether
         # microseconds happen to be zero).
+        # world=<id[:8]> precedes session=... when a world_id is supplied, per
+        # ADR 0002's commit-message format. Omitted (not blank) when absent, so
+        # legacy single-world commits keep their existing shape.
+        world_tag = f"world={world_id[:8]} " if world_id else ""
+        full_world_line = f"Full world_id: {world_id}\n" if world_id else ""
         commit_message = (
-            f"[sentinel] session={session_id[:8]} turn={turn_number} — {summary}\n\n"
+            f"[sentinel] {world_tag}session={session_id[:8]} turn={turn_number} — {summary}\n\n"
+            f"{full_world_line}"
             f"Full session_id: {session_id}\n"
             f"Timestamp: {datetime.now(timezone.utc).isoformat(timespec='seconds')}"
         )
@@ -85,7 +92,8 @@ async def commit_snapshot(body: dict):
         commit_hash = repo.head.commit.hexsha[:8]
 
         logger.info(
-            f"commit_snapshot — {commit_hash} | session={session_id[:8]} turn={turn_number}"
+            f"commit_snapshot — {commit_hash} | {world_tag}session={session_id[:8]} "
+            f"turn={turn_number}"
         )
         return {
             "status": "committed",

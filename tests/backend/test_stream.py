@@ -44,6 +44,7 @@ def _prime_session(data_dir: Path, session_id: str, turns: list | None = None) -
                 "started_at": "2026-04-13T00:00:00Z",
                 "turns": turns or [],
                 "active": True,
+                "world_id": "7c0ffee0-0000-4000-8000-000000000000",
             }
         ),
         encoding="utf-8",
@@ -167,6 +168,8 @@ def test_stream_dispatches_fact_extractor_output_and_updates_session(
     assert commit["session_id"] == session_id
     assert commit["turn_number"] == 1  # first turn after the primed turn-0 session
     assert isinstance(commit["summary"], str)
+    # ADR 0002: the per-turn commit carries the session's world_id.
+    assert commit["world_id"] == "7c0ffee0-0000-4000-8000-000000000000"
     assert len(commit["summary"]) > 0
 
 

@@ -81,6 +81,7 @@ class TurnResponse(_CamelModel):
 
 class NewSessionResponse(_CamelModel):
     session_id: str
+    world_id: str
     turns: list[TurnResponse]
     started_at: str
     world_name: str

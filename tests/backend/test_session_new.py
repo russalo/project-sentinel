@@ -112,6 +112,12 @@ def test_new_session_commits_snapshot_to_git_sync(client, fake_openai, fake_comm
     commit = fake_commit_log[0]
     assert commit["turn_number"] == 0
     assert "The Shattered Expanse" in commit["summary"]
+    # ADR 0002: a world_id is minted, returned, and threaded into the commit.
+    import uuid
+
+    world_id = response.json()["worldId"]
+    uuid.UUID(world_id)  # well-formed
+    assert commit["world_id"] == world_id
     assert "Session start" in commit["summary"]
     # session_id should match the one returned in the response body
     assert commit["session_id"] == response.json()["sessionId"]
