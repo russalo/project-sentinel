@@ -231,6 +231,22 @@ def test_world_id_omitted_from_query_when_none():
     assert "world_id" not in captured["url"]
 
 
+def test_empty_world_id_omitted_from_query():
+    """Empty string must be treated like None (omitted), matching fs-manager's
+    `not world_id` legacy-root fallback. Otherwise the dispatcher would emit a
+    bare `?world_id=` that the server silently re-routes to the shared tree."""
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["query"] = request.url.query.decode()
+        return httpx.Response(200, json={"success": True})
+
+    config = _config()
+    apply_world_update(config, {}, world_id="", client=_client_returning(handler))
+
+    assert captured["query"] == ""
+
+
 def test_world_id_appended_as_query_param_when_supplied():
     """ADR 0002: a supplied world_id rides as a ``?world_id=`` query param —
     routing metadata, not schema body. The body must stay untouched."""

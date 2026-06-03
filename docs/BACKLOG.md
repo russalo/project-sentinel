@@ -217,6 +217,15 @@ work will.
 
       _Updated 2026-04-15: The 2026-04-15 smoke test confirmed this isn't just an unanswered design question — it's an active bug. See the "Session boundary is not a world boundary" critical item in the Smoke-Test Findings section: starting a "new world" in the UI does not wipe `data/state/core/`, and entities (including a `Ray Gun` the player referenced via "AR15") bled across sessions. The urgency tier is now "prerequisite for the research loop and for any deterministic smoke-test harness," not v2 design. The `just reset-world` enabler in the same section is the minimum-viable unblocker while this ADR is drafted._
 
+- [ ] **ADR 0002 implementation — remaining slices.** Slice 1 (world_id threaded through backend + git-sync commit messages) and Slice 2 (MCP servers resolve a per-world tree under `SENTINEL_WORLDS_ROOT`, UUID-validated + traversal-guarded; engine dispatch + backend threading) have landed. Remaining:
+    - **Slice 3 — cutover + provisioning (HARD GATE).** Setting `SENTINEL_WORLDS_ROOT` is dead-on-arrival until world provisioning (`git init` + baseline `data/` tree) exists: git-sync's `get_repo(world_id)` opens `<WORLDS_ROOT>/<world_id>` and raises `InvalidGitRepositoryError` → 500 for any world that was never git-init'd, so fs-manager writes would land on disk but never enter git history (silent audit gap). Provisioning MUST land in the same slice that sets the env var, never before. Gate the cutover on the tracer-soak harness (stub DM with a per-world token, assert zero cross-world leak, hammer in CI) — prove isolation deterministically, never against a live LLM.
+    - **Slice 4 — frontend `/w/<world_id>` routing.**
+    - **Slice 5 — world lifecycle** (provisioning entry point, archival, the resume/new-session UX).
+      _Discovered: 2026-06-03 | Context: decorrelated review swarm on the Slice 2 PR flagged that the WORLDS_ROOT-set path has no provisioning behind it yet (finding #2). Captured here so the cutover can't ship without it._
+
+- [ ] **git-sync `rollback_to` / `list_snapshots` are world-routable with no auth.** Both endpoints take `world_id` from the request body with no caller-identity binding, and `rollback_to` is a state-destroying op. Once `SENTINEL_WORLDS_ROOT` is set, any caller who can reach git-sync:8012 can target an arbitrary world's repo. This is the access-control gap ADR 0002 explicitly defers — it belongs to **ADR 0003** (auth + access-gating + public exposure), and is a hard prerequisite before the mockup URLs are exposed publicly.
+      _Discovered: 2026-06-03 | Context: Slice 2 review swarm finding #1. Not a Slice 2 regression (the endpoints were already ungated); the per-world routing widens the blast radius from one shared repo to every world, which is acceptable only because exposure is still tailnet-internal._
+
 ---
 
 ## World Generation

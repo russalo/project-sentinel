@@ -108,9 +108,11 @@ def apply_world_update(
 
     # world_id is routing metadata (which world's tree to write), not update
     # content, so it rides as a query param rather than in the schema-validated
-    # body (ADR 0002). Omitted entirely when None → fs-manager uses the legacy
-    # shared root.
-    params = {"world_id": world_id} if world_id is not None else None
+    # body (ADR 0002). Omitted when falsy (None *or* empty string) so the
+    # dispatcher agrees with fs-manager's `not world_id` fallback test — an
+    # empty world_id must mean "legacy shared root", never a stray `?world_id=`
+    # that the server silently re-routes.
+    params = {"world_id": world_id} if world_id else None
 
     try:
         try:

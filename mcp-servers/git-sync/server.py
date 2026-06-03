@@ -116,7 +116,10 @@ async def commit_snapshot(body: dict):
         # world=<id[:8]> precedes session=... when a world_id is supplied, per
         # ADR 0002's commit-message format. Omitted (not blank) when absent, so
         # legacy single-world commits keep their existing shape.
-        world_tag = f"world={world_id[:8]} " if world_id else ""
+        # str() coerce before slicing: in the WORLDS_ROOT-unset path get_repo
+        # skips UUID validation, so a malformed non-string world_id from a
+        # direct client would otherwise raise TypeError on [:8] here.
+        world_tag = f"world={str(world_id)[:8]} " if world_id else ""
         full_world_line = f"Full world_id: {world_id}\n" if world_id else ""
         commit_message = (
             f"[sentinel] {world_tag}session={session_id[:8]} turn={turn_number} — {summary}\n\n"
@@ -140,11 +143,15 @@ async def commit_snapshot(body: dict):
         }
 
     except git.InvalidGitRepositoryError:
+        # Name the path that actually failed — with per-world routing the
+        # missing repo is usually <WORLDS_ROOT>/<world_id>, not REPO_ROOT, and
+        # a misattributed message sends operators looking in the wrong place.
+        missing = f"world {world_id}" if world_id else "REPO_ROOT"
         raise HTTPException(
             status_code=500,
             detail={
                 "code": "GIT_ERROR",
-                "detail": "Repository not found at REPO_ROOT.",
+                "detail": f"Repository not found at {missing}.",
             },
         )
     except Exception as e:
