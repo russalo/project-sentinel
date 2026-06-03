@@ -61,9 +61,9 @@ _Last updated: 2026-06-03_
   exercised end-to-end (real file writes, real git commits) instead
   of just contract-tested via httpx.MockTransport from the engine
   side. The "MCP servers have no unit tests" gap is closed.
-- **World isolation: ADR 0002 accepted, Slices 1–4 landed (2026-06-03).**
+- **World isolation: ADR 0002 accepted, Slices 1–5 landed (through resume completeness, 2026-06-03).**
   [ADR 0002](./adr/0002-world-identity-and-isolation.md) ratified repo-per-world
-  isolation (one player per world, concurrently). Slices 1–4 are merged:
+  isolation (one player per world, concurrently). Slices 1–5 are merged:
   `world_id` is minted per session and threaded through the backend, the engine
   dispatcher, and the git-sync commit message
   (`[sentinel] world=<id[:8]> session=… turn=… — …`); both MCP servers resolve a
@@ -73,8 +73,9 @@ _Last updated: 2026-06-03_
   (`tests/test_world_isolation_tracer_soak.py`) proves zero cross-world leak
   under concurrency — it caught and drove the fix for a real git-sync cwd race.
   The frontend now plays at a world's own URL (`/w/<world_id>`), so a game is
-  shareable and survives a refresh (resume rebuilds the scroll from the turn
-  log via `GET /api/world/<world_id>`).
+  shareable and survives a refresh — resume rebuilds the scroll, the world-state
+  panels (entities/locations/factions/items), and the persona (id/name/mood)
+  from `GET /api/world/<world_id>`.
   **`SENTINEL_WORLDS_ROOT` is unset by default**, so per-world routing is dormant
   and runtime behavior is unchanged (single shared `data/` tree); the cutover is
   now a one-line operational flip (see `docs/WORKSPACE.md` § "Per-world isolation
@@ -124,18 +125,22 @@ SSE-event-emitting fake — no real backend required.
 
 ### 2. **World isolation — Slice 5 (world lifecycle) + ADR 0003 (auth/exposure)**
 
-Slices 1–4 have landed (see "Where we are"): per-world routing end-to-end,
-provisioning, the tracer-soak gate, and the `/w/<world_id>` frontend route +
-resume. The capability is built and dormant (env unset); the production cutover
-is a one-line env flip (`docs/WORKSPACE.md` § "Per-world isolation cutover").
+Slices 1–5 have landed (see "Where we are"): per-world routing end-to-end,
+provisioning, the tracer-soak gate, the `/w/<world_id>` frontend route, and
+resume completeness (persona + world-state panels rehydrate, not just the
+narrative). The capability is built and dormant (env unset); the production
+cutover is a one-line env flip (`docs/WORKSPACE.md` § "Per-world isolation
+cutover").
 
 The remaining prerequisites before inviting public test users:
 
-- **Slice 5 — world lifecycle:** archival / teardown, a "recent worlds" or
-  resume/new-session-in-world UX, and the resume-fidelity follow-ups from the
-  Slice 4 review (full persona restore — persist `persona_id`/mood; full
-  world-state *panel* rehydration on resume; `active`-vs-mtime session
-  selection).
+- **Slice 5 — remaining world lifecycle:** a provisioning entry point,
+  archival / teardown (a world-scoped teardown beyond `just reset-world
+  --world-id`), and a "recent / my worlds" picker + resume/new-session UX so a
+  player can find an existing world from the UI (not just a saved URL). Residual
+  resume-fidelity follow-ups: persona available-mood *list* + `day` persistence
+  (both need the genesis/`world_seed` item), and `active`-vs-mtime session
+  selection.
 - **Cross-process write locking** (ADR 0002): concurrent turns in one world can
   still interleave/corrupt state — a per-world file lock must land before
   multi-user exposure (the tracer soak proves cross-*world* isolation, not
