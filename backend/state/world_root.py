@@ -190,13 +190,21 @@ def iter_worlds(
     caller ``read_session(data_dir, session_id)`` for display metadata.
 
     In per-world mode (``worlds_root`` set) each child dir under the worlds root
-    is one world (its dir name is the ``world_id``). In legacy/shared mode the
-    one tree holds many worlds' sessions, so group by the session's stored
-    ``world_id`` and keep the latest per world. Worlds with no session are
-    skipped; a session with no ``world_id`` (pre-Slice-1) is skipped in legacy
-    mode (it has no world URL to resume to).
+    is one world; its dir name is the ``world_id`` and must be a canonical UUID
+    (``init_world`` provisions it that way). In legacy/shared mode the one tree
+    holds many worlds' sessions, so group by the session's stored ``world_id``
+    and keep the latest per world. **The emitted ``world_id`` is always a
+    validated, canonical UUID** so the picker's ``/w/<world_id>`` link always
+    round-trips through ``GET /api/world/<world_id>``; non-UUID dirs / stored
+    ids and worlds with no session are skipped.
     """
     found: list[tuple[str, Path, str, float]] = []  # + mtime for ordering
+
+    def _canonical_uuid(value: str) -> str | None:
+        try:
+            return str(uuid.UUID(value))
+        except (ValueError, AttributeError, TypeError):
+            return None
 
     if worlds_root:
         base = Path(worlds_root)
@@ -209,7 +217,13 @@ def iter_worlds(
         for child in children:
             if not child.is_dir():
                 continue
-            world_id = child.name
+            # The dir name must be a canonical UUID. A non-canonical name (a
+            # stray/manually-created dir) can't be resolved by
+            # find_world_session anyway (it builds the canonical path), so skip
+            # it rather than surface a /w/<name> link that won't round-trip.
+            world_id = _canonical_uuid(child.name)
+            if world_id is None or world_id != child.name:
+                continue
             session = find_world_session(
                 worlds_root, world_id, default_data_dir=default_data_dir
             )
@@ -235,8 +249,10 @@ def iter_worlds(
                 continue
             if not isinstance(raw, dict):
                 continue
-            world_id = raw.get("world_id")
-            if not world_id:
+            # Validate the stored world_id so the picker never emits a
+            # non-UUID /w/<id> link (consistent with per-world mode).
+            world_id = _canonical_uuid(raw.get("world_id") or "")
+            if world_id is None:
                 continue
             mtime = _safe_mtime(path)
             prev = latest_by_world.get(world_id)

@@ -55,4 +55,16 @@ describe('WorldList', () => {
     expect(cta).toHaveAttribute('href', '/create')
     expect(screen.getByText(/No worlds yet/)).toBeInTheDocument()
   })
+
+  it('shows an error + Retry (not a create CTA) on a backend failure', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) })),
+    )
+    render(<WorldList />)
+    expect(await screen.findByText(/Could not load worlds/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Retry/ })).toBeInTheDocument()
+    // A backend outage must NOT masquerade as "you have no worlds, make one".
+    expect(screen.queryByRole('link', { name: /Begin a new world/ })).toBeNull()
+  })
 })

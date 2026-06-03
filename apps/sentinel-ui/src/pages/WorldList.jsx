@@ -61,11 +61,24 @@ export default function WorldList() {
 
         {worlds === null && <p className="text-dust">Loading worlds…</p>}
 
-        {worlds !== null && worlds.length === 0 && (
+        {/* Error is distinct from empty: a backend outage offers a Retry, not a
+            "make a new world" CTA (which would just fail against the same down
+            backend and misleads as if the account were simply empty). */}
+        {worlds !== null && error && (
           <div className="text-center py-16 border border-border rounded bg-codex">
-            <p className="text-dust mb-4">
-              {error ? `Could not load worlds: ${error}` : 'No worlds yet.'}
-            </p>
+            <p className="text-blood mb-4">Could not load worlds: {error}</p>
+            <button
+              onClick={fetchWorlds}
+              className="inline-flex items-center gap-1 border border-border rounded px-4 py-2 hover:border-amber transition-colors"
+            >
+              <RefreshCw size={16} /> Retry
+            </button>
+          </div>
+        )}
+
+        {worlds !== null && !error && worlds.length === 0 && (
+          <div className="text-center py-16 border border-border rounded bg-codex">
+            <p className="text-dust mb-4">No worlds yet.</p>
             <Link
               href="/create"
               className="inline-flex items-center gap-1 bg-amber text-void rounded px-4 py-2 font-medium hover:opacity-90 transition-opacity"
@@ -75,7 +88,7 @@ export default function WorldList() {
           </div>
         )}
 
-        {worlds !== null && worlds.length > 0 && (
+        {worlds !== null && !error && worlds.length > 0 && (
           <ul className="space-y-2">
             {worlds.map((w) => (
               <li key={w.worldId}>
