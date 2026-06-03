@@ -24,6 +24,7 @@ from typing import Any
 import jsonschema
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
+from filelock import FileLock, Timeout
 import uvicorn
 
 # -------------------------------------------------------------------
@@ -42,6 +43,104 @@ SCHEMA_PATH = SCHEMA_DIR / "apply_world_update.schema.json"
 # the cutover that sets this lives in a later slice). Read at call time so
 # tests can monkeypatch it.
 WORLDS_ROOT = os.environ.get("SENTINEL_WORLDS_ROOT")
+
+# Hold the per-world write lock only for the batch write + log append
+# (sub-second), never across an LLM call, so contention is brief; the timeout
+# is a fail-fast ceiling (503 beats hanging a worker forever). Kept BELOW the
+# engine dispatch HTTP timeout (30s) so a maxed-out wait surfaces as a clean
+# 503 WORLD_BUSY rather than the client read-timing-out first.
+_LOCK_TIMEOUT_SECONDS = 15
+
+
+def _world_lock(world_id: str | None) -> "FileLock":
+    """Cross-process write lock for a world's tree (ADR 0002 per-world lock).
+
+    fs-manager and git-sync are separate processes writing the same world tree;
+    a ``filelock`` on a stable path keyed by world serializes them. The lock
+    file lives **outside** the world tree — ``<WORLDS_ROOT>/.locks/
+    <canonical_world_id>.lock`` — so git-sync's ``teardown_world`` rmtree can't
+    delete a held lock. In shared mode (``WORLDS_ROOT`` unset, or no
+    ``world_id``) every write hits the one shared tree, so a single global lock
+    at ``<REPO_ROOT>/.sentinel-locks/shared.lock`` is the right granularity.
+    git-sync derives the **same** paths, so writes + commits + teardown on one
+    world serialize across both processes. ``filelock`` is portable (no
+    POSIX-only ``fcntl``) per the cross-OS constraint. Globals are read at call
+    time so tests can monkeypatch ``WORLDS_ROOT``/``REPO_ROOT``.
+    """
+    if WORLDS_ROOT and world_id:
+        try:
+            canonical = str(uuid.UUID(world_id))
+        except (ValueError, AttributeError, TypeError):
+            canonical = "invalid"  # the op's own validation will 422
+        lock_dir = Path(WORLDS_ROOT).resolve() / ".locks"
+    else:
+        # .resolve() so fs-manager and git-sync agree on the shared lock path
+        # even if their REPO_ROOT differs by a symlink or cwd.
+        lock_dir = Path(REPO_ROOT).resolve() / ".sentinel-locks"
+        canonical = "shared"
+    try:
+        lock_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "code": "FILESYSTEM_ERROR",
+                "detail": f"could not create lock dir {lock_dir!s}: {e}",
+            },
+        )
+    return FileLock(str(lock_dir / f"{canonical}.lock"), timeout=_LOCK_TIMEOUT_SECONDS)
+
+
+def _acquire_world_lock(world_id: str | None) -> "FileLock":
+    """Acquire the per-world write lock, or raise 503 if it can't be had in time."""
+    lock = _world_lock(world_id)
+    try:
+        lock.acquire()
+    except Timeout:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "WORLD_BUSY", "detail": "world write lock busy; retry"},
+        )
+    except OSError as e:
+        raise HTTPException(
+            status_code=500,
+            detail={"code": "FILESYSTEM_ERROR", "detail": f"lock acquire failed: {e}"},
+        )
+    return lock
+
+
+def _require_world_id_when_isolated(world_id: str | None) -> str | None:
+    """In per-world mode, require + **canonicalize** world_id; returns it.
+
+    With ``SENTINEL_WORLDS_ROOT`` set, a missing ``world_id`` would make
+    ``_resolve_world_root`` fall back to the shared ``REPO_ROOT`` — writing one
+    world's state into the shared tree (inter-world leak / master-pollution) —
+    so a missing id is a 422. A present id is canonicalized to its standard
+    hyphenated form here (early 422 on a non-UUID), so the lock and the resolved
+    world root use one spelling — no fragmentation. In shared mode (WORLDS_ROOT
+    unset) the id is advisory and returned unchanged.
+    """
+    if not WORLDS_ROOT:
+        return world_id
+    if not world_id:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "MISSING_WORLD_ID",
+                "detail": "world_id is required when SENTINEL_WORLDS_ROOT is set.",
+            },
+        )
+    try:
+        return str(uuid.UUID(world_id))
+    except (ValueError, AttributeError, TypeError):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "INVALID_WORLD_ID",
+                "detail": f"world_id is not a valid UUID: {world_id!r}",
+            },
+        )
+
 
 # Protected fields that can never be modified by any payload.
 # Enforced on BOTH create and update operations — see check_protected_fields
@@ -396,33 +495,52 @@ async def apply_world_update(request: Request):
     # stays out of the schema-validated body. _resolve_world_root UUID-validates
     # it and resolves the world's tree; defaults to REPO_ROOT when WORLDS_ROOT
     # is unset or no world_id is given (today's single-shared-tree behavior).
-    world_root = _resolve_world_root(request.query_params.get("world_id"))
+    world_id = request.query_params.get("world_id")
+    world_id = _require_world_id_when_isolated(world_id)
+    world_root = _resolve_world_root(world_id)
 
     # Payload-level namespace authorization. Default to "community" when
     # the field is absent — community is the least-privileged posture,
     # so unauthenticated or legacy payloads get the sandboxed behavior.
     payload_namespace = payload.get("namespace", "community")
 
-    results = []
-    for update in payload["updates"]:
-        target_file = update["target_file"]
-        operation = update["operation"]
-        data = update["data"]
+    # Serialize the batch write + session-log append against concurrent writers
+    # to this world (ADR 0002 per-world lock; the same lock git-sync's
+    # commit_snapshot / teardown_world acquire, so a turn's writes can't
+    # interleave with another writer — or be rmtree'd — mid-batch).
+    lock = _acquire_world_lock(world_id)
+    try:
+        results = []
+        for update in payload["updates"]:
+            target_file = update["target_file"]
+            operation = update["operation"]
+            data = update["data"]
 
-        validate_path(target_file)
-        validate_namespace(payload_namespace, target_file)
-        result = execute_update(target_file, operation, data, root=world_root)
-        results.append(result)
+            validate_path(target_file)
+            validate_namespace(payload_namespace, target_file)
+            result = execute_update(target_file, operation, data, root=world_root)
+            results.append(result)
 
-    # Append narrative to session log. The session_id has already been
-    # format-checked as a UUID by validate_payload, and _resolve_session_log_path
-    # canonicalizes the path and re-verifies the parent is sessions/ —
-    # a belt-and-suspenders pair so a malformed session_id can't escape
-    # the sessions directory even if the schema-level check regresses.
-    abs_log = _resolve_session_log_path(payload["session_id"], root=world_root)
-    abs_log.parent.mkdir(parents=True, exist_ok=True)
-    with open(abs_log, "a", encoding="utf-8") as f:
-        f.write(f"\n\n---\n\n{payload['log_entry']}")
+        # Append narrative to session log. The session_id has already been
+        # format-checked as a UUID by validate_payload, and
+        # _resolve_session_log_path canonicalizes the path and re-verifies the
+        # parent is sessions/ — a belt-and-suspenders pair so a malformed
+        # session_id can't escape the sessions directory even if the
+        # schema-level check regresses.
+        abs_log = _resolve_session_log_path(payload["session_id"], root=world_root)
+        abs_log.parent.mkdir(parents=True, exist_ok=True)
+        with open(abs_log, "a", encoding="utf-8") as f:
+            f.write(f"\n\n---\n\n{payload['log_entry']}")
+    except OSError as e:
+        # Filesystem failure (permissions, disk full, a dir removed mid-write) →
+        # a structured 500 rather than a raw traceback. Validation errors raise
+        # HTTPException (not OSError), so they still propagate unchanged.
+        raise HTTPException(
+            status_code=500,
+            detail={"code": "FILESYSTEM_ERROR", "detail": f"write failed: {e}"},
+        )
+    finally:
+        lock.release()
 
     logger.info(f"apply_world_update — success, {len(results)} operations executed.")
     return JSONResponse(

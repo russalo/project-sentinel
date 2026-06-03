@@ -71,3 +71,8 @@ chatlogs/
 # Claude Code user-specific permission state — auto-managed by the
 # CLI as users approve tool calls. Not shared across contributors.
 .claude/settings.local.json
+
+# Per-world write-lock files (ADR 0002 cross-process locking). Shared-mode lock
+# dir under the repo root; per-world locks live under SENTINEL_WORLDS_ROOT
+# (outside the code repo). Runtime artifacts, never committed.
+.sentinel-locks/

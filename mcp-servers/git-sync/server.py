@@ -22,6 +22,7 @@ from pathlib import Path
 
 import git
 from fastapi import FastAPI, HTTPException
+from filelock import FileLock, Timeout
 import uvicorn
 
 logging.basicConfig(
@@ -36,6 +37,114 @@ REPO_ROOT = Path(__file__).parent.parent.parent
 # <SENTINEL_WORLDS_ROOT>/<world_id>/ instead of the legacy shared REPO_ROOT.
 # Unset by default → today's behavior. Read at call time (tests monkeypatch).
 WORLDS_ROOT = os.environ.get("SENTINEL_WORLDS_ROOT")
+
+# Hold the per-world write lock only for the disk/git operation itself (commit,
+# rmtree, rollback) — sub-second — never across an LLM call, so contention is
+# brief. The timeout is a fail-fast ceiling: a worker waiting longer than this
+# is a sign of a stuck lock, and returning 503 beats hanging forever. Kept
+# BELOW the engine dispatch HTTP timeout (30s) so a maxed-out wait surfaces as
+# a clean 503 WORLD_BUSY rather than the client read-timing-out first.
+_LOCK_TIMEOUT_SECONDS = 15
+
+
+def _world_lock(world_id: str | None) -> "FileLock":
+    """Cross-process write lock for a world's tree (ADR 0002 per-world lock).
+
+    fs-manager and git-sync are separate processes writing the same world tree;
+    backend/CLI add more. Per ADR 0002 there is "no concurrency control" today,
+    so concurrent turns race on file writes *and* the git index, and a
+    teardown can ``rmtree`` a tree mid-commit. A ``filelock`` on a stable path
+    serializes those writers across processes.
+
+    The lock file lives **outside** the world tree — ``<WORLDS_ROOT>/.locks/
+    <canonical_world_id>.lock`` — so ``teardown_world``'s ``rmtree`` of the
+    world dir can't delete a lock that is currently held. In shared mode
+    (``WORLDS_ROOT`` unset, or no ``world_id``) every world writes the one
+    shared repo, so a single global lock at ``<REPO_ROOT>/.sentinel-locks/
+    shared.lock`` is the correct granularity (ADR 0002: a global commit lock
+    serializes all worlds in the single-repo mode). ``filelock`` is portable
+    (no POSIX-only ``fcntl``), satisfying the repo's cross-OS constraint.
+
+    Globals are read at call time so tests can monkeypatch
+    ``WORLDS_ROOT``/``REPO_ROOT``.
+    """
+    if WORLDS_ROOT and world_id:
+        try:
+            canonical = str(uuid.UUID(world_id))
+        except (ValueError, AttributeError, TypeError):
+            # Invalid id — the operation's own validation will 422; use a
+            # throwaway key so locking doesn't pre-empt that nicer error.
+            canonical = "invalid"
+        lock_dir = Path(WORLDS_ROOT).resolve() / ".locks"
+    else:
+        # .resolve() so fs-manager and git-sync agree on the shared lock path
+        # even if their REPO_ROOT differs by a symlink or cwd.
+        lock_dir = Path(REPO_ROOT).resolve() / ".sentinel-locks"
+        canonical = "shared"
+    try:
+        lock_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "code": "FILESYSTEM_ERROR",
+                "detail": f"could not create lock dir {lock_dir!s}: {e}",
+            },
+        )
+    return FileLock(str(lock_dir / f"{canonical}.lock"), timeout=_LOCK_TIMEOUT_SECONDS)
+
+
+def _acquire_world_lock(world_id: str | None) -> FileLock:
+    """Acquire the per-world write lock, or raise 503 if it can't be had in time."""
+    lock = _world_lock(world_id)
+    try:
+        lock.acquire()
+    except Timeout:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "WORLD_BUSY", "detail": "world write lock busy; retry"},
+        )
+    except OSError as e:
+        raise HTTPException(
+            status_code=500,
+            detail={"code": "FILESYSTEM_ERROR", "detail": f"lock acquire failed: {e}"},
+        )
+    return lock
+
+
+def _require_world_id_when_isolated(world_id: str | None) -> str | None:
+    """In per-world mode, require + **canonicalize** world_id; returns it.
+
+    With ``SENTINEL_WORLDS_ROOT`` set, a missing ``world_id`` would make
+    ``get_repo``/``_world_repo_path`` fall back to the shared ``REPO_ROOT`` —
+    committing world state onto the checked-out code branch (master-pollution)
+    and leaking across the world boundary — so a missing id is a 422. A present
+    id is canonicalized to its standard hyphenated form here (early 422 on a
+    non-UUID), so the lock, the repo path, AND the commit-message tag all use
+    one spelling — no fragmentation across non-canonical spellings. In shared
+    mode (WORLDS_ROOT unset) the id is advisory and returned unchanged.
+    """
+    if not WORLDS_ROOT:
+        return world_id
+    if not world_id:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "MISSING_WORLD_ID",
+                "detail": "world_id is required when SENTINEL_WORLDS_ROOT is set.",
+            },
+        )
+    try:
+        return str(uuid.UUID(world_id))
+    except (ValueError, AttributeError, TypeError):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "INVALID_WORLD_ID",
+                "detail": f"world_id is not a valid UUID: {world_id!r}",
+            },
+        )
+
 
 app = FastAPI(
     title="Sentinel git-sync MCP Server",
@@ -145,14 +254,17 @@ async def init_world(body: dict):
     # that created .git but died before the initial commit leaves a repo with
     # NO HEAD, against which commit_snapshot fails forever. Such a
     # half-provisioned world must be *completed*, not reported as "exists".
-    if (repo_path / ".git").exists():
-        try:
-            if git.Repo(repo_path).head.is_valid():
-                return {"status": "exists", "world_id": canonical}
-        except Exception:
-            pass  # corrupt/half-init repo → fall through and (re)complete it
-
+    # Serialize provisioning against any concurrent commit/teardown for this
+    # world (ADR 0002 per-world lock).
+    lock = _acquire_world_lock(world_id)
     try:
+        if (repo_path / ".git").exists():
+            try:
+                if git.Repo(repo_path).head.is_valid():
+                    return {"status": "exists", "world_id": canonical}
+            except Exception:
+                pass  # corrupt/half-init repo → fall through and (re)complete it
+
         # Baseline: just enough for a first commit to exist. Only the mutable
         # data/ tree is per-world; a .gitkeep gives the initial commit content
         # and ensures data/ exists. fs-manager creates the deeper state/lore
@@ -178,6 +290,8 @@ async def init_world(body: dict):
         raise HTTPException(
             status_code=500, detail={"code": "GIT_ERROR", "detail": str(e)}
         )
+    finally:
+        lock.release()
 
 
 @app.post("/tools/teardown_world")
@@ -204,7 +318,15 @@ async def teardown_world(body: dict):
             status_code=422,
             detail={"code": "MISSING_WORLD_ID", "detail": "world_id is required."},
         )
+    # Canonicalize early in per-world mode (no-op in shared mode where world_id
+    # is present): the lock key, _world_repo_path, and the response all use one
+    # spelling. _world_repo_path re-validates + traversal-checks before rmtree.
+    world_id = _require_world_id_when_isolated(world_id)
 
+    # Lock keyed by world (file in <WORLDS_ROOT>/.locks/, OUTSIDE the world tree)
+    # so a teardown can't rmtree a tree mid-commit, and the lock file itself
+    # survives the rmtree. (ADR 0002 per-world lock.)
+    lock = _acquire_world_lock(world_id)
     try:
         if WORLDS_ROOT:
             repo_path = _world_repo_path(world_id)  # UUID + traversal validated
@@ -272,6 +394,8 @@ async def teardown_world(body: dict):
         raise HTTPException(
             status_code=500, detail={"code": "GIT_ERROR", "detail": str(e)}
         )
+    finally:
+        lock.release()
 
 
 @app.post("/tools/commit_snapshot")
@@ -290,7 +414,9 @@ async def commit_snapshot(body: dict):
             status_code=422,
             detail={"code": "MISSING_SESSION_ID", "detail": "session_id is required."},
         )
+    world_id = _require_world_id_when_isolated(world_id)
 
+    lock = _acquire_world_lock(world_id)
     try:
         repo = get_repo(world_id)
         # Stage + commit via the subprocess git (repo.git.*), NOT the in-memory
@@ -359,6 +485,8 @@ async def commit_snapshot(body: dict):
         raise HTTPException(
             status_code=500, detail={"code": "GIT_ERROR", "detail": str(e)}
         )
+    finally:
+        lock.release()
 
 
 @app.get("/tools/list_snapshots")
@@ -402,9 +530,12 @@ async def rollback_to(body: dict):
             status_code=422,
             detail={"code": "MISSING_HASH", "detail": "commit_hash is required."},
         )
+    world_id = body.get("world_id")
+    world_id = _require_world_id_when_isolated(world_id)
 
+    lock = _acquire_world_lock(world_id)
     try:
-        repo = get_repo(body.get("world_id"))
+        repo = get_repo(world_id)
         repo.git.checkout(commit_hash, "--", "data/")
         repo.git.add("data/")
         repo.git.commit("-m", f"[sentinel] rollback to {commit_hash}")
@@ -413,6 +544,8 @@ async def rollback_to(body: dict):
         raise HTTPException(
             status_code=500, detail={"code": "GIT_ERROR", "detail": str(e)}
         )
+    finally:
+        lock.release()
 
 
 if __name__ == "__main__":

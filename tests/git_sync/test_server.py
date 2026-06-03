@@ -301,3 +301,56 @@ def test_commit_snapshot_invalid_repository_returns_500_git_error(
         assert detail["code"] == "GIT_ERROR"
     else:
         assert "Repository not found" in str(detail) or "GIT_ERROR" in str(detail)
+
+
+# ── Per-world mode: world_id required (ADR 0002 isolation, Path A/A1) ──
+
+
+def test_commit_missing_world_id_rejected_when_isolated(
+    client, git_sync_module, monkeypatch, tmp_path
+):
+    """With SENTINEL_WORLDS_ROOT set, a commit with no world_id must 422 —
+    never fall back to REPO_ROOT (which would commit world state onto the
+    checked-out code branch: the master-pollution hazard)."""
+    monkeypatch.setattr(git_sync_module, "WORLDS_ROOT", str(tmp_path / "worlds"))
+    response = client.post(
+        "/tools/commit_snapshot",
+        json={"session_id": "11111111-2222-3333-4444-555555555555", "summary": "x"},
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "MISSING_WORLD_ID"
+
+
+def test_rollback_missing_world_id_rejected_when_isolated(
+    client, git_sync_module, monkeypatch, tmp_path
+):
+    """Same guard on the destructive rollback path — a missing world_id in
+    per-world mode could otherwise roll back the shared code repo."""
+    monkeypatch.setattr(git_sync_module, "WORLDS_ROOT", str(tmp_path / "worlds"))
+    response = client.post("/tools/rollback_to", json={"commit_hash": "abc1234"})
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "MISSING_WORLD_ID"
+
+
+def test_commit_with_world_id_still_works_when_isolated(
+    client, git_sync_module, monkeypatch, tmp_path
+):
+    """Sanity: the guard doesn't block a properly-routed per-world commit.
+    init the world first (so it has a HEAD), then commit to it."""
+    worlds = tmp_path / "worlds"
+    monkeypatch.setattr(git_sync_module, "WORLDS_ROOT", str(worlds))
+    wid = "9b3c1d2e-4f5a-4b6c-8d7e-0a1b2c3d4e5f"
+    init = client.post("/tools/init_world", json={"world_id": wid})
+    assert init.status_code == 200
+    # A real change in the world's data tree so there's something to commit.
+    (worlds / wid / "data" / "note.txt").write_text("hi", encoding="utf-8")
+    resp = client.post(
+        "/tools/commit_snapshot",
+        json={
+            "session_id": "11111111-2222-3333-4444-555555555555",
+            "summary": "world commit",
+            "world_id": wid,
+        },
+    )
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "committed"
