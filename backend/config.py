@@ -102,6 +102,19 @@ class Settings:
             value = os.environ.get(name)
             return value if value else default
 
+        def _int_env(name: str, default: str) -> int:
+            """Parse an integer env var, failing with a clear message.
+
+            A bare ``int(_env(...))`` raises a cryptic ``ValueError`` at import
+            time on a typo'd value (e.g. ``SENTINEL_SESSION_TOKEN_TTL=7d``);
+            name the offending var instead.
+            """
+            raw = _env(name, default)
+            try:
+                return int(raw)
+            except (TypeError, ValueError) as exc:
+                raise RuntimeError(f"{name} must be an integer, got {raw!r}") from exc
+
         # Debug mode defaults to OFF for safety. Dev environments
         # that want permissive CORS + verbose errors should set
         # SENTINEL_DEBUG=true in their infrastructure/.env.
@@ -119,7 +132,7 @@ class Settings:
             openai_api_key=_env("OPENAI_API_KEY", ""),
             openai_base_url=_env("OPENAI_BASE_URL"),
             dm_model=_env("DM_MODEL", "gpt-4o-mini"),
-            max_completion_tokens=int(_env("DM_MAX_COMPLETION_TOKENS", "2000")),
+            max_completion_tokens=_int_env("DM_MAX_COMPLETION_TOKENS", "2000"),
             fs_manager_url=_env("FS_MANAGER_URL", "http://127.0.0.1:8010"),
             git_sync_url=_env("GIT_SYNC_URL", "http://127.0.0.1:8012"),
             data_dir=DATA_DIR,
@@ -133,12 +146,12 @@ class Settings:
             cors_allow_all_origins=debug,
             debug=debug,
             session_token_secret=_env("SENTINEL_SESSION_TOKEN_SECRET"),
-            session_token_ttl_seconds=int(
-                _env("SENTINEL_SESSION_TOKEN_TTL", str(7 * 24 * 60 * 60))
+            session_token_ttl_seconds=_int_env(
+                "SENTINEL_SESSION_TOKEN_TTL", str(7 * 24 * 60 * 60)
             ),
-            rl_session_create_per_hour=int(
-                _env("SENTINEL_RL_SESSION_CREATE_PER_HOUR", "0")
+            rl_session_create_per_hour=_int_env(
+                "SENTINEL_RL_SESSION_CREATE_PER_HOUR", "0"
             ),
-            rl_stream_per_minute=int(_env("SENTINEL_RL_STREAM_PER_MINUTE", "0")),
-            llm_daily_ceiling=int(_env("SENTINEL_LLM_DAILY_CEILING", "0")),
+            rl_stream_per_minute=_int_env("SENTINEL_RL_STREAM_PER_MINUTE", "0"),
+            llm_daily_ceiling=_int_env("SENTINEL_LLM_DAILY_CEILING", "0"),
         )

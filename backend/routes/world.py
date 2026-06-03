@@ -107,6 +107,14 @@ def get_world(world_id: str, request: Request) -> dict:
     genuinely empty world are indistinguishable to a caller and get the same
     response (the id is the only secret, same posture as session lookups).
     """
+    # Canonicalize the path id up front (mirrors delete_world): a clean 404 on a
+    # malformed id, and the token check below runs against the same canonical
+    # form the token was minted with.
+    try:
+        world_id = str(uuid.UUID(world_id))
+    except (ValueError, AttributeError, TypeError):
+        raise HTTPException(status_code=404, detail="world not found")
+
     settings = request.app.state.settings
     # ADR 0003 — resume is world-scoped; require the per-world token (no-op when
     # enforcement is off). Checked before the lookup so existence isn't leaked

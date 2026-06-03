@@ -51,7 +51,9 @@ def mint(
     """
     uuid.UUID(world_id)
     now = time.time() if _now is None else _now
-    expiry = int(now) + int(ttl_seconds)
+    # Truncate once, after adding the ttl, so a fractional `now` doesn't shave
+    # up to ~1s off the intended lifetime.
+    expiry = int(now + ttl_seconds)
     return f"{expiry}.{_sign(secret, world_id, expiry)}"
 
 

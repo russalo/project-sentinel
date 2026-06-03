@@ -23,11 +23,17 @@ from fastapi import HTTPException, Request, status
 class RateLimiter:
     """Fixed-window per-key counter. Thread-safe; monotonic-clock based."""
 
+    # Sweep expired windows every N allow() calls so the dict can't grow without
+    # bound as new per-IP / per-world keys appear over a long-running process.
+    _SWEEP_EVERY = 1024
+
     def __init__(self, *, now=time.monotonic) -> None:
         self._now = now
         self._lock = threading.Lock()
-        # key -> [window_start, count]
+        # key -> [window_start, count, period_seconds]; period is stored so the
+        # sweep knows when each entry has expired.
         self._windows: dict[str, list[float]] = {}
+        self._ops = 0
 
     def allow(self, key: str, limit: int, period_seconds: float) -> bool:
         """Record a hit on ``key``; return ``False`` if it would exceed ``limit``
@@ -39,14 +45,23 @@ class RateLimiter:
             return True
         with self._lock:
             t = self._now()
+            self._ops += 1
+            if self._ops % self._SWEEP_EVERY == 0:
+                self._sweep(t)
             window = self._windows.get(key)
             if window is None or (t - window[0]) >= period_seconds:
-                self._windows[key] = [t, 1]
+                self._windows[key] = [t, 1, period_seconds]
                 return True
             if window[1] < limit:
                 window[1] += 1
                 return True
             return False
+
+    def _sweep(self, t: float) -> None:
+        """Drop windows whose period has elapsed. Caller holds the lock."""
+        expired = [k for k, w in self._windows.items() if (t - w[0]) >= w[2]]
+        for k in expired:
+            del self._windows[k]
 
 
 def enforce(

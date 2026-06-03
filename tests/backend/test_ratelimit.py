@@ -44,6 +44,28 @@ def test_window_resets_after_period():
     assert rl.allow("k", 1, 60) is True
 
 
+def test_expired_windows_are_swept_to_bound_memory():
+    # The dict must not grow without bound as new keys appear over time. The
+    # sweep runs every _SWEEP_EVERY ops; after it, entries whose period has
+    # elapsed are evicted.
+    clock = _Clock()
+    rl = RateLimiter(now=clock)
+    n = RateLimiter._SWEEP_EVERY
+    # n distinct keys (60s window) at t=0 — the loop ends exactly on a sweep
+    # boundary, but nothing has expired yet, so all n remain.
+    for i in range(n):
+        rl.allow(f"k{i}", 1, 60)
+    assert len(rl._windows) == n
+    # Advance past the window; n more ops reach the next sweep boundary, which
+    # evicts all the now-expired k* entries (the fresh key, created at t=61,
+    # survives).
+    clock.t = 61
+    for _ in range(n):
+        rl.allow("fresh", 1, 60)
+    assert "fresh" in rl._windows
+    assert len(rl._windows) == 1
+
+
 def test_non_positive_limit_disables():
     rl = RateLimiter(now=_Clock())
     for _ in range(100):
