@@ -5,7 +5,7 @@ export function LocationList({ locations }) {
 
   return (
     <div>
-      <h3 className="text-amber font-cinzel text-sm mb-2">◈ LOCATIONS</h3>
+      <h3 className="text-amber font-cinzel text-sm mb-2">LOCATIONS</h3>
       {locations.length === 0 ? (
         <p className="text-dust text-xs">Unknown territories ahead...</p>
       ) : (

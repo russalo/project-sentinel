@@ -45,6 +45,11 @@ export const useChatStore = create((set) => ({
   isStreaming: false,
   setIsStreaming: (streaming) => set({ isStreaming: streaming }),
 
+  // Whether the last turn failed (network/stream error). Drives the
+  // StatusIndicator; cleared at the start of the next turn.
+  streamError: false,
+  setStreamError: (v) => set({ streamError: v }),
+
   // Stream buffer (accumulates characters as they arrive)
   streamBuffer: '',
   appendToBuffer: (text) => set((state) => ({ streamBuffer: state.streamBuffer + text })),

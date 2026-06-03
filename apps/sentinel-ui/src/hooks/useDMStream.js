@@ -6,12 +6,13 @@ import { usePlayerStore } from '../stores/playerStore';
 import { computeDelta, hasDelta } from '../utils/delta';
 
 export function useDMStream() {
-  const { appendToBuffer, commitStreamMessage, setIsStreaming, addMessage, addSystemLogEntry } = useChatStore();
+  const { appendToBuffer, commitStreamMessage, setIsStreaming, setStreamError, addMessage, addSystemLogEntry } = useChatStore();
   const applyUpdate = useWorldStore((s) => s.applyUpdate);
 
   const sendAction = useCallback(
     async (action, sessionId) => {
       setIsStreaming(true);
+      setStreamError(false); // clear any prior turn's error
       let buffer = '';
       const pendingDeltas = [];
       // worldId is advisory for the backend (it routes by session_id), but the
@@ -84,12 +85,13 @@ export function useDMStream() {
         }
       } catch (err) {
         commitStreamMessage(); // finalize any partial buffer before showing error
+        setStreamError(true); // surface on the StatusIndicator
         addMessage({ type: 'system', content: `[Connection error: ${err.message}]`, timestamp: new Date() });
       } finally {
         setIsStreaming(false);
       }
     },
-    [appendToBuffer, commitStreamMessage, setIsStreaming, addMessage, addSystemLogEntry, applyUpdate],
+    [appendToBuffer, commitStreamMessage, setIsStreaming, setStreamError, addMessage, addSystemLogEntry, applyUpdate],
   );
 
   return { sendAction };

@@ -42,7 +42,7 @@ export function CommandBar() {
           onKeyDown={handleKeyDown}
           placeholder={sessionId ? 'What do you do?' : 'Start a new world to begin...'}
           disabled={isStreaming || !sessionId}
-          className="flex-1 bg-void border border-border rounded px-3 py-2.5 text-ink placeholder-dust focus:outline-none focus:border-amber transition-colors disabled:opacity-50"
+          className="flex-1 bg-void border border-border rounded px-3 py-2.5 text-base md:text-sm text-ink placeholder-dust focus:outline-none focus:border-amber transition-colors disabled:opacity-50"
         />
         <button
           onClick={handleSubmit}

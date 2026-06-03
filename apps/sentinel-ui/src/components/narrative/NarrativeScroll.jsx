@@ -30,7 +30,7 @@ export function NarrativeScroll() {
           className={`px-3 py-2 lg:py-1 text-xs rounded-t transition-colors min-h-[2.75rem] lg:min-h-0 ${
             activeView === 'narrative'
               ? 'bg-codex text-amber border border-b-codex border-border -mb-px'
-              : 'text-ether hover:text-ink'
+              : 'text-dust hover:text-amber'
           }`}
         >
           Narrative
@@ -40,7 +40,7 @@ export function NarrativeScroll() {
           className={`px-3 py-2 lg:py-1 text-xs rounded-t transition-colors flex items-center gap-1.5 min-h-[2.75rem] lg:min-h-0 ${
             activeView === 'system-log'
               ? 'bg-codex text-amber border border-b-codex border-border -mb-px'
-              : 'text-ether hover:text-ink'
+              : 'text-dust hover:text-amber'
           }`}
         >
           System Log

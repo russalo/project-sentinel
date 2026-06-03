@@ -5,7 +5,7 @@ export function CharacterList({ characters }) {
 
   return (
     <div>
-      <h3 className="text-amber font-cinzel text-sm mb-2">◉ CHARACTERS</h3>
+      <h3 className="text-amber font-cinzel text-sm mb-2">CHARACTERS</h3>
       {characters.length === 0 ? (
         <p className="text-dust text-xs">No one knows your name yet...</p>
       ) : (

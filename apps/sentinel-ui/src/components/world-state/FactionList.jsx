@@ -5,7 +5,7 @@ export function FactionList({ factions }) {
 
   return (
     <div>
-      <h3 className="text-amber font-cinzel text-sm mb-2">▸ FACTIONS</h3>
+      <h3 className="text-amber font-cinzel text-sm mb-2">FACTIONS</h3>
       {factions.length === 0 ? (
         <p className="text-dust text-xs">Powers yet unseen...</p>
       ) : (
@@ -16,7 +16,7 @@ export function FactionList({ factions }) {
               className="hover:text-amber cursor-pointer transition-colors animate-fade-in"
               onClick={() => setSelectedEntity(fac, 'faction')}
             >
-              ▸ {fac.name}
+              ◈ {fac.name}
             </li>
           ))}
         </ul>
