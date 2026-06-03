@@ -76,7 +76,16 @@ def _world_lock(world_id: str | None) -> "FileLock":
     else:
         lock_dir = Path(REPO_ROOT) / ".sentinel-locks"
         canonical = "shared"
-    lock_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        lock_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "code": "FILESYSTEM_ERROR",
+                "detail": f"could not create lock dir {lock_dir!s}: {e}",
+            },
+        )
     return FileLock(str(lock_dir / f"{canonical}.lock"), timeout=_LOCK_TIMEOUT_SECONDS)
 
 
@@ -89,6 +98,11 @@ def _acquire_world_lock(world_id: str | None) -> "FileLock":
         raise HTTPException(
             status_code=503,
             detail={"code": "WORLD_BUSY", "detail": "world write lock busy; retry"},
+        )
+    except OSError as e:
+        raise HTTPException(
+            status_code=500,
+            detail={"code": "FILESYSTEM_ERROR", "detail": f"lock acquire failed: {e}"},
         )
     return lock
 
@@ -502,6 +516,14 @@ async def apply_world_update(request: Request):
         abs_log.parent.mkdir(parents=True, exist_ok=True)
         with open(abs_log, "a", encoding="utf-8") as f:
             f.write(f"\n\n---\n\n{payload['log_entry']}")
+    except OSError as e:
+        # Filesystem failure (permissions, disk full, a dir removed mid-write) →
+        # a structured 500 rather than a raw traceback. Validation errors raise
+        # HTTPException (not OSError), so they still propagate unchanged.
+        raise HTTPException(
+            status_code=500,
+            detail={"code": "FILESYSTEM_ERROR", "detail": f"write failed: {e}"},
+        )
     finally:
         lock.release()
 
