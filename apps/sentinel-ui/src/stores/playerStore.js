@@ -11,6 +11,12 @@ export const usePlayerStore = create((set) => ({
   worldId: null,
   setWorldId: (id) => set({ worldId: id }),
 
+  // True while useWorldHydration is fetching a world (ADR 0002 Slice 4). The
+  // welcome-seed effect checks it so the placeholder doesn't flash into a
+  // scroll that's about to be replaced by the resumed turn log.
+  hydrating: false,
+  setHydrating: (v) => set({ hydrating: v }),
+
   // World identity — set at session creation and read by the TopBar.
   // (worldCreationStore is reset on submit, so the active world's name
   // is persisted here instead.)

@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { apiClient } from '../api/client';
 import { usePlayerStore } from '../stores/playerStore';
+import { usePersonaStore } from '../stores/personaStore';
 import { useChatStore, stripWorldUpdate } from '../stores/chatStore';
 
 // Hydrate the game from a world's URL (ADR 0002 Slice 4).
@@ -18,6 +19,13 @@ export function useWorldHydration(worldId) {
     // double-seed the scroll.
     if (usePlayerStore.getState().worldId === worldId) return;
 
+    // Commit to (re)hydrating. Clear the previous world's scroll *now*, before
+    // the await, so old chat never lingers across a world switch or a failed
+    // load (a cross-world bleed), and flag `hydrating` so the welcome-seed
+    // effect stays quiet during the fetch instead of flashing a placeholder.
+    useChatStore.getState().clearMessages();
+    usePlayerStore.getState().setHydrating(true);
+
     let cancelled = false;
     (async () => {
       try {
@@ -28,17 +36,26 @@ export function useWorldHydration(worldId) {
         player.setSessionId(data.sessionId);
         player.setWorldId(worldId);
         player.setWorldName(data.worldName || 'Unnamed World');
-        player.setCharacter(data.character || '', player.characterClass || '');
+        player.setCharacter(data.character || '', data.characterClass || '');
+        // Restore the persona display name (TopBar / welcome / author) — the
+        // create path syncs personaStore for the same reason; otherwise it
+        // reverts to the hardcoded 'Oracle' default on resume. The persona's
+        // id + mood list aren't persisted on the session record yet (tracked),
+        // so only the display name is restored here.
+        if (data.persona) usePersonaStore.getState().setPersona(null, data.persona);
 
-        // Rebuild the scroll from the turn log, mirroring how live play renders
-        // (CommandBar adds a 'player' message, the DM narrative a 'dm' message).
-        // The turn-0 player_action is the synthetic "[Session Start] …" line —
-        // it isn't shown live, so skip it here too.
+        // Rebuild the scroll from the turn log, mirroring live play (CommandBar
+        // adds a 'player' message, the DM narrative a 'dm' message). Turn 0's
+        // player_action is the synthetic "[Session Start] …" line — not shown
+        // live — so skip it; a later turn that happens to start that way is
+        // a real player message and is kept.
         const chat = useChatStore.getState();
         chat.clearMessages();
         for (const turn of data.turns || []) {
           const action = turn.player_action;
-          if (action && !action.startsWith('[Session Start]')) {
+          const isSyntheticStart =
+            turn.turn_number === 0 && action && action.startsWith('[Session Start]');
+          if (action && !isSyntheticStart) {
             chat.addMessage({ type: 'player', content: action, timestamp: new Date() });
           }
           const narrative = stripWorldUpdate(turn.narrative ?? '');
@@ -48,16 +65,21 @@ export function useWorldHydration(worldId) {
         }
       } catch (err) {
         if (cancelled) return;
+        // The scroll was already cleared above, so the player sees only this
+        // error — never the previous world's chat.
         useChatStore.getState().addMessage({
           type: 'system',
           content: `[Could not load world: ${err.message}]`,
           timestamp: new Date(),
         });
+      } finally {
+        if (!cancelled) usePlayerStore.getState().setHydrating(false);
       }
     })();
 
     return () => {
       cancelled = true;
+      usePlayerStore.getState().setHydrating(false);
     };
   }, [worldId]);
 }

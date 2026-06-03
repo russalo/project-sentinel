@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'wouter';
 import { Database, Download, ArrowLeft, RefreshCw } from 'lucide-react';
 import { apiClient, API_BASE } from '../api/client';
+import { usePlayerStore } from '../stores/playerStore';
 
 // Read-only browser over recorded mock sessions (Phase 3 of training capture).
 // Lists sessions from GET /api/sessions, shows a selected session's turns, and
@@ -12,6 +13,9 @@ export default function DataBrowser() {
   const [error, setError] = useState(null);
   const [selected, setSelected] = useState(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  // Return to the active world's URL if one is loaded (Slice 4 — `/` now
+  // redirects to creation, so a bare "/" back-link would lose the game).
+  const worldId = usePlayerStore((s) => s.worldId);
 
   const fetchSessions = useCallback(
     () =>
@@ -67,10 +71,10 @@ export default function DataBrowser() {
             <RefreshCw size={16} />
           </button>
           <Link
-            href="/"
+            href={worldId ? `/w/${worldId}` : '/create'}
             className="text-sm text-dust hover:text-amber flex items-center gap-1 transition-colors"
           >
-            <ArrowLeft size={14} /> Back to game
+            <ArrowLeft size={14} /> {worldId ? 'Back to game' : 'New world'}
           </Link>
         </div>
       </header>

@@ -20,6 +20,7 @@ def _seed_session(data_dir, *, session_id=SESSION_ID, world_id=WORLD_ID, turns=N
         "world_name": "Saltmarsh",
         "dm_persona_name": "Oracle",
         "player_character_name": "Russalo",
+        "player_character_class": "Warden",
         "started_at": "2026-06-03T00:00:00+00:00",
         "active": True,
         "turns": turns
@@ -42,6 +43,7 @@ def test_get_world_returns_session_for_hydration(client, tmp_data_dir):
     assert body["worldName"] == "Saltmarsh"
     assert body["persona"] == "Oracle"
     assert body["character"] == "Russalo"
+    assert body["characterClass"] == "Warden"
     assert len(body["turns"]) == 2
     assert body["turns"][1]["narrative"] == "Fog rolls in."
 

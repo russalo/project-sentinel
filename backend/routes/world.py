@@ -43,6 +43,7 @@ def get_world(world_id: str, request: Request) -> dict:
         "worldName": session.world_name,
         "persona": session.dm_persona_name,
         "character": session.player_character_name,
+        "characterClass": session.player_character_class,
         "startedAt": session.started_at,
         "turns": session.turns,
     }
