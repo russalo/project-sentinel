@@ -113,8 +113,10 @@ export const useWorldStore = create((set) => ({
       if (w.timeOfDay !== undefined) next.timeOfDay = w.timeOfDay;
       if (w.weather !== undefined) next.weather = w.weather;
       if (w.tension !== undefined) {
-        // Keep numeric tension in state for display; map to label if needed elsewhere
-        next.tension = w.tension;
+        // Normalize to the label band WorldMetrics renders (same as hydrate),
+        // so tension is consistently a string label whether it came from a
+        // live SSE update or a resume. tensionLabel is idempotent on strings.
+        next.tension = tensionLabel(w.tension);
       }
     }
 
