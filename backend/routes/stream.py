@@ -188,6 +188,7 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
             session_id=body.session_id,
             turn_number=next_turn_number,
             summary=narrative[:200] or f"Turn {next_turn_number} completed.",
+            world_id=session.world_id or None,
         )
 
         # Both failure modes surface as structured error SSE events

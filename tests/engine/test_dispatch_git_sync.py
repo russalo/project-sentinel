@@ -66,6 +66,31 @@ def test_success_returns_ok_with_commit_hash():
     assert sent_body["session_id"] == VALID_SESSION_ID
     assert sent_body["turn_number"] == 5
     assert sent_body["summary"].startswith("The Shadowbeast")
+    # No world_id passed → key omitted (legacy single-world payload shape).
+    assert "world_id" not in sent_body
+
+
+def test_world_id_included_in_payload_when_supplied():
+    """ADR 0002: a supplied world_id is threaded into the commit payload."""
+    import json
+
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = request.content.decode()
+        return httpx.Response(200, json={"status": "committed", "commit": "deadbeef"})
+
+    world_id = "9b3c1d2e-4f5a-4b6c-8d7e-0a1b2c3d4e5f"
+    result = commit_snapshot(
+        _config(),
+        session_id=VALID_SESSION_ID,
+        turn_number=1,
+        summary="x",
+        world_id=world_id,
+        client=_client_returning(handler),
+    )
+    assert result.ok is True
+    assert json.loads(captured["body"])["world_id"] == world_id
 
 
 def test_no_changes_response_still_counts_as_success():

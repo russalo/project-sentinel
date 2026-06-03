@@ -66,6 +66,10 @@ class Session:
     # the active DM persona) rather than generic "Player"/"DM".
     player_character_name: str = ""
     dm_persona_name: str = ""
+    # The world this session belongs to (ADR 0002). Additive in this slice —
+    # threaded into git-sync commit messages; per-world data isolation lands
+    # in a later slice. Empty on legacy sessions written before world_id.
+    world_id: str = ""
 
 
 def session_file_path(data_dir: Path, session_id: str) -> Path:
@@ -113,6 +117,7 @@ def read_session(data_dir: Path, session_id: str) -> Session | None:
         active=bool(raw.get("active", True)),
         player_character_name=raw.get("player_character_name", ""),
         dm_persona_name=raw.get("dm_persona_name", ""),
+        world_id=raw.get("world_id", ""),
     )
 
 
@@ -142,6 +147,7 @@ def _build_session_payload(session: Session, log_entry: str, turn_number: int) -
                     "active": session.active,
                     "player_character_name": session.player_character_name,
                     "dm_persona_name": session.dm_persona_name,
+                    "world_id": session.world_id,
                 },
             }
         ],

@@ -107,6 +107,34 @@ def test_commit_snapshot_message_format_matches_spec(client, session_uuid, tmp_p
         f"[sentinel] session={expected_session_prefix} "
         f"turn=7 — Kael discovers the hidden door."
     )
+    # No world_id given → no world= tag (legacy single-world shape preserved).
+    assert "world=" not in title
+
+
+def test_commit_snapshot_message_includes_world_tag(client, session_uuid, tmp_path):
+    """Per ADR 0002, a supplied world_id prefixes the title as
+    ``world=<8> session=<8> ...`` and its full value lands in the body."""
+    _write_data_file(tmp_path)
+    world_id = "9b3c1d2e-4f5a-4b6c-8d7e-0a1b2c3d4e5f"
+
+    response = client.post(
+        "/tools/commit_snapshot",
+        json={
+            "session_id": session_uuid,
+            "turn_number": 2,
+            "summary": "The bell tolls.",
+            "world_id": world_id,
+        },
+    )
+    assert response.status_code == 200
+
+    head = _read_head_commit(tmp_path)
+    title = head.message.split("\n")[0]
+    assert title == (
+        f"[sentinel] world={world_id[:8]} session={session_uuid[:8]} "
+        f"turn=2 — The bell tolls."
+    )
+    assert f"Full world_id: {world_id}" in head.message
 
 
 def test_commit_snapshot_full_session_id_appears_in_body(
