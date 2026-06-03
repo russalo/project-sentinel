@@ -221,9 +221,11 @@ server still shared, or vice versa) writes some state to the wrong tree.
 
 Once set, a new world is provisioned automatically: `POST /api/session/new`
 mints a `world_id` and calls git-sync's `init_world` (`git init` + baseline +
-first commit) before the first write. The frontend must send the `world_id`
-back on `/api/stream` (it's in the `NewSessionResponse`); full `/w/<world_id>`
-routing is Slice 4. Reset a single world with
+first commit) before the first write. **No frontend change is required to flip
+the cutover** — `/api/stream` locates a turn's world from its `session_id`
+(the session is the authoritative routing key), so the client need not send
+`world_id`. (Slice 4's `/w/<world_id>` frontend routing is a resume/share UX
+nicety, not a cutover prerequisite.) Reset a single world with
 `just reset-world --world-id <id>` (reads `$SENTINEL_WORLDS_ROOT`).
 
 Do **not** flip the cutover unless `tests/test_world_isolation_tracer_soak.py`

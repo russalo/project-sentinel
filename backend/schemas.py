@@ -93,11 +93,12 @@ class NewSessionResponse(_CamelModel):
 class StreamRequest(_CamelModel):
     action: str
     session_id: str
-    # The world this turn belongs to (ADR 0002 Slice 3). The frontend gets it
-    # from NewSessionResponse and sends it back so the backend can read the
-    # session + world state from that world's own tree when
-    # SENTINEL_WORLDS_ROOT is set. Optional: omitted → the shared tree (legacy
-    # behavior, pre-cutover). Full /w/<world_id> routing is Slice 4.
+    # Optional, advisory only. The backend does NOT route on this — it locates
+    # the session's own world tree authoritatively from the session_id
+    # (find_session_data_dir), so a client need not send world_id and a wrong
+    # one can't mis-route a read. Kept for forward-compat: Slice 4's
+    # /w/<world_id> frontend routing carries it in the URL, and it's useful for
+    # telemetry. (ADR 0002 Slice 3.)
     world_id: str | None = None
 
 

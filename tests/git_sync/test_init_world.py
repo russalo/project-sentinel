@@ -67,6 +67,23 @@ def test_init_world_idempotent(client, worlds_root):
     assert git.Repo(worlds_root / WORLD_UUID).head.commit.hexsha == head_before
 
 
+def test_init_world_completes_half_provisioned_repo(client, worlds_root):
+    """A repo with .git but no HEAD (a prior init died before its first commit)
+    must be COMPLETED by a retry, not reported as 'exists' — otherwise the
+    world is wedged forever (commit_snapshot needs a HEAD)."""
+    world_dir = worlds_root / WORLD_UUID
+    (world_dir / "data").mkdir(parents=True)
+    git.Repo.init(world_dir)  # .git exists, but NO commit → unborn HEAD
+    assert (world_dir / ".git").is_dir()
+    assert not git.Repo(world_dir).head.is_valid()
+
+    resp = client.post("/tools/init_world", json={"world_id": WORLD_UUID})
+    assert resp.status_code == 200
+    # Completed (not the "exists" short-circuit that would leave it headless).
+    assert resp.json()["status"] == "initialized"
+    assert git.Repo(world_dir).head.is_valid()
+
+
 def test_init_world_canonicalizes_world_id(client, worlds_root):
     """A no-hyphen UUID provisions the canonical hyphenated dir (no fragmentation)."""
     resp = client.post(

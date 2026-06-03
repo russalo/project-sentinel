@@ -131,8 +131,16 @@ async def init_world(body: dict):
     repo_path = _world_repo_path(world_id)
     canonical = repo_path.name
 
+    # Idempotency keys on a valid HEAD, not just .git existence: a prior call
+    # that created .git but died before the initial commit leaves a repo with
+    # NO HEAD, against which commit_snapshot fails forever. Such a
+    # half-provisioned world must be *completed*, not reported as "exists".
     if (repo_path / ".git").exists():
-        return {"status": "exists", "world_id": canonical}
+        try:
+            if git.Repo(repo_path).head.is_valid():
+                return {"status": "exists", "world_id": canonical}
+        except Exception:
+            pass  # corrupt/half-init repo → fall through and (re)complete it
 
     try:
         # Baseline: just enough for a first commit to exist. Only the mutable
@@ -142,6 +150,8 @@ async def init_world(body: dict):
         (repo_path / "data").mkdir(parents=True, exist_ok=True)
         (repo_path / "data" / ".gitkeep").write_text("", encoding="utf-8")
 
+        # git.Repo.init is idempotent on an existing .git, so completing a
+        # half-provisioned world reuses it rather than erroring.
         repo = git.Repo.init(repo_path)
         with repo.config_writer() as cw:
             cw.set_value("user", "name", "Sentinel")

@@ -81,6 +81,19 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail=f"world provisioning failed: {init_result.error}",
             )
+        # "skipped" means git-sync has no SENTINEL_WORLDS_ROOT while the backend
+        # does — the two disagree on per-world mode. Treating that as success
+        # would write/commit to the shared repo while the backend reads the
+        # (empty) per-world tree → every turn 404s. Fail loudly on the misconfig.
+        if init_result.body.get("status") == "skipped":
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=(
+                    "world provisioning skipped — git-sync has no "
+                    "SENTINEL_WORLDS_ROOT but the backend does; the services "
+                    "disagree on per-world mode. Set the same value everywhere."
+                ),
+            )
 
     # Layer 2: resolve rich preset content for the four preset-backed
     # fields. Each call silently returns None when no preset file is
