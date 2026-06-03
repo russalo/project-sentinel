@@ -63,6 +63,27 @@ export const useWorldStore = create((set) => ({
     tension: 'calm',
   }),
 
+  // Replace the store with a world's persisted state on /w/<id> resume (ADR
+  // 0002 Slice 5). The backend (GET /api/world/<id> → worldState) returns the
+  // canonical entity dicts, which are flat {name, …} objects keyed by name —
+  // the same shape applyUpdate maintains — so they load directly. Missing
+  // fields fall back to the current value, and arrays default to [].
+  hydrate: (worldState) => set((state) => {
+    if (!worldState || typeof worldState !== 'object') return {};
+    const arr = (v) => (Array.isArray(v) ? v : []);
+    return {
+      worldName: worldState.worldName ?? state.worldName,
+      currentLocation: worldState.currentLocation ?? state.currentLocation,
+      timeOfDay: worldState.timeOfDay ?? state.timeOfDay,
+      weather: worldState.weather ?? state.weather,
+      tension: worldState.tension ?? state.tension,
+      characters: arr(worldState.characters),
+      locations: arr(worldState.locations),
+      factions: arr(worldState.factions),
+      items: arr(worldState.items),
+    };
+  }),
+
   // Apply a WorldUpdate from the SSE stream (name-based upsert/remove)
   applyUpdate: (worldUpdate) => set((state) => {
     const next = { ...state };
@@ -151,21 +172,5 @@ export const useWorldStore = create((set) => ({
     }
 
     return next;
-  }),
-
-  // Bulk hydration from API
-  hydrate: (worldState) => set({
-    worldName: worldState.name || '',
-    genre: worldState.genre || '',
-    tone: worldState.tone || '',
-    currentLocation: worldState.currentLocation || '',
-    timeOfDay: worldState.timeOfDay || '',
-    weather: worldState.weather || '',
-    locations: worldState.locations || [],
-    characters: worldState.characters || [],
-    factions: worldState.factions || [],
-    items: worldState.items || [],
-    day: worldState.day || 1,
-    tension: worldState.tension || 'calm',
   }),
 }));

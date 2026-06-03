@@ -13,6 +13,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Request
 
 from ..state import sessions as session_state
+from ..state.world_context import load_world_context
 from ..state.world_root import find_world_session
 
 router = APIRouter(prefix="/api")
@@ -31,19 +32,41 @@ def get_world(world_id: str, request: Request) -> dict:
         settings.worlds_root, world_id, default_data_dir=settings.data_dir
     )
     session = None
+    data_dir = None
     if found is not None:
         data_dir, session_id = found
         session = session_state.read_session(data_dir, session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="world not found")
 
+    # World state for panel rehydration (ADR 0002 Slice 5). Read from the same
+    # per-world data dir the session was found in, so a resumed world shows its
+    # entities/locations/factions/items, not just the narrative scroll. The
+    # canonical entity dicts are flat {name, …} objects — the shape worldStore
+    # already keys by name — so the frontend loads them as-is.
+    ctx = load_world_context(data_dir, session_id=session.session_id)
+    world_state = {
+        "worldName": ctx.world_name,
+        "currentLocation": ctx.current_location,
+        "timeOfDay": ctx.time_of_day,
+        "weather": ctx.weather,
+        "tension": ctx.tension,
+        "characters": ctx.characters,
+        "locations": ctx.locations,
+        "factions": ctx.factions,
+        "items": ctx.items,
+    }
+
     return {
         "worldId": world_id,
         "sessionId": session.session_id,
         "worldName": session.world_name,
         "persona": session.dm_persona_name,
+        "personaId": session.persona_id,
+        "mood": session.mood,
         "character": session.player_character_name,
         "characterClass": session.player_character_class,
         "startedAt": session.started_at,
         "turns": session.turns,
+        "worldState": world_state,
     }

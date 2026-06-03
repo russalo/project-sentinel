@@ -44,12 +44,21 @@ export function useWorldHydration(worldId) {
         player.setWorldId(worldId);
         player.setWorldName(data.worldName || 'Unnamed World');
         player.setCharacter(data.character || '', data.characterClass || '');
-        // Restore the persona display name (TopBar / welcome / author) — the
-        // create path syncs personaStore for the same reason; otherwise it
-        // reverts to the hardcoded 'Oracle' default on resume. The persona's
-        // id + mood list aren't persisted on the session record yet (tracked),
-        // so only the display name is restored here.
-        if (data.persona) usePersonaStore.getState().setPersona(null, data.persona);
+        // Restore the persona (TopBar / welcome / author / current mood) — the
+        // create path syncs personaStore for the same reason, else it reverts
+        // to the hardcoded 'Oracle'/'neutral' defaults on resume. The persona's
+        // available-mood *list* isn't persisted (preset metadata) so the mood
+        // dropdown options stay at the store default — tracked follow-up; the
+        // id, display name, and selected mood are restored.
+        if (data.persona || data.personaId) {
+          usePersonaStore.getState().setPersona(data.personaId || null, data.persona || data.personaId);
+        }
+        if (data.mood) usePersonaStore.getState().setMood(data.mood);
+
+        // Rehydrate the world-state panels (entities/locations/factions/items +
+        // metadata) so a reopened world looks as it was left, not just the
+        // narrative. The store was reset() above, so this is a clean load.
+        useWorldStore.getState().hydrate(data.worldState);
 
         // Rebuild the scroll from the turn log, mirroring live play (CommandBar
         // adds a 'player' message, the DM narrative a 'dm' message). Turn 0's
