@@ -67,4 +67,15 @@ describe('WorldList', () => {
     // A backend outage must NOT masquerade as "you have no worlds, make one".
     expect(screen.queryByRole('link', { name: /Begin a new world/ })).toBeNull()
   })
+
+  it('treats a 200 with a non-array body as an error, not an empty account', async () => {
+    // e.g. a proxy returns 200 with an HTML/JSON error page.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) })),
+    )
+    render(<WorldList />)
+    expect(await screen.findByText(/Could not load worlds/)).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /Begin a new world/ })).toBeNull()
+  })
 })

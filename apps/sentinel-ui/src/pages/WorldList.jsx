@@ -15,7 +15,11 @@ export default function WorldList() {
       apiClient
         .get('/worlds')
         .then((w) => {
-          setWorlds(Array.isArray(w) ? w : []);
+          // A 200 with a non-array body (e.g. a proxy's HTML/JSON error page)
+          // is an error, not an empty account — surface it rather than render
+          // the "No worlds yet" create CTA.
+          if (!Array.isArray(w)) throw new Error('unexpected response shape');
+          setWorlds(w);
           setError(null);
         })
         .catch((e) => {
