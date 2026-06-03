@@ -40,10 +40,18 @@ def get_world(world_id: str, request: Request) -> dict:
         raise HTTPException(status_code=404, detail="world not found")
 
     # World state for panel rehydration (ADR 0002 Slice 5). Read from the same
-    # per-world data dir the session was found in, so a resumed world shows its
+    # data dir the session was found in, so a resumed world shows its
     # entities/locations/factions/items, not just the narrative scroll. The
     # canonical entity dicts are flat {name, …} objects — the shape worldStore
     # already keys by name — so the frontend loads them as-is.
+    #
+    # Scoping note: in per-world mode (SENTINEL_WORLDS_ROOT set) data_dir is the
+    # world's own tree → correctly isolated. In legacy/shared mode it's the one
+    # shared tree, so this returns the global shared state — exactly what the
+    # live turn loop (stream.py's load_world_context) reads in that mode too, so
+    # resume panels match live panels. True per-world panel isolation is the
+    # cutover's job, not something legacy mode can provide (shared-tree entities
+    # aren't world-tagged). See docs/BACKLOG.md.
     ctx = load_world_context(data_dir, session_id=session.session_id)
     world_state = {
         "worldName": ctx.world_name,

@@ -82,7 +82,12 @@ export const useWorldStore = create((set) => ({
   // fields fall back to the current value, and arrays default to [].
   hydrate: (worldState) => set((state) => {
     if (!worldState || typeof worldState !== 'object') return {};
-    const arr = (v) => (Array.isArray(v) ? v : []);
+    // Fall back to the current value when a field is absent — the endpoint
+    // always sends all four arrays (load_world_context returns [] for empty),
+    // so a missing one means a malformed/partial payload; preserve rather than
+    // wipe. (In the normal flow hydrate runs right after reset(), so current
+    // is already [].)
+    const arr = (v, fallback) => (Array.isArray(v) ? v : fallback);
     return {
       // worldName is session-owned (playerStore) — don't mirror it here, where
       // ctx.world_name can be the 'Unknown Realm' placeholder before any
@@ -91,10 +96,10 @@ export const useWorldStore = create((set) => ({
       timeOfDay: worldState.timeOfDay ?? state.timeOfDay,
       weather: worldState.weather ?? state.weather,
       tension: worldState.tension != null ? tensionLabel(worldState.tension) : state.tension,
-      characters: arr(worldState.characters),
-      locations: arr(worldState.locations),
-      factions: arr(worldState.factions),
-      items: arr(worldState.items),
+      characters: arr(worldState.characters, state.characters),
+      locations: arr(worldState.locations, state.locations),
+      factions: arr(worldState.factions, state.factions),
+      items: arr(worldState.items, state.items),
     };
   }),
 

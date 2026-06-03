@@ -39,6 +39,7 @@ def test_get_world_returns_session_for_hydration(client, tmp_data_dir):
     _seed_session(tmp_data_dir)
     # Seed a canonical entity so worldState rehydration has something to return.
     entities = tmp_data_dir / "state" / "core" / "entities"
+    entities.mkdir(parents=True, exist_ok=True)
     (entities / "kael.json").write_text(
         json.dumps({"name": "Kael", "status": "alive"}), encoding="utf-8"
     )
