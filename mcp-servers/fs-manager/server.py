@@ -258,7 +258,12 @@ def _resolve_world_root(world_id: str | None) -> Path:
     if not WORLDS_ROOT or not world_id:
         return REPO_ROOT
     try:
-        uuid.UUID(world_id)
+        # Canonicalize to the standard hyphenated lowercase form before it
+        # becomes a path component. uuid.UUID() accepts several spellings of
+        # the same value (no hyphens, braces, urn: prefix, mixed case), and
+        # using the raw string would route those to *different* directories —
+        # state fragmentation: two trees for one logical world.
+        canonical_world_id = str(uuid.UUID(world_id))
     except (ValueError, AttributeError, TypeError):
         raise HTTPException(
             status_code=422,
@@ -268,7 +273,7 @@ def _resolve_world_root(world_id: str | None) -> Path:
             },
         )
     base = Path(WORLDS_ROOT).resolve()
-    root = (base / world_id).resolve()
+    root = (base / canonical_world_id).resolve()
     if root.parent != base:
         raise HTTPException(
             status_code=403,
@@ -308,19 +313,24 @@ def execute_update(
         content = (
             json.dumps(data, indent=2) if isinstance(data, (dict, list)) else str(data)
         )
-        abs_path.write_text(content)
+        # Pin utf-8 on every read/write: payloads carry LLM-generated text
+        # (emoji, smart quotes, non-ASCII names), and the project targets
+        # Windows too, where the default encoding is cp1252 — an unpinned
+        # write_text/open would raise UnicodeEncodeError or corrupt content.
+        abs_path.write_text(content, encoding="utf-8")
         return {"status": "created", "path": target_file}
 
     elif operation == "update":
         check_protected_fields(data, target_file)
 
         if abs_path.exists() and target_file.endswith(".json"):
-            existing = json.loads(abs_path.read_text())
+            existing = json.loads(abs_path.read_text(encoding="utf-8"))
             if isinstance(existing, dict) and isinstance(data, dict):
                 existing.update(data)
                 data = existing
         abs_path.write_text(
-            json.dumps(data, indent=2) if isinstance(data, (dict, list)) else str(data)
+            json.dumps(data, indent=2) if isinstance(data, (dict, list)) else str(data),
+            encoding="utf-8",
         )
         return {"status": "updated", "path": target_file}
 
@@ -333,7 +343,7 @@ def execute_update(
                     "detail": "append operation requires string data.",
                 },
             )
-        with open(abs_path, "a") as f:
+        with open(abs_path, "a", encoding="utf-8") as f:
             f.write("\n" + data)
         return {"status": "appended", "path": target_file}
 
@@ -402,7 +412,7 @@ async def apply_world_update(request: Request):
     # the sessions directory even if the schema-level check regresses.
     abs_log = _resolve_session_log_path(payload["session_id"], root=world_root)
     abs_log.parent.mkdir(parents=True, exist_ok=True)
-    with open(abs_log, "a") as f:
+    with open(abs_log, "a", encoding="utf-8") as f:
         f.write(f"\n\n---\n\n{payload['log_entry']}")
 
     logger.info(f"apply_world_update — success, {len(results)} operations executed.")
@@ -424,7 +434,7 @@ async def read_state(path: str):
             detail={"code": "NOT_FOUND", "detail": f"{path} does not exist."},
         )
 
-    content = abs_path.read_text()
+    content = abs_path.read_text(encoding="utf-8")
     if path.endswith(".json"):
         return {"path": path, "data": json.loads(content)}
     return {"path": path, "data": content}

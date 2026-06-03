@@ -128,6 +128,27 @@ def test_no_world_id_uses_repo_root_even_when_worlds_root_set(
     assert _count_files_under(worlds_root) == 0
 
 
+def test_world_id_canonicalized_before_path_resolution(
+    client, session_uuid, worlds_root, tmp_path
+):
+    """A valid UUID in non-canonical spelling (no hyphens) must route to the
+    SAME tree as its canonical hyphenated form — otherwise one logical world
+    fragments across duplicate directories."""
+    no_hyphens = WORLD_UUID.replace("-", "")
+    assert no_hyphens != WORLD_UUID  # sanity: the two spellings differ
+
+    response = client.post(
+        "/tools/apply_world_update",
+        params={"world_id": no_hyphens},
+        json=_payload(session_uuid),
+    )
+    assert response.status_code == 200
+
+    # Written under the canonical hyphenated dir, NOT a no-hyphen sibling.
+    assert (worlds_root / WORLD_UUID / COMMUNITY_TARGET).is_file()
+    assert not (worlds_root / no_hyphens).exists()
+
+
 # ── Backward compatibility: WORLDS_ROOT unset ─────────────────────────
 
 

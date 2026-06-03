@@ -54,7 +54,11 @@ def get_repo(world_id: str | None = None) -> git.Repo:
     if not WORLDS_ROOT or not world_id:
         return git.Repo(REPO_ROOT)
     try:
-        uuid.UUID(world_id)
+        # Canonicalize before it becomes a path component — uuid.UUID() accepts
+        # multiple spellings of the same value (no hyphens, braces, mixed case),
+        # which would otherwise route to distinct repos: fragmentation, one
+        # logical world split across duplicate trees. Mirrors fs-manager.
+        canonical_world_id = str(uuid.UUID(world_id))
     except (ValueError, AttributeError, TypeError):
         raise HTTPException(
             status_code=422,
@@ -64,7 +68,7 @@ def get_repo(world_id: str | None = None) -> git.Repo:
             },
         )
     base = Path(WORLDS_ROOT).resolve()
-    repo_path = (base / world_id).resolve()
+    repo_path = (base / canonical_world_id).resolve()
     if repo_path.parent != base:
         raise HTTPException(
             status_code=403,
