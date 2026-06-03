@@ -244,4 +244,5 @@ but is no longer the sole secret.
   `backend/state/sessions.py` (`_require_uuid`), `docs/WORKSPACE.md` (Caddy /
   exposure), `apps/sentinel-ui/.env.production` (`VITE_API_URL`).
 - **Produced by:** the 2026-06-03 design conversation ("draft adr 0003"); auth
-  model, exposure mechanism, and closed-beta audience ratified by the user.
+  model, exposure mechanism, and closed-beta audience ratified by Russell
+  Pfister.
