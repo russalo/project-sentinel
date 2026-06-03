@@ -13,6 +13,7 @@ import { PersonaSelector } from '../components/world-creation/PersonaSelector';
 import { MoodSelector } from '../components/world-creation/MoodSelector';
 import { WorldModifiers } from '../components/world-creation/WorldModifiers';
 import { LiveSeedPreview } from '../components/world-creation/LiveSeedPreview';
+import heroImg from '../assets/generated/hero.webp';
 
 // Mock personas. The `description` field is consumed by the backend
 // (Layer 1.5 persona resolution) to give the DM a meaningful voice/tone
@@ -205,10 +206,21 @@ export default function WorldCreation() {
 
   return (
     <div className="min-h-screen bg-void flex flex-col">
-      {/* Header */}
-      <header className="bg-codex border-b border-border px-6 py-4">
-        <h1 className="font-cinzel text-2xl text-amber">⚔ SENTINEL</h1>
-        <p className="text-dust text-sm mt-1">Forge a new world</p>
+      {/* Header — key art behind the title, fading into the page (decorative). */}
+      <header className="relative border-b border-border overflow-hidden">
+        <img
+          src={heroImg}
+          alt=""
+          aria-hidden="true"
+          loading="eager"
+          fetchPriority="high"
+          className="absolute inset-0 w-full h-full object-cover object-center opacity-60"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-void via-void/70 to-void/20" />
+        <div className="relative px-6 py-10">
+          <h1 className="font-cinzel text-3xl text-amber drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]">⚔ SENTINEL</h1>
+          <p className="text-ink/80 text-sm mt-1">Forge a new world</p>
+        </div>
       </header>
 
       {/* Main content */}
