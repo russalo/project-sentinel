@@ -113,7 +113,9 @@ export default function WorldList() {
             <img
               src={emptyStateImg}
               alt="An empty codex, awaiting its first world"
-              className="mx-auto mb-6 w-full max-w-sm rounded opacity-90"
+              width={1000}
+              height={622}
+              className="mx-auto mb-6 w-full max-w-sm h-auto rounded opacity-90"
             />
             <p className="text-dust mb-4">No worlds yet.</p>
             <Link

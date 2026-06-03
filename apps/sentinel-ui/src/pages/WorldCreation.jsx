@@ -212,6 +212,8 @@ export default function WorldCreation() {
           src={heroImg}
           alt=""
           aria-hidden="true"
+          loading="eager"
+          fetchPriority="high"
           className="absolute inset-0 w-full h-full object-cover object-center opacity-60"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-void via-void/70 to-void/20" />
