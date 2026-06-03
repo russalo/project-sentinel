@@ -77,7 +77,9 @@ def _world_lock(world_id: str | None) -> "FileLock":
             canonical = "invalid"
         lock_dir = Path(WORLDS_ROOT).resolve() / ".locks"
     else:
-        lock_dir = Path(REPO_ROOT) / ".sentinel-locks"
+        # .resolve() so fs-manager and git-sync agree on the shared lock path
+        # even if their REPO_ROOT differs by a symlink or cwd.
+        lock_dir = Path(REPO_ROOT).resolve() / ".sentinel-locks"
         canonical = "shared"
     try:
         lock_dir.mkdir(parents=True, exist_ok=True)
