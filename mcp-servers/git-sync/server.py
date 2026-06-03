@@ -548,10 +548,37 @@ async def rollback_to(body: dict):
         lock.release()
 
 
+# The MCP write layer must stay loopback/tailnet-only (ADR 0003 §3): it's the
+# only path to disk and has no endpoint auth, so its safety is network topology —
+# Caddy proxies only the backend's /api, never :8010/:8012. Default to loopback
+# and refuse an all-interfaces bind (which would expose it on every interface,
+# including any public one) unless an operator explicitly opts in.
+DEFAULT_BIND_HOST = "127.0.0.1"
+_ALL_INTERFACES_HOSTS = {"0.0.0.0", "::", ""}
+
+
+def _check_bind_host(host: str) -> None:
+    """Raise SystemExit on an all-interfaces bind unless SENTINEL_ALLOW_PUBLIC_BIND.
+
+    Explicit loopback or a specific tailnet/host IP is allowed (an operator's
+    deliberate choice); ``0.0.0.0``/``::`` (every interface) is the accidental
+    public-exposure footgun this guards against.
+    """
+    if host in _ALL_INTERFACES_HOSTS and not os.environ.get(
+        "SENTINEL_ALLOW_PUBLIC_BIND"
+    ):
+        raise SystemExit(
+            f"git-sync: refusing to bind {host!r} — the MCP write layer must stay "
+            "loopback/tailnet-only (ADR 0003 §3; Caddy must never proxy :8012). "
+            "Set SENTINEL_ALLOW_PUBLIC_BIND=1 to override (you almost never should)."
+        )
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Sentinel git-sync MCP Server")
     parser.add_argument("--port", type=int, default=8012)
-    parser.add_argument("--host", type=str, default="127.0.0.1")
+    parser.add_argument("--host", type=str, default=DEFAULT_BIND_HOST)
     args = parser.parse_args()
+    _check_bind_host(args.host)
     logger.info(f"Starting git-sync on {args.host}:{args.port}")
     uvicorn.run(app, host=args.host, port=args.port)
