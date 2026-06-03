@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'wouter';
 import { Globe, Plus, Database, RefreshCw, Trash2 } from 'lucide-react';
 import { apiClient } from '../api/client';
+import emptyStateImg from '../assets/generated/empty-state.webp';
 
 // The "my worlds" landing (ADR 0002 Slice 5). Lists provisioned worlds from
 // GET /api/worlds (most-recently-played first); each resumes at /w/<worldId>.
@@ -109,6 +110,11 @@ export default function WorldList() {
 
         {worlds !== null && !error && worlds.length === 0 && (
           <div className="text-center py-16 border border-border rounded bg-codex">
+            <img
+              src={emptyStateImg}
+              alt="An empty codex, awaiting its first world"
+              className="mx-auto mb-6 w-full max-w-sm rounded opacity-90"
+            />
             <p className="text-dust mb-4">No worlds yet.</p>
             <Link
               href="/create"
