@@ -224,9 +224,10 @@ in `GEMINI.md`.
 - `just` is the command runner. Add new recipes to `justfile` rather than creating
   standalone scripts unless the logic is complex enough to warrant a separate file.
 - **Local play/smoke sessions commit to the checked-out branch.** The
-  engine's `git-sync` writes a per-turn `[sentinel] session=… turn=…`
-  commit to whatever branch is checked out — normally `master` — on every
-  turn. Running a playthrough locally therefore pollutes `master` and
+  engine's `git-sync` writes a per-turn
+  `[sentinel] world=… session=… turn=…` commit (the `world=` prefix since
+  ADR 0002 Slice 1 threads a per-session `world_id`) to whatever branch is
+  checked out — normally `master` — on every turn. Running a playthrough locally therefore pollutes `master` and
   diverges it from origin (this is exactly what produced the 22 stray
   commits cleaned up on 2026-05-30). Run play/smoke sessions on a
   throwaway branch, or reset/clean up afterward, and never push those
@@ -328,7 +329,7 @@ The two nodes communicate over a Tailscale mesh in production; locally they run 
 - `data/{lore,state}/community/<pack>/` — community packs, additive only
 - Protected fields (`unique_id`, `world_seed`, `namespace`, `created_at`, `canon`, `core_faction_id`) are immutable to community payloads — enforced via `x-sentinel-protected: true` in the JSON schemas.
 
-**Backend** — `backend/` is a FastAPI app on `:8001`. It serves `GET /healthz`, `POST /api/session/new`, and `POST /api/stream` (SSE). It reads state from `data/state/*.json` directly, calls `engine/` for turn handling, and dispatches writes through `engine.apply_world_update` → fs-manager → git-sync. No ORM, no database queries.
+**Backend** — `backend/` is a FastAPI app on `:8001`. It serves `GET /healthz`, `POST /api/session/new`, and `POST /api/stream` (SSE). It reads state from `data/state/*.json` directly, calls `engine/` for turn handling, and dispatches writes through `engine.apply_world_update` → fs-manager → git-sync. No ORM, no database queries. Per **[ADR 0002](docs/adr/0002-world-identity-and-isolation.md)**, every session is minted a `world_id` (UUID) that is threaded through both dispatch calls; when `SENTINEL_WORLDS_ROOT` is set, the MCP servers route to a per-world `data/` tree / git repo under it. The env var is **unset by default** (per-world routing dormant; single shared tree) until the ADR 0002 Slice 3 cutover.
 
 **Frontend** — `apps/sentinel-ui/` (`@sentinel/ui`), React 19 + Vite + Tailwind v3. Talks to the FastAPI backend via fetch + SSE. React is the ratified 1.0 frontend stack as of 2026-04-15 (see `docs/VISION.md` § "Resolved decisions"); normal feature-work rules apply.
 

@@ -4,6 +4,18 @@
 
 Sentinel is designed to ingest community content without ever risking corruption of the primary world state. This document defines the exact rules that govern how Core and Community content coexist.
 
+> **World isolation (ADR 0002).** Sentinel is *one player per world*: each player
+> gets an isolated world, served concurrently. As of the ADR 0002 Slices 1–2, a
+> `world_id` (UUID) is minted per session and threaded through the backend, the
+> engine dispatcher, and the git-sync commit message, and both MCP servers can
+> resolve a per-world `data/` tree / git repo under the `SENTINEL_WORLDS_ROOT`
+> environment variable. **`SENTINEL_WORLDS_ROOT` is unset by default**, so per-world
+> routing is dormant and everything below describes the live default: a single
+> shared `data/` tree at the repo root. When the Slice 3 cutover sets the env var,
+> the entire `data/` layout shown in §1 is rooted at `<SENTINEL_WORLDS_ROOT>/<world_id>/`
+> instead. The Core-vs-Community namespace rules in this document apply *within*
+> each world's tree unchanged. See [ADR 0002](docs/adr/0002-world-identity-and-isolation.md).
+
 ---
 
 ## 1. Namespace Separation

@@ -75,3 +75,4 @@ changed its mind.
 ## Index
 
 - [ADR 0001 — `data/` is the canonical source of truth](0001-data-canonical-source-of-truth.md)
+- [ADR 0002 — World identity & isolation (one player per world, concurrently)](0002-world-identity-and-isolation.md) — _Accepted 2026-06-02_
