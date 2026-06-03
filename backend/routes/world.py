@@ -30,6 +30,17 @@ def list_worlds(request: Request) -> list[dict]:
 
     Most-recently-played first. Each entry links to ``/w/<worldId>`` in the UI.
     Empty list when no worlds exist (the picker shows a create CTA).
+
+    Scope note (ADR 0003): this returns *every* world on the server with no
+    per-tester scoping — there are no accounts in the closed-beta model, so the
+    backend has no notion of "whose world this is." That is an **accepted**
+    limitation under ADR 0003's threat model ("the risk at test scale is cost
+    and abuse, not data confidentiality; worlds are throwaway test data, nobody's
+    secrets are in them"). The world metadata here (name, character, persona,
+    turn count) is non-sensitive, and the per-world token still gates *resuming*
+    a world (GET /world/{id}) — knowing a world_id is not enough to open it.
+    Per-tester scoping is deferred to the open-signup/accounts phase (ADR 0003
+    § "Out of scope — vision"); tracked in docs/BACKLOG.md.
     """
     settings = request.app.state.settings
     out: list[dict] = []

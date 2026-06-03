@@ -23,22 +23,43 @@ const storage = () => {
   }
 };
 
+// Even when localStorage is *present*, the individual ops can throw —
+// setItem hits QuotaExceededError, and Safari private mode throws on write —
+// so guard each call. A failed token write must never crash world creation;
+// it just means resume/turns won't carry the token (acceptable: enforcement is
+// off in the only contexts where storage is unavailable, and the worst case is
+// a re-auth, not a crash).
 export function setWorldToken(worldId, token) {
   if (!worldId || !token) return;
   const s = storage();
-  if (s) s.setItem(KEY_PREFIX + worldId, token);
+  if (!s) return;
+  try {
+    s.setItem(KEY_PREFIX + worldId, token);
+  } catch {
+    /* quota / private-mode / locked-down — degrade to "no stored token" */
+  }
 }
 
 export function getWorldToken(worldId) {
   if (!worldId) return null;
   const s = storage();
-  return s ? s.getItem(KEY_PREFIX + worldId) : null;
+  if (!s) return null;
+  try {
+    return s.getItem(KEY_PREFIX + worldId);
+  } catch {
+    return null;
+  }
 }
 
 export function clearWorldToken(worldId) {
   if (!worldId) return;
   const s = storage();
-  if (s) s.removeItem(KEY_PREFIX + worldId);
+  if (!s) return;
+  try {
+    s.removeItem(KEY_PREFIX + worldId);
+  } catch {
+    /* nothing to do — best-effort cleanup */
+  }
 }
 
 // Header object for a world-scoped request — empty when no token is held, so
