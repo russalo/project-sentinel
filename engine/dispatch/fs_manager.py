@@ -63,6 +63,7 @@ def apply_world_update(
     config: Config,
     payload: dict[str, Any],
     *,
+    world_id: str | None = None,
     client: httpx.Client | None = None,
     timeout: float = 30.0,
 ) -> DispatchResult:
@@ -105,9 +106,15 @@ def apply_world_update(
     if owns_client:
         client = httpx.Client(timeout=timeout)
 
+    # world_id is routing metadata (which world's tree to write), not update
+    # content, so it rides as a query param rather than in the schema-validated
+    # body (ADR 0002). Omitted entirely when None → fs-manager uses the legacy
+    # shared root.
+    params = {"world_id": world_id} if world_id is not None else None
+
     try:
         try:
-            response = client.post(url, json=payload)
+            response = client.post(url, json=payload, params=params)
         except httpx.RequestError as exc:
             return DispatchResult(
                 ok=False,

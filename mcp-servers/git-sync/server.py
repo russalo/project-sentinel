@@ -14,6 +14,8 @@ Dependencies:
 
 import argparse
 import logging
+import os
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -28,6 +30,12 @@ logger = logging.getLogger("git-sync")
 
 REPO_ROOT = Path(__file__).parent.parent.parent
 
+# Per-world isolation (ADR 0002). When SENTINEL_WORLDS_ROOT is set, a commit
+# carrying a world_id targets that world's own repo at
+# <SENTINEL_WORLDS_ROOT>/<world_id>/ instead of the legacy shared REPO_ROOT.
+# Unset by default → today's behavior. Read at call time (tests monkeypatch).
+WORLDS_ROOT = os.environ.get("SENTINEL_WORLDS_ROOT")
+
 app = FastAPI(
     title="Sentinel git-sync MCP Server",
     description="Automated version control for Project Sentinel world state.",
@@ -35,8 +43,37 @@ app = FastAPI(
 )
 
 
-def get_repo() -> git.Repo:
-    return git.Repo(REPO_ROOT)
+def get_repo(world_id: str | None = None) -> git.Repo:
+    """Open the git repo for a request (ADR 0002).
+
+    With ``SENTINEL_WORLDS_ROOT`` set and a ``world_id`` given, opens that
+    world's own repo at ``<WORLDS_ROOT>/<world_id>/``; otherwise the legacy
+    shared ``REPO_ROOT``. ``world_id`` is a path component → UUID-validated
+    (422) and the resolved path is asserted under WORLDS_ROOT.
+    """
+    if not WORLDS_ROOT or not world_id:
+        return git.Repo(REPO_ROOT)
+    try:
+        uuid.UUID(world_id)
+    except (ValueError, AttributeError, TypeError):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "INVALID_WORLD_ID",
+                "detail": f"world_id is not a valid UUID: {world_id!r}",
+            },
+        )
+    base = Path(WORLDS_ROOT).resolve()
+    repo_path = (base / world_id).resolve()
+    if repo_path.parent != base:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "PATH_VIOLATION",
+                "detail": f"Resolved world repo {repo_path!s} escapes SENTINEL_WORLDS_ROOT.",
+            },
+        )
+    return git.Repo(repo_path)
 
 
 @app.get("/health")
@@ -62,7 +99,7 @@ async def commit_snapshot(body: dict):
         )
 
     try:
-        repo = get_repo()
+        repo = get_repo(world_id)
         repo.index.add(["data/"])
 
         if not repo.index.diff("HEAD"):
@@ -118,10 +155,12 @@ async def commit_snapshot(body: dict):
 
 
 @app.get("/tools/list_snapshots")
-async def list_snapshots(session_id: str | None = None, limit: int = 20):
+async def list_snapshots(
+    session_id: str | None = None, limit: int = 20, world_id: str | None = None
+):
     """List recent world state snapshots, optionally filtered by session."""
     try:
-        repo = get_repo()
+        repo = get_repo(world_id)
         commits = list(repo.iter_commits("HEAD", max_count=limit))
 
         results = []
@@ -158,7 +197,7 @@ async def rollback_to(body: dict):
         )
 
     try:
-        repo = get_repo()
+        repo = get_repo(body.get("world_id"))
         repo.git.checkout(commit_hash, "--", "data/")
         repo.index.add(["data/"])
         repo.index.commit(f"[sentinel] rollback to {commit_hash}")

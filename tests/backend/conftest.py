@@ -83,8 +83,10 @@ def app(test_settings, fake_openai, fake_dispatch_log, fake_commit_log, monkeypa
 
     # Capture dispatch calls without hitting any real server. Return
     # a happy DispatchResult so handlers proceed normally.
-    def fake_dispatch(config, payload, *, client=None, timeout=30.0):
-        fake_dispatch_log.append({"config": config, "payload": payload})
+    def fake_dispatch(config, payload, *, world_id=None, client=None, timeout=30.0):
+        fake_dispatch_log.append(
+            {"config": config, "payload": payload, "world_id": world_id}
+        )
         return engine.DispatchResult(ok=True, status_code=200, body={"success": True})
 
     monkeypatch.setattr(dispatcher_module, "apply_world_update", fake_dispatch)
