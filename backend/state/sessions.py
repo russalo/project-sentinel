@@ -67,6 +67,11 @@ class Session:
     player_character_name: str = ""
     player_character_class: str = ""
     dm_persona_name: str = ""
+    # Persona id + selected mood (ADR 0002 Slice 5) so a resumed world restores
+    # the full persona, not just its display name. The persona's available-mood
+    # *list* comes from preset metadata not stored here (tracked follow-up).
+    persona_id: str = ""
+    mood: str = ""
     # The world this session belongs to (ADR 0002). Additive in this slice —
     # threaded into git-sync commit messages; per-world data isolation lands
     # in a later slice. Empty on legacy sessions written before world_id.
@@ -119,6 +124,8 @@ def read_session(data_dir: Path, session_id: str) -> Session | None:
         player_character_name=raw.get("player_character_name", ""),
         player_character_class=raw.get("player_character_class", ""),
         dm_persona_name=raw.get("dm_persona_name", ""),
+        persona_id=raw.get("persona_id", ""),
+        mood=raw.get("mood", ""),
         world_id=raw.get("world_id", ""),
     )
 
@@ -150,6 +157,8 @@ def _build_session_payload(session: Session, log_entry: str, turn_number: int) -
                     "player_character_name": session.player_character_name,
                     "player_character_class": session.player_character_class,
                     "dm_persona_name": session.dm_persona_name,
+                    "persona_id": session.persona_id,
+                    "mood": session.mood,
                     "world_id": session.world_id,
                 },
             }

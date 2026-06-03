@@ -27,6 +27,8 @@ const WORLD_PAYLOAD = {
   sessionId: '11111111-2222-3333-4444-555555555555',
   worldName: 'Saltmarsh',
   persona: 'Cowboy Bob',
+  personaId: 'cowboy-bob',
+  mood: 'ominous',
   character: 'Russalo',
   characterClass: 'Warden',
   startedAt: '2026-06-03T00:00:00+00:00',
@@ -34,6 +36,17 @@ const WORLD_PAYLOAD = {
     { turn_number: 0, player_action: '[Session Start] x', narrative: 'You arrive. <world_update>{}</world_update>' },
     { turn_number: 1, player_action: 'look around', narrative: 'Fog rolls in.' },
   ],
+  worldState: {
+    worldName: 'Saltmarsh',
+    currentLocation: 'The Docks',
+    timeOfDay: 'Dusk',
+    weather: 'Fog',
+    tension: 3,
+    characters: [{ name: 'Kael', status: 'alive' }],
+    locations: [{ name: 'The Docks' }],
+    factions: [],
+    items: [],
+  },
 }
 
 beforeEach(() => {
@@ -48,7 +61,7 @@ beforeEach(() => {
     characterClass: '',
     hydrating: false,
   })
-  usePersonaStore.setState({ personaId: null, personaName: 'Oracle' })
+  usePersonaStore.setState({ personaId: null, personaName: 'Oracle', mood: 'neutral' })
 })
 
 describe('useWorldHydration', () => {
@@ -61,8 +74,16 @@ describe('useWorldHydration', () => {
     expect(usePlayerStore.getState().worldId).toBe(WORLD_ID)
     expect(usePlayerStore.getState().worldName).toBe('Saltmarsh')
     expect(usePlayerStore.getState().characterClass).toBe('Warden')
-    // Persona display name restored (would otherwise revert to 'Oracle').
+    // Persona restored (id + name + selected mood) — would otherwise revert to
+    // the hardcoded 'Oracle'/'neutral' defaults.
+    expect(usePersonaStore.getState().personaId).toBe('cowboy-bob')
     expect(usePersonaStore.getState().personaName).toBe('Cowboy Bob')
+    expect(usePersonaStore.getState().mood).toBe('ominous')
+    // World-state panels rehydrated.
+    expect(useWorldStore.getState().characters).toEqual([{ name: 'Kael', status: 'alive' }])
+    expect(useWorldStore.getState().currentLocation).toBe('The Docks')
+    // Numeric tension (3) normalized to the label band WorldMetrics renders.
+    expect(useWorldStore.getState().tension).toBe('moderate')
     // hydrating flag cleared when done.
     expect(usePlayerStore.getState().hydrating).toBe(false)
 
@@ -99,7 +120,10 @@ describe('useWorldHydration', () => {
     renderHook(() => useWorldHydration(WORLD_ID))
     await waitFor(() => expect(usePlayerStore.getState().sessionId).toBeTruthy())
 
-    expect(useWorldStore.getState().characters).toEqual([])
+    // The old world's entity is gone (reset), replaced by the new world's.
+    const names = useWorldStore.getState().characters.map((c) => c.name)
+    expect(names).not.toContain('OldWorldNPC')
+    expect(names).toEqual(['Kael'])
   })
 
   it('does not re-fetch when the store already holds this world', async () => {

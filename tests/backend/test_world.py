@@ -19,6 +19,8 @@ def _seed_session(data_dir, *, session_id=SESSION_ID, world_id=WORLD_ID, turns=N
         "world_id": world_id,
         "world_name": "Saltmarsh",
         "dm_persona_name": "Oracle",
+        "persona_id": "oracle",
+        "mood": "ominous",
         "player_character_name": "Russalo",
         "player_character_class": "Warden",
         "started_at": "2026-06-03T00:00:00+00:00",
@@ -35,6 +37,12 @@ def _seed_session(data_dir, *, session_id=SESSION_ID, world_id=WORLD_ID, turns=N
 
 def test_get_world_returns_session_for_hydration(client, tmp_data_dir):
     _seed_session(tmp_data_dir)
+    # Seed a canonical entity so worldState rehydration has something to return.
+    entities = tmp_data_dir / "state" / "core" / "entities"
+    entities.mkdir(parents=True, exist_ok=True)
+    (entities / "kael.json").write_text(
+        json.dumps({"name": "Kael", "status": "alive"}), encoding="utf-8"
+    )
     r = client.get(f"/api/world/{WORLD_ID}")
     assert r.status_code == 200
     body = r.json()
@@ -42,10 +50,15 @@ def test_get_world_returns_session_for_hydration(client, tmp_data_dir):
     assert body["sessionId"] == SESSION_ID
     assert body["worldName"] == "Saltmarsh"
     assert body["persona"] == "Oracle"
+    assert body["personaId"] == "oracle"
+    assert body["mood"] == "ominous"
     assert body["character"] == "Russalo"
     assert body["characterClass"] == "Warden"
     assert len(body["turns"]) == 2
     assert body["turns"][1]["narrative"] == "Fog rolls in."
+    # World-state block for panel rehydration.
+    names = {c["name"] for c in body["worldState"]["characters"]}
+    assert "Kael" in names
 
 
 def test_get_world_404_when_no_session_for_world(client, tmp_data_dir):

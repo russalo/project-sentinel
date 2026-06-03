@@ -1,5 +1,17 @@
 import { create } from 'zustand';
 
+// Map a numeric tension (0–10, as load_world_context / the DM hint emit) to the
+// label band WorldMetrics renders. worldStore's tension contract is a string
+// label (its default is 'calm'); a resumed world's canonical tension is an int,
+// so normalize it here. A string passed through unchanged (idempotent).
+function tensionLabel(t) {
+  if (typeof t !== 'number') return t;
+  if (t >= 9) return 'critical';
+  if (t >= 6) return 'high';
+  if (t >= 3) return 'moderate';
+  return 'calm';
+}
+
 export const useWorldStore = create((set) => ({
   // World metadata
   worldName: '',
@@ -63,6 +75,34 @@ export const useWorldStore = create((set) => ({
     tension: 'calm',
   }),
 
+  // Replace the store with a world's persisted state on /w/<id> resume (ADR
+  // 0002 Slice 5). The backend (GET /api/world/<id> → worldState) returns the
+  // canonical entity dicts, which are flat {name, …} objects keyed by name —
+  // the same shape applyUpdate maintains — so they load directly. Missing
+  // fields fall back to the current value, and arrays default to [].
+  hydrate: (worldState) => set((state) => {
+    if (!worldState || typeof worldState !== 'object') return {};
+    // Fall back to the current value when a field is absent — the endpoint
+    // always sends all four arrays (load_world_context returns [] for empty),
+    // so a missing one means a malformed/partial payload; preserve rather than
+    // wipe. (In the normal flow hydrate runs right after reset(), so current
+    // is already [].)
+    const arr = (v, fallback) => (Array.isArray(v) ? v : fallback);
+    return {
+      // worldName is session-owned (playerStore) — don't mirror it here, where
+      // ctx.world_name can be the 'Unknown Realm' placeholder before any
+      // world/state.json exists, creating a split-brain with the real name.
+      currentLocation: worldState.currentLocation ?? state.currentLocation,
+      timeOfDay: worldState.timeOfDay ?? state.timeOfDay,
+      weather: worldState.weather ?? state.weather,
+      tension: worldState.tension != null ? tensionLabel(worldState.tension) : state.tension,
+      characters: arr(worldState.characters, state.characters),
+      locations: arr(worldState.locations, state.locations),
+      factions: arr(worldState.factions, state.factions),
+      items: arr(worldState.items, state.items),
+    };
+  }),
+
   // Apply a WorldUpdate from the SSE stream (name-based upsert/remove)
   applyUpdate: (worldUpdate) => set((state) => {
     const next = { ...state };
@@ -73,8 +113,10 @@ export const useWorldStore = create((set) => ({
       if (w.timeOfDay !== undefined) next.timeOfDay = w.timeOfDay;
       if (w.weather !== undefined) next.weather = w.weather;
       if (w.tension !== undefined) {
-        // Keep numeric tension in state for display; map to label if needed elsewhere
-        next.tension = w.tension;
+        // Normalize to the label band WorldMetrics renders (same as hydrate),
+        // so tension is consistently a string label whether it came from a
+        // live SSE update or a resume. tensionLabel is idempotent on strings.
+        next.tension = tensionLabel(w.tension);
       }
     }
 
@@ -151,21 +193,5 @@ export const useWorldStore = create((set) => ({
     }
 
     return next;
-  }),
-
-  // Bulk hydration from API
-  hydrate: (worldState) => set({
-    worldName: worldState.name || '',
-    genre: worldState.genre || '',
-    tone: worldState.tone || '',
-    currentLocation: worldState.currentLocation || '',
-    timeOfDay: worldState.timeOfDay || '',
-    weather: worldState.weather || '',
-    locations: worldState.locations || [],
-    characters: worldState.characters || [],
-    factions: worldState.factions || [],
-    items: worldState.items || [],
-    day: worldState.day || 1,
-    tension: worldState.tension || 'calm',
   }),
 }));
