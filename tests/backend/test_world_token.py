@@ -57,3 +57,16 @@ def test_malformed_token_is_false_not_exception(bad):
 def test_mint_rejects_non_uuid_world_id():
     with pytest.raises(ValueError):
         world_token.mint("not-a-uuid", secret=SECRET, ttl_seconds=10)
+
+
+def test_non_canonical_world_id_spelling_verifies():
+    # A token minted for the canonical id must verify against any spelling of
+    # the same UUID (uppercase, braces) — mint/verify both canonicalize.
+    token = world_token.mint(WID, secret=SECRET, ttl_seconds=3600)
+    assert world_token.verify(token, WID.upper(), secret=SECRET) is True
+    assert world_token.verify(token, "{" + WID + "}", secret=SECRET) is True
+
+
+def test_verify_non_uuid_world_id_is_false():
+    token = world_token.mint(WID, secret=SECRET, ttl_seconds=3600)
+    assert world_token.verify(token, "not-a-uuid", secret=SECRET) is False

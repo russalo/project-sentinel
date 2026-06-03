@@ -86,10 +86,11 @@ _DAY_SECONDS = 24 * 60 * 60
 
 
 def enforce_llm_ceiling(limiter: RateLimiter, daily_ceiling: int) -> None:
-    """Raise 429 once the global daily LLM-call ceiling is hit (rolling 24h).
+    """Raise 429 once the global daily LLM-call ceiling is hit.
 
-    Called by every route that triggers an LLM call (session create, turn).
-    ``daily_ceiling <= 0`` disables it.
+    Uses a fixed 24h window (the limiter resets the counter the first call after
+    the window elapses — not a rolling window). Called by every route that
+    triggers an LLM call (session create, turn). ``daily_ceiling <= 0`` disables.
     """
     enforce(
         limiter,

@@ -43,18 +43,17 @@ def mint(
 ) -> str:
     """Mint a token authorizing ``world_id`` for ``ttl_seconds``.
 
-    ``world_id`` must be a valid UUID — it is the sole subject the MAC binds to,
-    so a non-UUID id would let the path layer and the token disagree. Raises
-    ``ValueError`` on a bad id (fail at mint, not at verify). The id is **not**
-    re-canonicalized here: callers mint with the canonical ``str(uuid4())`` they
-    already hold, and verify against the canonicalized path/session world_id.
+    ``world_id`` must be a valid UUID — it is the sole subject the MAC binds to.
+    The id is **canonicalized** (``str(uuid.UUID(...))``) before signing so that
+    any spelling of the same UUID (case, braces, urn) mints and verifies
+    consistently; a non-UUID raises ``ValueError`` (fail at mint, not at verify).
     """
-    uuid.UUID(world_id)
+    canonical_id = str(uuid.UUID(world_id))
     now = time.time() if _now is None else _now
     # Truncate once, after adding the ttl, so a fractional `now` doesn't shave
     # up to ~1s off the intended lifetime.
     expiry = int(now + ttl_seconds)
-    return f"{expiry}.{_sign(secret, world_id, expiry)}"
+    return f"{expiry}.{_sign(secret, canonical_id, expiry)}"
 
 
 def verify(
@@ -71,6 +70,12 @@ def verify(
     """
     if not token:
         return False
+    # Canonicalize the same way mint() does; a non-UUID world_id is simply
+    # invalid (False), never an exception.
+    try:
+        canonical_id = str(uuid.UUID(world_id))
+    except (ValueError, AttributeError, TypeError):
+        return False
     try:
         expiry_str, sig = token.split(".", 1)
         expiry = int(expiry_str)
@@ -80,4 +85,4 @@ def verify(
     if now > expiry:
         return False
     # Constant-time compare over the recomputed MAC for this exact world_id.
-    return hmac.compare_digest(sig, _sign(secret, world_id, expiry))
+    return hmac.compare_digest(sig, _sign(secret, canonical_id, expiry))
