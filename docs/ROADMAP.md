@@ -129,13 +129,17 @@ provisioning, the tracer-soak gate, and the `/w/<world_id>` frontend route +
 resume. The capability is built and dormant (env unset); the production cutover
 is a one-line env flip (`docs/WORKSPACE.md` § "Per-world isolation cutover").
 
-The two remaining prerequisites before inviting public test users:
+The remaining prerequisites before inviting public test users:
 
 - **Slice 5 — world lifecycle:** archival / teardown, a "recent worlds" or
   resume/new-session-in-world UX, and the resume-fidelity follow-ups from the
   Slice 4 review (full persona restore — persist `persona_id`/mood; full
   world-state *panel* rehydration on resume; `active`-vs-mtime session
   selection).
+- **Cross-process write locking** (ADR 0002): concurrent turns in one world can
+  still interleave/corrupt state — a per-world file lock must land before
+  multi-user exposure (the tracer soak proves cross-*world* isolation, not
+  same-world serialization). Tracked in [`BACKLOG.md`](./BACKLOG.md).
 - **[ADR 0003](./adr/0003-access-gating-and-public-exposure.md) implementation
   (auth + public exposure):** the invite gate, per-world session token,
   rate-limiting, the MCP network-isolation invariant, and systemd units — all
