@@ -68,6 +68,33 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
     world_id = str(uuid.uuid4())
     started_at = datetime.now(timezone.utc).isoformat()
 
+    # Provision the world's git repo before any write to it (ADR 0002 Slice 3).
+    # A fresh per-world repo has no HEAD, so the commit_snapshot below would
+    # fail against it. Only called when the cutover is on (worlds_root set);
+    # pre-cutover there is no extra round-trip, and git-sync would no-op anyway.
+    # Treat a provisioning failure as fatal: writing into an un-init'd world
+    # would land state on disk that never enters git history (silent audit gap).
+    if settings.worlds_root:
+        init_result = engine.init_world(config, world_id=world_id)
+        if not init_result.ok:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"world provisioning failed: {init_result.error}",
+            )
+        # "skipped" means git-sync has no SENTINEL_WORLDS_ROOT while the backend
+        # does — the two disagree on per-world mode. Treating that as success
+        # would write/commit to the shared repo while the backend reads the
+        # (empty) per-world tree → every turn 404s. Fail loudly on the misconfig.
+        if init_result.body.get("status") == "skipped":
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=(
+                    "world provisioning skipped — git-sync has no "
+                    "SENTINEL_WORLDS_ROOT but the backend does; the services "
+                    "disagree on per-world mode. Set the same value everywhere."
+                ),
+            )
+
     # Layer 2: resolve rich preset content for the four preset-backed
     # fields. Each call silently returns None when no preset file is
     # found, which lets the engine fall through to the Layer 1 bare-

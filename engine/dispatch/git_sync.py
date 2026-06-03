@@ -161,3 +161,63 @@ def commit_snapshot(
     finally:
         if owns_client:
             client.close()
+
+
+def init_world(
+    config: Config,
+    *,
+    world_id: str,
+    client: httpx.Client | None = None,
+    timeout: float = 30.0,
+) -> DispatchResult:
+    """Provision a world's git repo via git-sync's /tools/init_world (ADR 0002).
+
+    Called at world creation, before the first ``commit_snapshot`` for that
+    world — a fresh per-world repo has no HEAD, so ``commit_snapshot`` would
+    fail against it. git-sync ``git init``s ``<SENTINEL_WORLDS_ROOT>/<world_id>``,
+    lays down a baseline ``data/`` tree, and makes the initial commit so a HEAD
+    exists. Idempotent (an already-provisioned world returns ``status=exists``)
+    and a no-op when git-sync has no ``SENTINEL_WORLDS_ROOT`` set
+    (``status=skipped`` — the legacy shared repo is already initialized).
+
+    Same structured-result / test-injection contract as ``commit_snapshot``;
+    ``world_id`` is UUID-validated server-side (422) before it becomes a path.
+    """
+    base = config.git_sync_url.rstrip("/")
+    url = f"{base}/tools/init_world"
+
+    owns_client = client is None
+    if owns_client:
+        client = httpx.Client(timeout=timeout)
+
+    try:
+        try:
+            response = client.post(url, json={"world_id": world_id})
+        except httpx.RequestError as exc:
+            return DispatchResult(
+                ok=False,
+                status_code=0,
+                body={},
+                error=f"network error: {exc}",
+            )
+
+        try:
+            body = response.json()
+            if not isinstance(body, dict):
+                body = {"raw": body}
+        except ValueError:
+            body = {"raw": response.text}
+
+        if response.is_success:
+            return DispatchResult(ok=True, status_code=response.status_code, body=body)
+
+        detail = body.get("detail", body.get("raw", "unknown error"))
+        return DispatchResult(
+            ok=False,
+            status_code=response.status_code,
+            body=body,
+            error=f"git-sync rejected init_world ({response.status_code}): {detail}",
+        )
+    finally:
+        if owns_client:
+            client.close()

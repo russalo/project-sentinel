@@ -10,7 +10,7 @@ import httpx
 import pytest
 
 from engine import Config
-from engine.dispatch.git_sync import DispatchResult, commit_snapshot
+from engine.dispatch.git_sync import DispatchResult, commit_snapshot, init_world
 
 VALID_SESSION_ID = "11111111-2222-3333-4444-555555555555"
 
@@ -321,6 +321,63 @@ def test_non_json_response_wraps_raw_text():
     assert result.status_code == 502
     assert "raw" in result.body
     assert "Bad Gateway" in result.body["raw"]
+
+
+def test_init_world_posts_world_id_and_returns_ok():
+    """init_world POSTs {world_id} to /tools/init_world and surfaces success."""
+    import json
+
+    captured = {}
+    world_id = "9b3c1d2e-4f5a-4b6c-8d7e-0a1b2c3d4e5f"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["body"] = json.loads(request.content.decode())
+        return httpx.Response(200, json={"status": "initialized", "world_id": world_id})
+
+    result = init_world(
+        _config("http://git-sync.test"),
+        world_id=world_id,
+        client=_client_returning(handler),
+    )
+    assert result.ok is True
+    assert result.status_code == 200
+    assert result.body["status"] == "initialized"
+    assert captured["url"] == "http://git-sync.test/tools/init_world"
+    assert captured["body"] == {"world_id": world_id}
+
+
+def test_init_world_skipped_status_is_success():
+    """Pre-cutover git-sync returns 200 {status: skipped}; that's ok=True."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"status": "skipped"})
+
+    result = init_world(_config(), world_id="x", client=_client_returning(handler))
+    assert result.ok is True
+    assert result.body["status"] == "skipped"
+
+
+def test_init_world_server_error_returns_ok_false():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            500, json={"detail": {"code": "GIT_ERROR", "detail": "boom"}}
+        )
+
+    result = init_world(_config(), world_id="x", client=_client_returning(handler))
+    assert result.ok is False
+    assert result.status_code == 500
+    assert "GIT_ERROR" in result.error or "boom" in result.error
+
+
+def test_init_world_network_error_returns_status_zero():
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection refused")
+
+    result = init_world(_config(), world_id="x", client=_client_returning(handler))
+    assert result.ok is False
+    assert result.status_code == 0
+    assert "network error" in result.error
 
 
 if __name__ == "__main__":  # pragma: no cover

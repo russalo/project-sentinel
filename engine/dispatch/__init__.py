@@ -17,6 +17,6 @@ exists and why engine writes must go through it.
 """
 
 from .fs_manager import DispatchResult, apply_world_update
-from .git_sync import commit_snapshot
+from .git_sync import commit_snapshot, init_world
 
-__all__ = ["DispatchResult", "apply_world_update", "commit_snapshot"]
+__all__ = ["DispatchResult", "apply_world_update", "commit_snapshot", "init_world"]

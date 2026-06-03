@@ -61,16 +61,21 @@ _Last updated: 2026-06-03_
   exercised end-to-end (real file writes, real git commits) instead
   of just contract-tested via httpx.MockTransport from the engine
   side. The "MCP servers have no unit tests" gap is closed.
-- **World isolation: ADR 0002 accepted, Slices 1–2 landed (2026-06-03).**
+- **World isolation: ADR 0002 accepted, Slices 1–3 landed (2026-06-03).**
   [ADR 0002](./adr/0002-world-identity-and-isolation.md) ratified repo-per-world
-  isolation (one player per world, concurrently). The first two implementation
-  slices are merged: `world_id` is minted per session and threaded through the
-  backend, the engine dispatcher, and the git-sync commit message
-  (`[sentinel] world=<id[:8]> session=… turn=… — …`); and both MCP servers
-  resolve a per-world tree/repo under the `SENTINEL_WORLDS_ROOT` env var,
-  UUID-validated and traversal-guarded. **`SENTINEL_WORLDS_ROOT` is unset by
-  default**, so per-world routing is dormant and runtime behavior is unchanged
-  (single shared `data/` tree) until the Slice 3 cutover. See the "ADR 0002
+  isolation (one player per world, concurrently). Slices 1–3 are merged:
+  `world_id` is minted per session and threaded through the backend, the engine
+  dispatcher, and the git-sync commit message
+  (`[sentinel] world=<id[:8]> session=… turn=… — …`); both MCP servers resolve a
+  per-world tree/repo under `SENTINEL_WORLDS_ROOT` (UUID-validated +
+  traversal-guarded); the **backend reads** route per-world too, worlds are
+  **provisioned** at creation (git-sync `init_world`), and a **tracer-soak gate**
+  (`tests/test_world_isolation_tracer_soak.py`) proves zero cross-world leak
+  under concurrency — it caught and drove the fix for a real git-sync cwd race.
+  **`SENTINEL_WORLDS_ROOT` is unset by default**, so per-world routing is dormant
+  and runtime behavior is unchanged (single shared `data/` tree); the cutover is
+  now a one-line operational flip (see `docs/WORKSPACE.md` § "Per-world isolation
+  cutover"). See the "ADR 0002
   implementation — remaining slices" item in [`BACKLOG.md`](./BACKLOG.md).
 - **Mobile-responsive chat layout shipped (2026-05-30).** The game UI
   is now usable on phones. Side panels are hidden below the `lg`
@@ -114,34 +119,26 @@ SSE-event-emitting fake — no real backend required.
   end-to-end test covering the player → token → world_update → [DONE]
   ordering with delta insertion happening AFTER `commitStreamMessage()`.
 
-### 2. **World isolation — Slice 3 (cutover + provisioning)**
+### 2. **World isolation — Slice 4 (`/w/<world_id>` frontend routing)**
 
-[ADR 0002](./adr/0002-world-identity-and-isolation.md) is accepted and Slices 1–2
-have landed (see "Where we are"): `world_id` is threaded end-to-end and both MCP
-servers can route to a per-world tree under `SENTINEL_WORLDS_ROOT`, but the env
-var is unset so the routing is dormant. Slice 3 is the cutover — flipping it on
-for real — and is a **hard gate** that must land two things in the *same* PR:
+Slices 1–3 have landed (see "Where we are"): `world_id` is threaded end-to-end,
+both MCP servers and the backend reads route per-world under
+`SENTINEL_WORLDS_ROOT`, worlds are provisioned at creation, and the tracer-soak
+gate proves isolation under concurrency. The capability is built and dormant
+(env unset); the production cutover is a one-line env flip
+(`docs/WORKSPACE.md` § "Per-world isolation cutover").
 
-1. **World provisioning** (`git init` + baseline `data/` tree). Without it,
-   git-sync's `get_repo(world_id)` raises `InvalidGitRepositoryError` on the
-   first commit and writes never enter git history. Provisioning must also
-   define the **static-shared vs. mutable-per-world split**: schemas, presets,
-   and authored core lore are read-only shared assets and must not be duplicated
-   into every world — only the mutable state / session tree belongs per-world.
-2. **World-aware session reads.** Slice 2 routes *writes* per-world; the backend
-   still *reads* sessions from the shared tree. The moment `SENTINEL_WORLDS_ROOT`
-   is set, a new per-world session would 404 on its next `/api/stream` unless the
-   read path (and `load_world_context`) becomes world-aware too.
-
-Gate the cutover on a deterministic **tracer-soak** harness (stub the DM with a
-per-world token, assert zero cross-world leak, hammer in CI — never against a
-live LLM). Slices 4 (`/w/<world_id>` frontend routing) and 5 (world lifecycle)
-follow.
+Slice 4 makes the frontend world-aware: route on `/w/<world_id>`, carry the
+`world_id` from `NewSessionResponse` into the `/api/stream` request (the backend
+already accepts it), and surface a world's own URL for resume/share. Slice 5
+(world lifecycle — archival, the resume / new-session-in-world UX) follows. Auth
++ public exposure ([ADR 0003](./adr/0003-access-gating-and-public-exposure.md))
+is the other prerequisite before inviting test users.
 
 - Backlog: [`ADR 0002 implementation — remaining slices`](./BACKLOG.md)
-- Exit criteria: provisioning + world-aware reads land together behind the
-  tracer-soak gate; `SENTINEL_WORLDS_ROOT` can be set with zero cross-world
-  leak proven in CI.
+- Exit criteria: opening `/w/<world_id>` resumes that world; a turn from the UI
+  carries its `world_id` to `/api/stream`; with `SENTINEL_WORLDS_ROOT` set, two
+  browser sessions on different worlds never see each other's state.
 
 ---
 

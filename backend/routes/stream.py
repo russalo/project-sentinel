@@ -40,6 +40,7 @@ from ..engine_bridge import build_engine_config
 from ..schemas import StreamRequest
 from ..state import sessions as session_state
 from ..state.world_context import load_world_context
+from ..state.world_root import find_session_data_dir
 
 router = APIRouter(prefix="/api")
 
@@ -80,7 +81,21 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
     settings: Settings = request.app.state.settings
     config = build_engine_config(settings)
 
-    session = session_state.read_session(settings.data_dir, body.session_id)
+    # Resolve the world's own data tree (ADR 0002 Slice 3). The *session* is the
+    # authoritative routing key: find the world whose tree holds this session,
+    # rather than trusting a client-supplied world_id. This keeps reads and
+    # writes consistent (writes go to session.world_id) and means the cutover
+    # works without any frontend change — the client need not send world_id.
+    # With SENTINEL_WORLDS_ROOT unset (today's default) this returns the shared
+    # tree. None → the session doesn't exist in any world (or a bad id).
+    data_dir = find_session_data_dir(
+        settings.worlds_root, body.session_id, default_data_dir=settings.data_dir
+    )
+    session = (
+        session_state.read_session(data_dir, body.session_id)
+        if data_dir is not None
+        else None
+    )
     if session is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -101,7 +116,7 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
         for t in session.turns[-5:]
     ]
     world_context = load_world_context(
-        settings.data_dir,
+        data_dir,
         session_id=body.session_id,
         recent_turns=recent,
     )
