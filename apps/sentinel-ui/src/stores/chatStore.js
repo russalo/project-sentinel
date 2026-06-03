@@ -20,7 +20,7 @@ export const useChatStore = create((set) => ({
   addMessage: (message) => set((state) => ({
     messages: [...state.messages, { id: newId(), ...message }],
   })),
-  clearMessages: () => set({ messages: [], systemLog: [], unreadSystemLog: 0, activeView: 'narrative', streamBuffer: '' }),
+  clearMessages: () => set({ messages: [], systemLog: [], unreadSystemLog: 0, activeView: 'narrative', streamBuffer: '', streamError: false }),
 
   // System log — one entry per turn, persists across the session
   systemLog: [],
