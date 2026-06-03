@@ -70,7 +70,9 @@ describe('useWorldHydration', () => {
     renderHook(() => useWorldHydration(WORLD_ID))
 
     await waitFor(() => expect(usePlayerStore.getState().sessionId).toBe(WORLD_PAYLOAD.sessionId))
-    expect(apiClient.get).toHaveBeenCalledWith(`/world/${WORLD_ID}`)
+    // Called with the per-world token header (ADR 0003); empty in tests since
+    // no token is stored in localStorage.
+    expect(apiClient.get).toHaveBeenCalledWith(`/world/${WORLD_ID}`, { headers: {} })
     expect(usePlayerStore.getState().worldId).toBe(WORLD_ID)
     expect(usePlayerStore.getState().worldName).toBe('Saltmarsh')
     expect(usePlayerStore.getState().characterClass).toBe('Warden')

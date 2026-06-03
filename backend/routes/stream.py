@@ -35,8 +35,10 @@ import engine
 from engine.agents import dm as dm_agent
 from engine.agents import fact_extractor
 
+from ..auth.access import enforce_world_token
 from ..config import Settings
 from ..engine_bridge import build_engine_config
+from ..ratelimit import enforce, enforce_llm_ceiling
 from ..schemas import StreamRequest
 from ..state import sessions as session_state
 from ..state.world_context import load_world_context
@@ -106,6 +108,25 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Session is not active",
         )
+
+    # ADR 0003 Slice A — verify the per-world token against the world the
+    # *session* belongs to (session.world_id), never a client-asserted id, so a
+    # token for world A can't drive a session in world B. No-op when enforcement
+    # is off. A legacy session predating world_id (empty) can't be token-gated;
+    # that only occurs in shared-tree dev where enforcement is off anyway.
+    enforce_world_token(request, settings, session.world_id or "")
+
+    # ADR 0003 Slice B — per-world turn rate-limit + the global daily LLM-call
+    # ceiling, before the (paid) DM stream starts. Both no-op when unset.
+    limiter = request.app.state.rate_limiter
+    enforce(
+        limiter,
+        f"stream:{session.world_id or body.session_id}",
+        settings.rl_stream_per_minute,
+        60,
+        detail="too many turns; slow down",
+    )
+    enforce_llm_ceiling(limiter, settings.llm_daily_ceiling)
 
     # Build the world context the DM will see for this turn.
     recent = [

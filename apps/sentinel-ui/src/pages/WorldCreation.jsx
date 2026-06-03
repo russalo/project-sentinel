@@ -1,6 +1,7 @@
 import { useEffect, useCallback, useState } from 'react';
 import { useLocation } from 'wouter';
 import { apiClient } from '../api/client';
+import { setWorldToken } from '../api/worldToken';
 import { useWorldCreationStore } from '../stores/worldCreationStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { useChatStore, stripWorldUpdate } from '../stores/chatStore';
@@ -138,6 +139,11 @@ export default function WorldCreation() {
       });
 
       setSessionId(data.sessionId);
+      // Persist the per-world session token (ADR 0003). Null when the backend
+      // has no secret configured (local/tailnet) — then nothing is stored and
+      // world-scoped calls send no header. Stored keyed by world_id so it
+      // survives refresh and doesn't collide with other open worlds.
+      setWorldToken(data.worldId, data.sessionToken);
       // Set worldId before navigating to /w/<worldId> so the hydration hook
       // sees "already loaded this world" and skips re-fetching (the chat is
       // seeded below from data.turns).

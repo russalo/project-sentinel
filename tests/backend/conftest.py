@@ -149,8 +149,14 @@ def app(
     monkeypatch.setattr(engine, "teardown_world", fake_teardown_world)
 
     # Build the app with the test settings already loaded.
+    from backend.ratelimit import RateLimiter
+
     app = FastAPI()
     app.state.settings = test_settings
+    # Mirror create_app: route handlers read request.app.state.rate_limiter.
+    # Limits default to 0 (disabled) in test_settings, so it never throttles
+    # unless a test overrides the settings.
+    app.state.rate_limiter = RateLimiter()
     app.include_router(health.router)
     app.include_router(session.router)
     app.include_router(stream.router)

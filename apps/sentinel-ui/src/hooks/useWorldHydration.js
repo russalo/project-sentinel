@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { apiClient } from '../api/client';
+import { worldTokenHeader } from '../api/worldToken';
 import { usePlayerStore } from '../stores/playerStore';
 import { usePersonaStore } from '../stores/personaStore';
 import { useWorldStore } from '../stores/worldStore';
@@ -33,7 +34,9 @@ export function useWorldHydration(worldId) {
     let cancelled = false;
     (async () => {
       try {
-        const data = await apiClient.get(`/world/${worldId}`);
+        const data = await apiClient.get(`/world/${worldId}`, {
+          headers: worldTokenHeader(worldId),
+        });
         if (cancelled) return;
         if (!data || typeof data !== 'object') {
           throw new Error('empty world response');

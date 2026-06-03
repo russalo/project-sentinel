@@ -15,6 +15,7 @@ import uuid
 import engine
 from fastapi import APIRouter, HTTPException, Request, status
 
+from ..auth.access import enforce_world_token
 from ..engine_bridge import build_engine_config
 from ..state import sessions as session_state
 from ..state.world_context import load_world_context
@@ -29,6 +30,17 @@ def list_worlds(request: Request) -> list[dict]:
 
     Most-recently-played first. Each entry links to ``/w/<worldId>`` in the UI.
     Empty list when no worlds exist (the picker shows a create CTA).
+
+    Scope note (ADR 0003): this returns *every* world on the server with no
+    per-tester scoping — there are no accounts in the closed-beta model, so the
+    backend has no notion of "whose world this is." That is an **accepted**
+    limitation under ADR 0003's threat model ("the risk at test scale is cost
+    and abuse, not data confidentiality; worlds are throwaway test data, nobody's
+    secrets are in them"). The world metadata here (name, character, persona,
+    turn count) is non-sensitive, and the per-world token still gates *resuming*
+    a world (GET /world/{id}) — knowing a world_id is not enough to open it.
+    Per-tester scoping is deferred to the open-signup/accounts phase (ADR 0003
+    § "Out of scope — vision"); tracked in docs/BACKLOG.md.
     """
     settings = request.app.state.settings
     out: list[dict] = []
@@ -69,6 +81,9 @@ def delete_world(world_id: str, request: Request) -> dict:
         raise HTTPException(status_code=404, detail="world not found")
 
     settings = request.app.state.settings
+    # ADR 0003 — a destructive, world-scoped op: require the per-world token
+    # (against the canonical id above). No-op when enforcement is off.
+    enforce_world_token(request, settings, world_id)
     found = find_world_session(
         settings.worlds_root, world_id, default_data_dir=settings.data_dir
     )
@@ -103,7 +118,21 @@ def get_world(world_id: str, request: Request) -> dict:
     genuinely empty world are indistinguishable to a caller and get the same
     response (the id is the only secret, same posture as session lookups).
     """
+    # Canonicalize the path id up front (mirrors delete_world): a clean 404 on a
+    # malformed id, and the token check below runs against the same canonical
+    # form the token was minted with.
+    try:
+        world_id = str(uuid.UUID(world_id))
+    except (ValueError, AttributeError, TypeError):
+        raise HTTPException(status_code=404, detail="world not found")
+
     settings = request.app.state.settings
+    # ADR 0003 — resume is world-scoped; require the per-world token (no-op when
+    # enforcement is off). Checked before the lookup so existence isn't leaked
+    # to an unauthorized caller. The SPA holds the token (localStorage keyed by
+    # world_id) from creation; a cross-browser shared link without it can't
+    # resume under enforcement — intended (the URL is no longer the sole secret).
+    enforce_world_token(request, settings, world_id)
     found = find_world_session(
         settings.worlds_root, world_id, default_data_dir=settings.data_dir
     )

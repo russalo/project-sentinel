@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'wouter';
 import { Globe, Plus, Database, RefreshCw, Trash2 } from 'lucide-react';
 import { apiClient } from '../api/client';
+import { clearWorldToken, worldTokenHeader } from '../api/worldToken';
 import emptyStateImg from '../assets/generated/empty-state.webp';
 
 // The "my worlds" landing (ADR 0002 Slice 5). Lists provisioned worlds from
@@ -50,7 +51,11 @@ export default function WorldList() {
       return;
     }
     try {
-      await apiClient.delete(`/world/${w.worldId}`);
+      await apiClient.delete(`/world/${w.worldId}`, {
+        headers: worldTokenHeader(w.worldId),
+      });
+      // The world is gone — drop its now-useless token too (ADR 0003).
+      clearWorldToken(w.worldId);
       refresh();
     } catch (e) {
       setError(String(e));

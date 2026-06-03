@@ -85,6 +85,10 @@ class NewSessionResponse(_CamelModel):
     turns: list[TurnResponse]
     started_at: str
     world_name: str
+    # ADR 0003 Slice A — per-world session token. ``None`` when token
+    # enforcement is off (no secret configured); the client stores it keyed by
+    # world_id and sends it as ``X-Sentinel-World-Token`` on world-scoped calls.
+    session_token: str | None = None
 
 
 # ── POST /api/stream ─────────────────────────────────────────────────
