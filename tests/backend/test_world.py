@@ -89,6 +89,22 @@ def test_list_worlds_empty(client, tmp_data_dir):
     assert client.get("/api/worlds").json() == []
 
 
+def test_delete_world_routes_teardown(client, tmp_data_dir, fake_teardown_log):
+    """DELETE /api/world/<id> resolves the session, then routes teardown to
+    git-sync (stubbed) with the world_id + resolved session_id."""
+    _seed_session(tmp_data_dir)
+    r = client.delete(f"/api/world/{WORLD_ID}")
+    assert r.status_code == 200
+    assert r.json()["status"] == "removed"
+    assert fake_teardown_log == [{"world_id": WORLD_ID, "session_id": SESSION_ID}]
+
+
+def test_delete_world_404_when_absent(client, tmp_data_dir, fake_teardown_log):
+    assert client.delete(f"/api/world/{WORLD_ID}").status_code == 404
+    # No teardown dispatched for a world that doesn't exist.
+    assert fake_teardown_log == []
+
+
 def test_get_world_404_when_no_session_for_world(client, tmp_data_dir):
     # A session exists, but for a DIFFERENT world.
     _seed_session(tmp_data_dir, world_id="00000000-0000-0000-0000-000000000000")

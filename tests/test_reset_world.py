@@ -149,6 +149,44 @@ def test_world_id_mode_resets_only_that_world(tmp_path):
     assert (other / "data" / "state" / "core" / "entities" / "russalo.json").exists()
 
 
+def test_teardown_removes_only_that_world(tmp_path):
+    """`--world-id --teardown` rmtree's the world; siblings untouched."""
+    worlds = tmp_path / "worlds"
+    world = worlds / WORLD_UUID
+    _make_tree(world)
+    other = worlds / "11111111-2222-3333-4444-555555555555"
+    _make_tree(other)
+
+    rc = reset_world_script.main(
+        ["--world-id", WORLD_UUID, "--worlds-root", str(worlds), "--teardown"]
+    )
+    assert rc == 0
+    assert not world.exists()  # the whole world tree is gone
+    assert other.exists()  # sibling untouched
+
+
+def test_teardown_requires_world_id(tmp_path, capsys):
+    rc = reset_world_script.main(["--teardown", "--root", str(tmp_path)])
+    assert rc == 2
+    assert "requires --world-id" in capsys.readouterr().err
+
+
+def test_teardown_rejects_traversal_world_id(tmp_path, capsys):
+    victim = tmp_path / "victim"
+    victim.mkdir()
+    rc = reset_world_script.main(
+        [
+            "--world-id",
+            "../victim",
+            "--worlds-root",
+            str(tmp_path / "worlds"),
+            "--teardown",
+        ]
+    )
+    assert rc == 2
+    assert victim.exists()  # traversal id rejected, nothing removed
+
+
 def test_world_id_requires_worlds_root(tmp_path, capsys, monkeypatch):
     monkeypatch.delenv("SENTINEL_WORLDS_ROOT", raising=False)
     rc = reset_world_script.main(["--world-id", WORLD_UUID])

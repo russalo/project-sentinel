@@ -12,6 +12,7 @@ from .dispatch import (
     apply_world_update,
     commit_snapshot,
     init_world,
+    teardown_world,
 )
 from .schema import ValidationResult, validate
 from .types import Config, DMTurnInput, DMTurnResult, IntroInput, WorldContext
@@ -28,4 +29,5 @@ __all__ = [
     "apply_world_update",
     "commit_snapshot",
     "init_world",
+    "teardown_world",
 ]

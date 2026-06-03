@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import WorldList from './WorldList'
 import { API_BASE } from '../api/client'
 
@@ -66,6 +66,72 @@ describe('WorldList', () => {
     expect(screen.getByRole('button', { name: /Retry/ })).toBeInTheDocument()
     // A backend outage must NOT masquerade as "you have no worlds, make one".
     expect(screen.queryByRole('link', { name: /Begin a new world/ })).toBeNull()
+  })
+
+  it('deletes a world behind a confirm, then refreshes the list', async () => {
+    const world = {
+      worldId: WID,
+      worldName: 'Saltmarsh',
+      persona: 'Oracle',
+      character: 'Russalo',
+      turnCount: 3,
+      startedAt: '',
+    }
+    let listCalls = 0
+    const del = vi.fn()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url, opts) => {
+        if (url === `${API_BASE}/worlds`) {
+          listCalls += 1
+          // First load returns the world; after the delete, it's gone.
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve(listCalls === 1 ? [world] : []),
+          })
+        }
+        if (url === `${API_BASE}/world/${WID}` && opts?.method === 'DELETE') {
+          del()
+          return Promise.resolve({ ok: true, text: () => Promise.resolve('{}') })
+        }
+        return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) })
+      }),
+    )
+    vi.stubGlobal('confirm', () => true)
+
+    render(<WorldList />)
+    const btn = await screen.findByRole('button', { name: /Delete Saltmarsh/ })
+    fireEvent.click(btn)
+
+    // The DELETE went out and the list refetched → world gone.
+    await screen.findByText(/No worlds yet/)
+    expect(del).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not delete when the confirm is dismissed', async () => {
+    const del = vi.fn()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url, opts) => {
+        if (url === `${API_BASE}/worlds`) {
+          return Promise.resolve({
+            ok: true,
+            json: () =>
+              Promise.resolve([{ worldId: WID, worldName: 'Saltmarsh', turnCount: 1 }]),
+          })
+        }
+        if (opts?.method === 'DELETE') {
+          del()
+          return Promise.resolve({ ok: true, text: () => Promise.resolve('{}') })
+        }
+        return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) })
+      }),
+    )
+    vi.stubGlobal('confirm', () => false)
+
+    render(<WorldList />)
+    fireEvent.click(await screen.findByRole('button', { name: /Delete Saltmarsh/ }))
+    expect(del).not.toHaveBeenCalled()
   })
 
   it('treats a 200 with a non-array body as an error, not an empty account', async () => {

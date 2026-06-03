@@ -15,6 +15,7 @@ Dependencies:
 import argparse
 import logging
 import os
+import shutil
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -174,6 +175,100 @@ async def init_world(body: dict):
         return {"status": "initialized", "world_id": canonical}
     except Exception as e:
         logger.error(f"init_world failed for {canonical}: {e}")
+        raise HTTPException(
+            status_code=500, detail={"code": "GIT_ERROR", "detail": str(e)}
+        )
+
+
+@app.post("/tools/teardown_world")
+async def teardown_world(body: dict):
+    """Permanently remove a world (ADR 0002 Slice 5 — hard delete).
+
+    Symmetric with ``init_world``. **Destructive**, so ``world_id`` is
+    UUID-validated and the resolved path asserted under SENTINEL_WORLDS_ROOT
+    *before* any removal (an unvalidated id in an ``rmtree`` would be
+    catastrophic).
+
+    - **Per-world mode** (``SENTINEL_WORLDS_ROOT`` set): ``rmtree`` the world's
+      repo at ``<WORLDS_ROOT>/<world_id>/``.
+    - **Legacy/shared mode**: the world has no repo of its own — remove its
+      session file (and lore session log) from the shared tree via ``git rm`` +
+      commit, so the world leaves the picker. ``session_id`` (which the backend
+      resolved) identifies it; shared `state/core` entities aren't world-scoped
+      and are left in place (noted in BACKLOG).
+    - **Idempotent:** an already-absent world returns ``status=not_found``.
+    """
+    world_id = body.get("world_id")
+    if not world_id:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "MISSING_WORLD_ID", "detail": "world_id is required."},
+        )
+
+    try:
+        if WORLDS_ROOT:
+            repo_path = _world_repo_path(world_id)  # UUID + traversal validated
+            # is_dir() (not exists()): a non-directory at the path → not_found,
+            # not a confusing 500 from rmtree(NotADirectoryError).
+            if not repo_path.is_dir():
+                return {"status": "not_found", "world_id": repo_path.name}
+            shutil.rmtree(repo_path)
+            logger.info(f"teardown_world — removed world={repo_path.name[:8]}")
+            return {"status": "removed", "world_id": repo_path.name}
+
+        # Legacy: remove the world's session (+ lore log) via git rm + commit.
+        session_id = body.get("session_id")
+        if not session_id:
+            return {
+                "status": "not_found",
+                "detail": "legacy teardown needs a session_id.",
+            }
+        try:
+            # Canonicalize before it becomes a path component — uuid.UUID()
+            # accepts non-canonical spellings; the session file is named with
+            # the canonical id, so match on that.
+            session_id = str(uuid.UUID(session_id))
+        except (ValueError, AttributeError, TypeError):
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": "INVALID_SESSION_ID",
+                    "detail": f"session_id is not a valid UUID: {session_id!r}",
+                },
+            )
+        repo = git.Repo(REPO_ROOT)
+        rels = [
+            f"data/state/core/sessions/{session_id}.json",
+            f"data/lore/core/sessions/{session_id}.md",
+        ]
+        removed = [rel for rel in rels if (REPO_ROOT / rel).exists()]
+        if not removed:
+            return {"status": "not_found", "session_id": session_id}
+        # Remove from the working tree first, then drop any *tracked* ones from
+        # the index. `git rm <tracked> <untracked>` fails the whole command (and
+        # leaves the tracked file behind) — and a session whose creating commit
+        # failed (commit_snapshot is fire-and-log) is on disk but untracked. So
+        # unlink unconditionally, then `git rm --cached --ignore-unmatch` to
+        # de-index the tracked ones without erroring on the untracked.
+        # missing_ok tolerates a file that vanished between the exists() check
+        # and here (a concurrent removal).
+        for rel in removed:
+            (REPO_ROOT / rel).unlink(missing_ok=True)
+        repo.git.rm("--cached", "--ignore-unmatch", "--", *removed)
+        # Commit ONLY the teardown's own pathspecs — `git commit -m` (no paths)
+        # would sweep in anything else already staged (e.g. a concurrent
+        # commit_snapshot's `git add data/`). Skip the commit when those paths
+        # had nothing staged (an all-untracked session — already unlinked).
+        if repo.git.diff("--cached", "--name-only", "--", *removed).strip():
+            repo.git.commit(
+                "-m", f"[sentinel] teardown session={session_id[:8]}", "--", *removed
+            )
+        logger.info(f"teardown_world — removed legacy session={session_id[:8]}")
+        return {"status": "removed", "session_id": session_id, "removed": removed}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"teardown_world failed for {world_id}: {e}")
         raise HTTPException(
             status_code=500, detail={"code": "GIT_ERROR", "detail": str(e)}
         )
