@@ -33,9 +33,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
+import uuid
 from pathlib import Path
 
 # Dirs under data/state/core/ whose per-playthrough contents are cleared.
@@ -138,6 +140,16 @@ def main(argv: list[str] | None = None) -> int:
         help="Repo root (defaults to the repo this script lives in). Mainly for tests.",
     )
     parser.add_argument(
+        "--world-id",
+        help="Reset a single world's tree under the worlds root (ADR 0002), "
+        "resolving <worlds-root>/<world-id> as the root. Use after the cutover.",
+    )
+    parser.add_argument(
+        "--worlds-root",
+        help="Per-world data root (defaults to $SENTINEL_WORLDS_ROOT). "
+        "Required with --world-id.",
+    )
+    parser.add_argument(
         "--snapshot",
         metavar="NAME",
         help="Tag the current HEAD as 'snapshot/<NAME>' before resetting, "
@@ -150,13 +162,42 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    root = _repo_root(args.root)
-    if not (root / "data" / "state" / "core").is_dir():
-        print(
-            f"error: {root} does not look like a Sentinel repo (no data/state/core/).",
-            file=sys.stderr,
-        )
-        return 2
+    if args.world_id:
+        # World-scoped reset (ADR 0002): the "root" is the world's own repo at
+        # <worlds-root>/<world-id>. world_id is a path component → UUID-validate
+        # and assert containment, same boundary as the servers.
+        worlds_root = args.worlds_root or os.environ.get("SENTINEL_WORLDS_ROOT")
+        if not worlds_root:
+            print(
+                "error: --world-id requires --worlds-root or $SENTINEL_WORLDS_ROOT.",
+                file=sys.stderr,
+            )
+            return 2
+        try:
+            canonical = str(uuid.UUID(args.world_id))
+        except (ValueError, AttributeError, TypeError):
+            print(
+                f"error: --world-id is not a valid UUID: {args.world_id!r}.",
+                file=sys.stderr,
+            )
+            return 2
+        base = Path(worlds_root).resolve()
+        root = (base / canonical).resolve()
+        if root.parent != base or not root.is_dir():
+            print(
+                f"error: world {canonical} not found under {base}.",
+                file=sys.stderr,
+            )
+            return 2
+    else:
+        root = _repo_root(args.root)
+        if not (root / "data" / "state" / "core").is_dir():
+            print(
+                f"error: {root} does not look like a Sentinel repo "
+                "(no data/state/core/).",
+                file=sys.stderr,
+            )
+            return 2
 
     if args.snapshot:
         tag = f"snapshot/{args.snapshot}"

@@ -110,3 +110,63 @@ def test_reset_is_idempotent_on_already_empty_tree(tmp_path):
     # Second run finds nothing left to remove.
     removed = reset_world_script.reset_world(tmp_path)
     assert removed == []
+
+
+# ── --world-id resolution (ADR 0002 Slice 3 lifecycle) ────────────────
+
+WORLD_UUID = "9b3c1d2e-4f5a-4b6c-8d7e-0a1b2c3d4e5f"
+
+
+def _git_init(root: Path) -> None:
+    import subprocess
+
+    for args in (
+        ["init"],
+        ["config", "user.name", "T"],
+        ["config", "user.email", "t@e"],
+    ):
+        subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True)
+
+
+def test_world_id_mode_resets_only_that_world(tmp_path):
+    """`--world-id` resets <worlds-root>/<id>'s tree, not the shared repo."""
+    worlds = tmp_path / "worlds"
+    world = worlds / WORLD_UUID
+    _make_tree(world)
+    _git_init(world)  # --no-commit still stages, which needs a git repo
+    # A sibling world that must be left untouched.
+    other = worlds / "11111111-2222-3333-4444-555555555555"
+    _make_tree(other)
+
+    rc = reset_world_script.main(
+        ["--world-id", WORLD_UUID, "--worlds-root", str(worlds), "--no-commit"]
+    )
+    assert rc == 0
+    assert not (
+        world / "data" / "state" / "core" / "entities" / "russalo.json"
+    ).exists()
+    # The other world is untouched.
+    assert (other / "data" / "state" / "core" / "entities" / "russalo.json").exists()
+
+
+def test_world_id_requires_worlds_root(tmp_path, capsys, monkeypatch):
+    monkeypatch.delenv("SENTINEL_WORLDS_ROOT", raising=False)
+    rc = reset_world_script.main(["--world-id", WORLD_UUID])
+    assert rc == 2
+    assert "requires --worlds-root" in capsys.readouterr().err
+
+
+def test_world_id_rejects_non_uuid(tmp_path, capsys):
+    rc = reset_world_script.main(
+        ["--world-id", "../escape", "--worlds-root", str(tmp_path)]
+    )
+    assert rc == 2
+    assert "not a valid UUID" in capsys.readouterr().err
+
+
+def test_world_id_missing_world_is_error(tmp_path, capsys):
+    rc = reset_world_script.main(
+        ["--world-id", WORLD_UUID, "--worlds-root", str(tmp_path)]
+    )
+    assert rc == 2
+    assert "not found" in capsys.readouterr().err
