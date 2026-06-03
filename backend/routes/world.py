@@ -15,6 +15,7 @@ import uuid
 import engine
 from fastapi import APIRouter, HTTPException, Request, status
 
+from ..auth.access import enforce_world_token
 from ..engine_bridge import build_engine_config
 from ..state import sessions as session_state
 from ..state.world_context import load_world_context
@@ -69,6 +70,9 @@ def delete_world(world_id: str, request: Request) -> dict:
         raise HTTPException(status_code=404, detail="world not found")
 
     settings = request.app.state.settings
+    # ADR 0003 — a destructive, world-scoped op: require the per-world token
+    # (against the canonical id above). No-op when enforcement is off.
+    enforce_world_token(request, settings, world_id)
     found = find_world_session(
         settings.worlds_root, world_id, default_data_dir=settings.data_dir
     )
@@ -104,6 +108,12 @@ def get_world(world_id: str, request: Request) -> dict:
     response (the id is the only secret, same posture as session lookups).
     """
     settings = request.app.state.settings
+    # ADR 0003 — resume is world-scoped; require the per-world token (no-op when
+    # enforcement is off). Checked before the lookup so existence isn't leaked
+    # to an unauthorized caller. The SPA holds the token (localStorage keyed by
+    # world_id) from creation; a cross-browser shared link without it can't
+    # resume under enforcement — intended (the URL is no longer the sole secret).
+    enforce_world_token(request, settings, world_id)
     found = find_world_session(
         settings.worlds_root, world_id, default_data_dir=settings.data_dir
     )

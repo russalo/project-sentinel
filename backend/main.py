@@ -21,11 +21,33 @@ or directly:
     uvicorn backend.main:app --host 127.0.0.1 --port 8001 --reload
 """
 
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import Settings
+from .ratelimit import RateLimiter
 from .routes import health, session, stream, training, world
+
+logger = logging.getLogger(__name__)
+
+
+def _log_access_posture(settings: Settings) -> None:
+    """One startup line stating whether the ADR 0003 controls are armed.
+
+    A misconfigured prod (secret unset → open) is the main risk of the
+    enforce-only-when-configured model, so make the posture loud at boot.
+    """
+    logger.info(
+        "ADR 0003 access layer — world-token enforcement: %s; "
+        "rate limits (per-IP session-create/hr=%d, per-world stream/min=%d, "
+        "global LLM/day=%d; 0=disabled)",
+        "ON" if settings.session_token_secret else "OFF (no secret configured)",
+        settings.rl_session_create_per_hour,
+        settings.rl_stream_per_minute,
+        settings.llm_daily_ceiling,
+    )
 
 
 def create_app() -> FastAPI:
@@ -45,6 +67,10 @@ def create_app() -> FastAPI:
         version="0.2.0",
     )
     app.state.settings = settings
+    # One process-wide in-memory rate limiter (ADR 0003 Slice B). Stored on
+    # app.state so every request shares the same counters.
+    app.state.rate_limiter = RateLimiter()
+    _log_access_posture(settings)
 
     app.add_middleware(
         CORSMiddleware,

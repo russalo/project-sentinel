@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { API_BASE } from '../api/client';
+import { worldTokenHeader } from '../api/worldToken';
 import { useChatStore } from '../stores/chatStore';
 import { useWorldStore } from '../stores/worldStore';
 import { usePlayerStore } from '../stores/playerStore';
@@ -22,7 +23,11 @@ export function useDMStream() {
       try {
         const response = await fetch(`${API_BASE}/stream`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            // Per-world token (ADR 0003); empty header object when none is held.
+            ...worldTokenHeader(worldId),
+          },
           body: JSON.stringify({ action, sessionId, worldId }),
         });
 

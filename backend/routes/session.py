@@ -36,9 +36,11 @@ import engine
 from engine.agents import dm as dm_agent
 from engine.agents import fact_extractor
 
+from ..auth.access import issue_token
 from ..config import Settings
 from ..engine_bridge import build_engine_config
 from ..presets import get_prompt_fragment
+from ..ratelimit import client_ip, enforce, enforce_llm_ceiling
 from ..schemas import NewSessionRequest, NewSessionResponse, TurnResponse
 from ..state import sessions as session_state
 
@@ -60,6 +62,19 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
     # `async def` would block the loop on every request.
     settings: Settings = request.app.state.settings
     config = build_engine_config(settings)
+
+    # ADR 0003 Slice B — closed-beta backstop. Rate-limit world creation per IP
+    # and gate on the global daily LLM-call ceiling BEFORE the (paid) intro
+    # call. Both no-op when their configured value is <= 0 (the default).
+    limiter = request.app.state.rate_limiter
+    enforce(
+        limiter,
+        f"session_create:{client_ip(request)}",
+        settings.rl_session_create_per_hour,
+        60 * 60,
+        detail="too many world creations; try again later",
+    )
+    enforce_llm_ceiling(limiter, settings.llm_daily_ceiling)
 
     session_id = str(uuid.uuid4())
     # ADR 0002: every session belongs to a world. Minted here and threaded into
@@ -235,12 +250,18 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
             detail=f"Failed to persist new session: {write_result.error}",
         )
 
+    # ADR 0003 Slice A — mint the per-world token (None when enforcement is
+    # off). The client stores it keyed by world_id and presents it on
+    # world-scoped calls (/stream, /world GET+DELETE).
+    session_token = issue_token(settings, world_id)
+
     return NewSessionResponse(
         session_id=session_id,
         world_id=world_id,
         turns=[TurnResponse(**turn_zero)],
         started_at=started_at,
         world_name=body.world_name,
+        session_token=session_token,
     )
 
 
