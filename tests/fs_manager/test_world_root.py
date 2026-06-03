@@ -97,7 +97,12 @@ def test_session_log_also_routed_under_world_root(
     )
 
     log_in_world = (
-        worlds_root / WORLD_UUID / "data" / "lore" / "core" / "sessions"
+        worlds_root
+        / WORLD_UUID
+        / "data"
+        / "lore"
+        / "core"
+        / "sessions"
         / f"{session_uuid}.md"
     )
     assert log_in_world.is_file()
