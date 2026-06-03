@@ -187,8 +187,10 @@ in `GEMINI.md`.
 - **Cross-process locking** — in-process locks don't serialize backend /
   fs-manager / git-sync. *Per-world cross-process locking landed (Path A/A1): a
   portable `filelock` shared by fs-manager + git-sync (both derive the same
-  `<WORLDS_ROOT>/.locks/<world_id>.lock`, outside the world tree so teardown's
-  rmtree can't delete a held lock; shared mode → one global lock). New write
+  path — `<WORLDS_ROOT>/.locks/<canonical_world_id>.lock` in per-world mode
+  (UUID canonicalized, so spellings don't fragment), `<REPO_ROOT>/.sentinel-locks/shared.lock`
+  in shared mode — outside the world tree so teardown's rmtree can't delete a
+  held lock). New write
   paths must take it (`_acquire_world_lock`) — don't add an unguarded write.
   Also seeded: GitPython's in-memory index (`repo.index.add`/`commit`) resolves
   working-tree paths against the **process cwd**, so concurrent commits race —
@@ -199,7 +201,7 @@ in `GEMINI.md`.
   path with a **missing** `world_id` must NOT silently fall back to the shared
   `REPO_ROOT` (inter-world leak / master-pollution). Require it (422) and
   canonicalize (`str(uuid.UUID(...))`) at the route boundary; shared mode keeps
-  world_id advisory. *(`_require_world_id_when_isolated` in both MCP servers.)*
+  `world_id` advisory. *(`_require_world_id_when_isolated` in both MCP servers.)*
 - **Determinism where it's asserted** — anything claimed deterministic that
   depends on dict/set iteration, time, randomness, or filesystem ordering.
 - **Stale-cache-after-redeploy** — a cached `index.html` pointing at a purged

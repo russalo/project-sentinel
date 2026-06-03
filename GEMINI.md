@@ -26,7 +26,8 @@ ready wrapper, `gem.sh`, lives in the sibling File Observer project at
 - **`data/` is canonical** (ADR 0001): git-backed `data/state/*.json` +
   `data/lore/*.md`. No database. Every write goes engine → fs-manager → git-sync.
 - **Design intent: one player per world** — each player gets an *isolated* world.
-  Per **ADR 0002** (repo-per-world): Slices 1–5 + per-world cross-process locking
+  Per **ADR 0002** (repo-per-world): Slices 1–5 (the Slice 5 provisioning entry
+  point remains) + per-world cross-process locking
   have landed, but the per-world routing is **dormant by default** —
   `SENTINEL_WORLDS_ROOT` is unset, so a single shared tree is still the live
   state until the operational cutover. Per **ADR 0003** the access layer (per-world
@@ -82,8 +83,10 @@ Seeded from real bugs; attack these first (they are where Sentinel breaks):
   trust the backend blindly).
 - **Concurrency / locking.** Per-world cross-process locking landed (Path A/A1):
   a portable `filelock` shared by fs-manager + git-sync (`_acquire_world_lock`),
-  lock file at `<WORLDS_ROOT>/.locks/<world_id>.lock` — outside the world tree so
-  teardown's rmtree can't delete a held lock; shared mode → one global lock. New
+  lock file at `<WORLDS_ROOT>/.locks/<canonical_world_id>.lock` (UUID canonicalized
+  so spellings don't fragment) in per-world mode, or
+  `<REPO_ROOT>/.sentinel-locks/shared.lock` in shared mode — outside the world
+  tree so teardown's rmtree can't delete a held lock. New
   write paths that skip it, or a lock keyed differently in the two servers (→ no
   cross-process serialization), are bugs. An in-process (`asyncio`/`threading`)
   lock where cross-process is required is wrong. Seeded: GitPython's in-memory
@@ -95,7 +98,7 @@ Seeded from real bugs; attack these first (they are where Sentinel breaks):
   path with a **missing** `world_id` must NOT fall back to the shared `REPO_ROOT`
   (inter-world leak / master-pollution). Require it (422) and canonicalize
   (`str(uuid.UUID(...))`) at the route boundary — both MCP servers
-  (`_require_world_id_when_isolated`); shared mode keeps world_id advisory.
+  (`_require_world_id_when_isolated`); shared mode keeps `world_id` advisory.
 - **Malformed-LLM-output intolerance.** Code that assumes the DM's `world_update`
   hint is well-formed — non-`dict` blocks, non-`list` collections, missing fields.
 - **Schema-gate bypass.** A write path that reaches fs-manager without the schema
