@@ -11,8 +11,13 @@ export default function WorldList() {
   const [error, setError] = useState(null);
 
   const fetchWorlds = useCallback(
-    () =>
-      apiClient
+    () => {
+      // Reset to the loading state on (re)fetch so a refresh/Retry clears stale
+      // data + error and shows the loading indicator while the request is in
+      // flight.
+      setWorlds(null);
+      setError(null);
+      return apiClient
         .get('/worlds')
         .then((w) => {
           // A 200 with a non-array body (e.g. a proxy's HTML/JSON error page)
@@ -25,7 +30,8 @@ export default function WorldList() {
         .catch((e) => {
           setError(String(e));
           setWorlds([]);
-        }),
+        });
+    },
     [],
   );
 
@@ -94,7 +100,9 @@ export default function WorldList() {
 
         {worlds !== null && !error && worlds.length > 0 && (
           <ul className="space-y-2">
-            {worlds.map((w) => (
+            {worlds
+              .filter((w) => w && typeof w === 'object' && w.worldId)
+              .map((w) => (
               <li key={w.worldId}>
                 <Link
                   href={`/w/${w.worldId}`}

@@ -40,7 +40,7 @@ def list_worlds(request: Request) -> list[dict]:
                 "worldName": session.world_name,
                 "persona": session.dm_persona_name,
                 "character": session.player_character_name,
-                "turnCount": len(session.turns),
+                "turnCount": len(session.turns or []),
                 "startedAt": session.started_at,
             }
         )

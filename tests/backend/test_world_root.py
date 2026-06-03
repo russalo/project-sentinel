@@ -244,8 +244,14 @@ def test_iter_worlds_per_world_lists_each_dir(tmp_path):
     worlds = tmp_path / "worlds"
     wa = "aaaaaaaa-0000-0000-0000-000000000000"
     wb = "bbbbbbbb-0000-0000-0000-000000000000"
-    _seed(worlds / wa / "data" / "state" / "core" / "sessions", "11111111-2222-3333-4444-555555555555")
-    _seed(worlds / wb / "data" / "state" / "core" / "sessions", "22222222-2222-3333-4444-555555555555")
+    _seed(
+        worlds / wa / "data" / "state" / "core" / "sessions",
+        "11111111-2222-3333-4444-555555555555",
+    )
+    _seed(
+        worlds / wb / "data" / "state" / "core" / "sessions",
+        "22222222-2222-3333-4444-555555555555",
+    )
     got = iter_worlds(str(worlds), default_data_dir=DEFAULT)
     assert {w for (w, _d, _s) in got} == {wa, wb}
     # data_dir points at each world's own tree.

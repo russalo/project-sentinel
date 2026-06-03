@@ -249,11 +249,16 @@ def iter_worlds(
                 continue
             if not isinstance(raw, dict):
                 continue
-            # Validate the stored world_id so the picker never emits a
-            # non-UUID /w/<id> link (consistent with per-world mode).
-            world_id = _canonical_uuid(raw.get("world_id") or "")
-            if world_id is None:
+            # Validate the stored world_id is a UUID (skip non-UUID), but emit
+            # it VERBATIM — find_world_session (legacy mode) matches sessions by
+            # an exact `raw["world_id"] == world_id` compare, so canonicalizing
+            # here would emit a /w/<id> link that no longer matches its own
+            # stored spelling and 404s on resume. (Our minting is already
+            # canonical; this only matters for hand-edited/imported ids.)
+            stored = raw.get("world_id")
+            if not stored or _canonical_uuid(stored) is None:
                 continue
+            world_id = stored
             mtime = _safe_mtime(path)
             prev = latest_by_world.get(world_id)
             if prev is None or mtime > prev[1]:

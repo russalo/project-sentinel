@@ -68,8 +68,12 @@ def test_list_worlds(client, tmp_data_dir):
 
     wa = "aaaaaaaa-0000-0000-0000-000000000000"
     wb = "bbbbbbbb-0000-0000-0000-000000000000"
-    _seed_session(tmp_data_dir, session_id="11111111-1111-1111-1111-111111111111", world_id=wa)
-    _seed_session(tmp_data_dir, session_id="22222222-2222-2222-2222-222222222222", world_id=wb)
+    _seed_session(
+        tmp_data_dir, session_id="11111111-1111-1111-1111-111111111111", world_id=wa
+    )
+    _seed_session(
+        tmp_data_dir, session_id="22222222-2222-2222-2222-222222222222", world_id=wb
+    )
     sdir = tmp_data_dir / "state" / "core" / "sessions"
     past = time.time() - 100
     os.utime(sdir / "11111111-1111-1111-1111-111111111111.json", (past, past))
