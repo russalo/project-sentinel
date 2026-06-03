@@ -99,6 +99,11 @@ turn_input = engine.DMTurnInput(
     world_context=load_world_context(),  # caller reads data/state/*.json
 )
 
+# world_id is minted once at session creation (POST /api/session/new) and
+# stored on the session; the caller threads it through every turn (ADR 0002).
+# Pass None for the legacy single-shared-tree behavior.
+world_id = session_world_id
+
 full = []
 for token in dm_agent.stream_turn(config, turn_input):
     full.append(token)

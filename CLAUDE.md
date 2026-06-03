@@ -232,7 +232,10 @@ in `GEMINI.md`.
   commits cleaned up on 2026-05-30). Run play/smoke sessions on a
   throwaway branch, or reset/clean up afterward, and never push those
   auto-commits. The `just reset-world` and smoke-harness items in
-  `docs/BACKLOG.md` are the durable fix.
+  `docs/BACKLOG.md` are the durable fix. (This hazard holds while
+  `SENTINEL_WORLDS_ROOT` is unset — the default. Once the ADR 0002 Slice 3
+  cutover sets it, git-sync commits to each world's own repo *outside* the
+  code repo, and local play no longer touches the checked-out branch.)
 
 ---
 
