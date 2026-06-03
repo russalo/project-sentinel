@@ -41,8 +41,10 @@ WORLDS_ROOT = os.environ.get("SENTINEL_WORLDS_ROOT")
 # Hold the per-world write lock only for the disk/git operation itself (commit,
 # rmtree, rollback) — sub-second — never across an LLM call, so contention is
 # brief. The timeout is a fail-fast ceiling: a worker waiting longer than this
-# is a sign of a stuck lock, and returning 503 beats hanging forever.
-_LOCK_TIMEOUT_SECONDS = 30
+# is a sign of a stuck lock, and returning 503 beats hanging forever. Kept
+# BELOW the engine dispatch HTTP timeout (30s) so a maxed-out wait surfaces as
+# a clean 503 WORLD_BUSY rather than the client read-timing-out first.
+_LOCK_TIMEOUT_SECONDS = 15
 
 
 def _world_lock(world_id: str | None) -> "FileLock":
@@ -92,6 +94,27 @@ def _acquire_world_lock(world_id: str | None) -> FileLock:
             detail={"code": "WORLD_BUSY", "detail": "world write lock busy; retry"},
         )
     return lock
+
+
+def _require_world_id_when_isolated(world_id: str | None) -> None:
+    """In per-world mode a write MUST carry a world_id (ADR 0002 isolation).
+
+    With ``SENTINEL_WORLDS_ROOT`` set, a missing ``world_id`` would make
+    ``get_repo``/``_world_repo_path`` fall back to the shared ``REPO_ROOT`` —
+    committing world state onto the checked-out code branch (the
+    master-pollution hazard) and leaking across the world boundary. Reject it
+    so the fallback can only happen in legacy shared mode (WORLDS_ROOT unset),
+    where it is the intended behavior. A *present* world_id is canonicalized +
+    traversal-checked downstream by ``_world_repo_path``.
+    """
+    if WORLDS_ROOT and not world_id:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "MISSING_WORLD_ID",
+                "detail": "world_id is required when SENTINEL_WORLDS_ROOT is set.",
+            },
+        )
 
 
 app = FastAPI(
@@ -358,6 +381,7 @@ async def commit_snapshot(body: dict):
             status_code=422,
             detail={"code": "MISSING_SESSION_ID", "detail": "session_id is required."},
         )
+    _require_world_id_when_isolated(world_id)
 
     lock = _acquire_world_lock(world_id)
     try:
@@ -473,10 +497,12 @@ async def rollback_to(body: dict):
             status_code=422,
             detail={"code": "MISSING_HASH", "detail": "commit_hash is required."},
         )
+    world_id = body.get("world_id")
+    _require_world_id_when_isolated(world_id)
 
-    lock = _acquire_world_lock(body.get("world_id"))
+    lock = _acquire_world_lock(world_id)
     try:
-        repo = get_repo(body.get("world_id"))
+        repo = get_repo(world_id)
         repo.git.checkout(commit_hash, "--", "data/")
         repo.git.add("data/")
         repo.git.commit("-m", f"[sentinel] rollback to {commit_hash}")

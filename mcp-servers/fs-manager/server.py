@@ -46,8 +46,10 @@ WORLDS_ROOT = os.environ.get("SENTINEL_WORLDS_ROOT")
 
 # Hold the per-world write lock only for the batch write + log append
 # (sub-second), never across an LLM call, so contention is brief; the timeout
-# is a fail-fast ceiling (503 beats hanging a worker forever).
-_LOCK_TIMEOUT_SECONDS = 30
+# is a fail-fast ceiling (503 beats hanging a worker forever). Kept BELOW the
+# engine dispatch HTTP timeout (30s) so a maxed-out wait surfaces as a clean
+# 503 WORLD_BUSY rather than the client read-timing-out first.
+_LOCK_TIMEOUT_SECONDS = 15
 
 
 def _world_lock(world_id: str | None) -> "FileLock":
@@ -89,6 +91,26 @@ def _acquire_world_lock(world_id: str | None) -> "FileLock":
             detail={"code": "WORLD_BUSY", "detail": "world write lock busy; retry"},
         )
     return lock
+
+
+def _require_world_id_when_isolated(world_id: str | None) -> None:
+    """In per-world mode a write MUST carry a world_id (ADR 0002 isolation).
+
+    With ``SENTINEL_WORLDS_ROOT`` set, a missing ``world_id`` would make
+    ``_resolve_world_root`` fall back to the shared ``REPO_ROOT`` — writing one
+    world's state into the shared tree (inter-world leak / master-pollution).
+    Reject it so the fallback can only happen in legacy shared mode (WORLDS_ROOT
+    unset), where it is the intended behavior. A *present* world_id is
+    canonicalized + traversal-checked by ``_resolve_world_root``.
+    """
+    if WORLDS_ROOT and not world_id:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "MISSING_WORLD_ID",
+                "detail": "world_id is required when SENTINEL_WORLDS_ROOT is set.",
+            },
+        )
 
 
 # Protected fields that can never be modified by any payload.
@@ -445,6 +467,7 @@ async def apply_world_update(request: Request):
     # it and resolves the world's tree; defaults to REPO_ROOT when WORLDS_ROOT
     # is unset or no world_id is given (today's single-shared-tree behavior).
     world_id = request.query_params.get("world_id")
+    _require_world_id_when_isolated(world_id)
     world_root = _resolve_world_root(world_id)
 
     # Payload-level namespace authorization. Default to "community" when

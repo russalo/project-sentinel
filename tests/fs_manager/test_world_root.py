@@ -125,20 +125,24 @@ def test_session_log_also_routed_under_world_root(
     ).exists()
 
 
-def test_no_world_id_uses_repo_root_even_when_worlds_root_set(
+def test_missing_world_id_rejected_when_worlds_root_set(
     client, session_uuid, worlds_root, tmp_path
 ):
-    """WORLDS_ROOT set but no world_id on the request → the legacy shared
-    tree is used. This is the path a not-yet-migrated caller takes during
-    the Slice 2→3 transition."""
+    """WORLDS_ROOT set but no world_id on the request → 422, never a silent
+    fall-through to the shared REPO_ROOT. The fallback would write one world's
+    state into the shared tree (inter-world leak / master-pollution) — exactly
+    the ADR 0002 isolation boundary. Hardened in Path A/A1 after
+    gemini-code-assist flagged the fallback; this test previously asserted the
+    (leaky) 200 fall-through."""
     response = client.post(
         "/tools/apply_world_update",
         json=_payload(session_uuid),
     )
-    assert response.status_code == 200
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "MISSING_WORLD_ID"
 
-    assert (tmp_path / COMMUNITY_TARGET).is_file()
-    # Nothing should have been written into any world tree.
+    # Nothing written to EITHER tree — the guard runs before any write.
+    assert not (tmp_path / COMMUNITY_TARGET).exists()
     assert _count_files_under(worlds_root) == 0
 
 
@@ -201,10 +205,10 @@ def test_invalid_world_id_rejected_and_writes_nothing(
 ):
     """A world_id that isn't a clean UUID is rejected before any write.
 
-    Empty string is the one that falls through to the legacy path
-    (``not world_id`` → REPO_ROOT), so it succeeds rather than 422-ing;
-    the invariant we actually care about — nothing escapes WORLDS_ROOT —
-    still holds, so we assert on that rather than the status code.
+    Empty string is falsy, so in per-world mode the missing-world_id guard
+    (Path A/A1) rejects it with 422 MISSING_WORLD_ID rather than letting it
+    fall through to the shared REPO_ROOT. Either way the invariant we care
+    about — nothing escapes (or is written under) WORLDS_ROOT — holds.
     """
     files_before = _count_files_under(worlds_root)
 
@@ -215,8 +219,9 @@ def test_invalid_world_id_rejected_and_writes_nothing(
     )
 
     if bad_world_id == "":
-        # Falls through to REPO_ROOT (legacy) — no per-world dir created.
-        assert response.status_code == 200
+        # Missing-world_id guard: rejected, not a REPO_ROOT fall-through.
+        assert response.status_code == 422
+        assert response.json()["detail"]["code"] == "MISSING_WORLD_ID"
     else:
         assert response.status_code in (422, 403)
         body = response.json()
