@@ -10,14 +10,13 @@ export default function WorldList() {
   const [worlds, setWorlds] = useState(null); // null = loading
   const [error, setError] = useState(null);
 
+  // Only sets state in async callbacks (no synchronous setState), so calling
+  // it from the mount effect doesn't trip react-hooks/set-state-in-effect.
+  // The synchronous loading/error reset lives in `refresh` (an event handler),
+  // matching DataBrowser.
   const fetchWorlds = useCallback(
-    () => {
-      // Reset to the loading state on (re)fetch so a refresh/Retry clears stale
-      // data + error and shows the loading indicator while the request is in
-      // flight.
-      setWorlds(null);
-      setError(null);
-      return apiClient
+    () =>
+      apiClient
         .get('/worlds')
         .then((w) => {
           // A 200 with a non-array body (e.g. a proxy's HTML/JSON error page)
@@ -30,10 +29,17 @@ export default function WorldList() {
         .catch((e) => {
           setError(String(e));
           setWorlds([]);
-        });
-    },
+        }),
     [],
   );
+
+  // Refresh/Retry: reset to loading + clear the stale error first (event
+  // handler, so synchronous setState is fine), then refetch.
+  const refresh = () => {
+    setWorlds(null);
+    setError(null);
+    fetchWorlds();
+  };
 
   useEffect(() => {
     fetchWorlds();
@@ -48,7 +54,7 @@ export default function WorldList() {
           </h1>
           <div className="flex items-center gap-3">
             <button
-              onClick={fetchWorlds}
+              onClick={refresh}
               aria-label="Refresh"
               className="text-dust hover:text-amber transition-colors"
             >
@@ -78,7 +84,7 @@ export default function WorldList() {
           <div className="text-center py-16 border border-border rounded bg-codex">
             <p className="text-blood mb-4">Could not load worlds: {error}</p>
             <button
-              onClick={fetchWorlds}
+              onClick={refresh}
               className="inline-flex items-center gap-1 border border-border rounded px-4 py-2 hover:border-amber transition-colors"
             >
               <RefreshCw size={16} /> Retry
