@@ -63,7 +63,8 @@ _Last updated: 2026-06-03_
   side. The "MCP servers have no unit tests" gap is closed.
 - **World isolation: ADR 0002 accepted, Slices 1–5 landed (through resume completeness, 2026-06-03).**
   [ADR 0002](./adr/0002-world-identity-and-isolation.md) ratified repo-per-world
-  isolation (one player per world, concurrently). Slices 1–5 are merged:
+  isolation (one player per world, concurrently). Slices 1–4 and Slice 5's
+  first chunk (resume completeness) are merged:
   `world_id` is minted per session and threaded through the backend, the engine
   dispatcher, and the git-sync commit message
   (`[sentinel] world=<id[:8]> session=… turn=… — …`); both MCP servers resolve a
