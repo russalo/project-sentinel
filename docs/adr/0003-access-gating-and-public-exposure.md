@@ -95,18 +95,29 @@ Caddy edge**, sized for a **closed beta of invited testers**. Concretely:
 
 1. **Edge access gate (Caddy).** A single shared invite secret gates all of
    `/api/*` and the app so only invited testers reach the backend or spend LLM
-   calls — Caddy `basicauth` or an invite-code/header check at the edge.
+   calls — Caddy `basic_auth` or an invite-code/header check at the edge.
    `/healthz` stays open for monitoring. **Revoke everyone by rotating the
    secret.** The secret lives outside the repo (chezmoi/`.env` on origin-core),
    never committed.
 2. **Per-world session token.** World creation mints, alongside `world_id`, a
-   per-world **session token** returned to the client and set as an `HttpOnly`,
-   `Secure`, `SameSite=Lax` cookie — *not just the world_id in the URL*. Turn and
-   stream calls must present it; the backend verifies **token ↔ world_id** before
-   dispatching. Recommended form: a **signed stateless token** (HMAC of
-   `world_id` + expiry, key in env) so there is no session store to maintain
-   (fits the no-DB model). This makes the URL no longer the sole secret, lets
-   tokens expire, and closes the "anyone with a `world_id` can drive it" gap.
+   per-world **session token** returned to the client. Turn and stream calls must
+   present it; the backend verifies **token ↔ world_id** before dispatching.
+   Recommended form: a **signed stateless token** (HMAC of `world_id` + expiry,
+   key in env) so there is no session store to maintain (fits the no-DB model).
+   This makes the URL no longer the sole secret, lets tokens expire, and closes
+   the "anyone with a `world_id` can drive it" gap.
+
+   **The token must be stored per-world, never in a single shared cookie.** ADR
+   0002 lets one player run *several* concurrent isolated worlds on the same
+   origin; a lone `session_token` cookie would be clobbered when a second world
+   opens, logging the player out of the first. Two acceptable deliveries: (a) a
+   **client-held token sent as a per-request header** (e.g. `X-Sentinel-World-Token`),
+   which the SPA keeps keyed by `world_id` — cleanest for the multi-world SPA; or
+   (b) a **per-world-named** `HttpOnly`, `Secure`, `SameSite=Lax` cookie (e.g.
+   `sw_<world_id[:8]>`) so concurrent worlds don't collide. (a) is preferred for
+   the multi-world case; (b) trades cookie bloat for `HttpOnly` XSS-resistance —
+   a minor concern given throwaway worlds and a cost-not-confidentiality threat
+   model. A single shared cookie is **not** acceptable.
 3. **MCP servers stay network-isolated.** `fs-manager :8010` and `git-sync :8012`
    are **never** exposed publicly — only the backend's `/api` is, via Caddy. This
    is the access-control answer for the write layer and resolves the git-sync
@@ -191,19 +202,23 @@ but is no longer the sole secret.
 
 ## Implementation implications
 
-- **Edge gate (Caddy):** add a `basicauth` block or a `@gate` matcher checking an
-  invite header/cookie on `/api/*` and the app; exempt `/healthz`. Store the
-  secret in chezmoi/`.env` on origin-core; never commit it.
+- **Edge gate (Caddy):** add a `basic_auth` block (the stock Caddy v2 directive)
+  or a `@gate` matcher checking an invite header/cookie on `/api/*` and the app;
+  exempt `/healthz`. Store the secret in chezmoi/`.env` on origin-core; never
+  commit it.
 - **Session token:** mint in `backend/routes/session.py` alongside `world_id`;
   return it and set the cookie. Add a FastAPI dependency used by `stream.py` (and
   any world-scoped route) that verifies **token ↔ world_id** (reuse
   `_require_uuid` for the id), returning 401/403 on mismatch. Use a **signed
   stateless token** (HMAC over `world_id` + expiry, key from env) to avoid a
   session store.
-- **Rate-limit:** per-IP token-bucket on `/api/session/new`, per-world bucket on
-  `/api/stream` (single process → in-memory is fine at test scale), plus a global
-  daily LLM-call counter (env ceiling) that refuses new turns when exceeded.
-  Caddy's `rate_limit` is an acceptable alternative for the per-IP layer.
+- **Rate-limit:** implement in the **backend** — per-IP token-bucket on
+  `/api/session/new`, per-world bucket on `/api/stream` (single process →
+  in-memory is fine at test scale), plus a global daily LLM-call counter (env
+  ceiling) that refuses new turns when exceeded. Note: `rate_limit` is **not** a
+  stock Caddy directive — it's the third-party `caddy-ratelimit` plugin, which
+  needs a custom `xcaddy` build. So the backend limiter is the default, not a
+  Caddy-edge rate-limit, to keep the stock Caddy edge.
 - **MCP isolation invariant:** assert fs-manager/git-sync bind to
   `127.0.0.1`/tailnet only (not `0.0.0.0`); add a health/test check; document that
   Caddy must never proxy `:8010`/`:8012`.
