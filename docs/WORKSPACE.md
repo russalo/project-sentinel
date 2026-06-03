@@ -228,5 +228,12 @@ the cutover** — `/api/stream` locates a turn's world from its `session_id`
 nicety, not a cutover prerequisite.) Reset a single world with
 `just reset-world --world-id <id>` (reads `$SENTINEL_WORLDS_ROOT`).
 
+This is a **hard cutover**: once `SENTINEL_WORLDS_ROOT` is set, the API only
+sees per-world trees, so any sessions left in the legacy shared
+`data/state/core/sessions/` become invisible. That's the intended migration
+story for throwaway test data (ADR 0002 § Consequences: "the existing single
+shared tree becomes 'world zero' or is reset") — flip to a fresh worlds root;
+don't expect pre-cutover sessions to carry over.
+
 Do **not** flip the cutover unless `tests/test_world_isolation_tracer_soak.py`
 is green in CI — it is the isolation gate.
