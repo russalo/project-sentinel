@@ -43,16 +43,15 @@ app = FastAPI(
 )
 
 
-def get_repo(world_id: str | None = None) -> git.Repo:
-    """Open the git repo for a request (ADR 0002).
+def _world_repo_path(world_id: str) -> Path:
+    """Resolve (and validate) a world's repo path under SENTINEL_WORLDS_ROOT.
 
-    With ``SENTINEL_WORLDS_ROOT`` set and a ``world_id`` given, opens that
-    world's own repo at ``<WORLDS_ROOT>/<world_id>/``; otherwise the legacy
-    shared ``REPO_ROOT``. ``world_id`` is a path component → UUID-validated
-    (422) and the resolved path is asserted under WORLDS_ROOT.
+    ``world_id`` is a filesystem path component, so it is a hard security
+    boundary: canonicalized via ``uuid.UUID`` (422 on anything else — blocks
+    ``..``/``/``), and the resolved path asserted to stay directly under the
+    worlds root (403). Callers must only invoke this when ``WORLDS_ROOT`` is
+    set. Does not touch disk — pure path resolution.
     """
-    if not WORLDS_ROOT or not world_id:
-        return git.Repo(REPO_ROOT)
     try:
         # Canonicalize before it becomes a path component — uuid.UUID() accepts
         # multiple spellings of the same value (no hyphens, braces, mixed case),
@@ -77,12 +76,86 @@ def get_repo(world_id: str | None = None) -> git.Repo:
                 "detail": f"Resolved world repo {repo_path!s} escapes SENTINEL_WORLDS_ROOT.",
             },
         )
-    return git.Repo(repo_path)
+    return repo_path
+
+
+def get_repo(world_id: str | None = None) -> git.Repo:
+    """Open the git repo for a request (ADR 0002).
+
+    With ``SENTINEL_WORLDS_ROOT`` set and a ``world_id`` given, opens that
+    world's own repo at ``<WORLDS_ROOT>/<world_id>/``; otherwise the legacy
+    shared ``REPO_ROOT``. ``world_id`` is a path component → UUID-validated
+    (422) and the resolved path is asserted under WORLDS_ROOT.
+    """
+    if not WORLDS_ROOT or not world_id:
+        return git.Repo(REPO_ROOT)
+    return git.Repo(_world_repo_path(world_id))
 
 
 @app.get("/health")
 async def health():
     return {"status": "ok", "server": "git-sync", "version": "0.1.0"}
+
+
+@app.post("/tools/init_world")
+async def init_world(body: dict):
+    """Provision a world's git repo (ADR 0002 Slice 3).
+
+    Called at world creation, before the first ``commit_snapshot`` for that
+    world: a freshly-created per-world repo has no HEAD, so ``commit_snapshot``
+    (which diffs against HEAD) would fail. This ``git init``s
+    ``<WORLDS_ROOT>/<world_id>/``, lays down a baseline ``data/`` tree, sets a
+    local committer identity (so it works regardless of the host's global git
+    config), and makes the initial commit so a HEAD exists.
+
+    - **Idempotent:** an already-initialized world returns ``status=exists``.
+    - **No-op pre-cutover:** when ``SENTINEL_WORLDS_ROOT`` is unset, returns
+      ``status=skipped`` — the legacy shared repo is already initialized, so
+      there is nothing per-world to provision. (Static/shared assets —
+      ``schemas/``, ``data/lore/core/presets/``, core-lore codex — are NOT
+      copied here; they stay in the shared repo and are read from there.)
+    """
+    world_id = body.get("world_id")
+    if not world_id:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "MISSING_WORLD_ID", "detail": "world_id is required."},
+        )
+
+    if not WORLDS_ROOT:
+        return {
+            "status": "skipped",
+            "detail": "SENTINEL_WORLDS_ROOT unset; legacy shared repo in use.",
+        }
+
+    repo_path = _world_repo_path(world_id)
+    canonical = repo_path.name
+
+    if (repo_path / ".git").exists():
+        return {"status": "exists", "world_id": canonical}
+
+    try:
+        # Baseline: just enough for a first commit to exist. Only the mutable
+        # data/ tree is per-world; a .gitkeep gives the initial commit content
+        # and ensures data/ exists. fs-manager creates the deeper state/lore
+        # dirs on first write.
+        (repo_path / "data").mkdir(parents=True, exist_ok=True)
+        (repo_path / "data" / ".gitkeep").write_text("", encoding="utf-8")
+
+        repo = git.Repo.init(repo_path)
+        with repo.config_writer() as cw:
+            cw.set_value("user", "name", "Sentinel")
+            cw.set_value("user", "email", "sentinel@localhost")
+        repo.index.add(["data/.gitkeep"])
+        repo.index.commit(f"[sentinel] world={canonical[:8]} init")
+
+        logger.info(f"init_world — provisioned world={canonical[:8]} at {repo_path!s}")
+        return {"status": "initialized", "world_id": canonical}
+    except Exception as e:
+        logger.error(f"init_world failed for {canonical}: {e}")
+        raise HTTPException(
+            status_code=500, detail={"code": "GIT_ERROR", "detail": str(e)}
+        )
 
 
 @app.post("/tools/commit_snapshot")
