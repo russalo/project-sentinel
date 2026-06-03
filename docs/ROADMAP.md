@@ -61,9 +61,9 @@ _Last updated: 2026-06-03_
   exercised end-to-end (real file writes, real git commits) instead
   of just contract-tested via httpx.MockTransport from the engine
   side. The "MCP servers have no unit tests" gap is closed.
-- **World isolation: ADR 0002 accepted, Slices 1–3 landed (2026-06-03).**
+- **World isolation: ADR 0002 accepted, Slices 1–4 landed (2026-06-03).**
   [ADR 0002](./adr/0002-world-identity-and-isolation.md) ratified repo-per-world
-  isolation (one player per world, concurrently). Slices 1–3 are merged:
+  isolation (one player per world, concurrently). Slices 1–4 are merged:
   `world_id` is minted per session and threaded through the backend, the engine
   dispatcher, and the git-sync commit message
   (`[sentinel] world=<id[:8]> session=… turn=… — …`); both MCP servers resolve a
@@ -72,6 +72,9 @@ _Last updated: 2026-06-03_
   **provisioned** at creation (git-sync `init_world`), and a **tracer-soak gate**
   (`tests/test_world_isolation_tracer_soak.py`) proves zero cross-world leak
   under concurrency — it caught and drove the fix for a real git-sync cwd race.
+  The frontend now plays at a world's own URL (`/w/<world_id>`), so a game is
+  shareable and survives a refresh (resume rebuilds the scroll from the turn
+  log via `GET /api/world/<world_id>`).
   **`SENTINEL_WORLDS_ROOT` is unset by default**, so per-world routing is dormant
   and runtime behavior is unchanged (single shared `data/` tree); the cutover is
   now a one-line operational flip (see `docs/WORKSPACE.md` § "Per-world isolation
@@ -119,25 +122,33 @@ SSE-event-emitting fake — no real backend required.
   end-to-end test covering the player → token → world_update → [DONE]
   ordering with delta insertion happening AFTER `commitStreamMessage()`.
 
-### 2. **World isolation — Slice 4 (`/w/<world_id>` frontend routing)**
+### 2. **World isolation — Slice 5 (world lifecycle) + ADR 0003 (auth/exposure)**
 
-Slices 1–3 have landed (see "Where we are"): `world_id` is threaded end-to-end,
-both MCP servers and the backend reads route per-world under
-`SENTINEL_WORLDS_ROOT`, worlds are provisioned at creation, and the tracer-soak
-gate proves isolation under concurrency. The capability is built and dormant
-(env unset); the production cutover is a one-line env flip
-(`docs/WORKSPACE.md` § "Per-world isolation cutover").
+Slices 1–4 have landed (see "Where we are"): per-world routing end-to-end,
+provisioning, the tracer-soak gate, and the `/w/<world_id>` frontend route +
+resume. The capability is built and dormant (env unset); the production cutover
+is a one-line env flip (`docs/WORKSPACE.md` § "Per-world isolation cutover").
 
-Slice 4 makes the frontend world-aware: route on `/w/<world_id>`, carry the
-`world_id` from `NewSessionResponse` into the `/api/stream` request (the backend
-already accepts it), and surface a world's own URL for resume/share. Slice 5
-(world lifecycle — archival, the resume / new-session-in-world UX) follows. Auth
-+ public exposure ([ADR 0003](./adr/0003-access-gating-and-public-exposure.md))
-is the other prerequisite before inviting test users.
+The remaining prerequisites before inviting public test users:
 
-- Backlog: [`ADR 0002 implementation — remaining slices`](./BACKLOG.md)
-- Exit criteria: opening `/w/<world_id>` resumes that world; a turn from the UI
-  carries its `world_id` to `/api/stream`; with `SENTINEL_WORLDS_ROOT` set, two
+- **Slice 5 — world lifecycle:** archival / teardown, a "recent worlds" or
+  resume/new-session-in-world UX, and the resume-fidelity follow-ups from the
+  Slice 4 review (full persona restore — persist `persona_id`/mood; full
+  world-state *panel* rehydration on resume; `active`-vs-mtime session
+  selection).
+- **Cross-process write locking** (ADR 0002): concurrent turns in one world can
+  still interleave/corrupt state — a per-world file lock must land before
+  multi-user exposure (the tracer soak proves cross-*world* isolation, not
+  same-world serialization). Tracked in [`BACKLOG.md`](./BACKLOG.md).
+- **[ADR 0003](./adr/0003-access-gating-and-public-exposure.md) implementation
+  (auth + public exposure):** the invite gate, per-world session token,
+  rate-limiting, the MCP network-isolation invariant, and systemd units — all
+  unbuilt; a hard gate before exposing the mockup URLs.
+
+- Backlog: [`ADR 0002 implementation — remaining slices`](./BACKLOG.md),
+  [`Auth strategy — implement ADR 0003`](./BACKLOG.md)
+- Exit criteria: a world can be archived/reset from the UI; auth gate + per-world
+  token land behind the tracer-soak + with `SENTINEL_WORLDS_ROOT` set, two
   browser sessions on different worlds never see each other's state.
 
 ---
