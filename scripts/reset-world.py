@@ -197,7 +197,13 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 2
         if args.teardown:
-            shutil.rmtree(root)
+            try:
+                shutil.rmtree(root)
+            except OSError as exc:
+                print(
+                    f"error: could not remove world {canonical}: {exc}", file=sys.stderr
+                )
+                return 1
             print(f"teardown: removed world {canonical} ({root}).")
             return 0
     elif args.teardown:

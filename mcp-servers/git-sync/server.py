@@ -224,7 +224,10 @@ async def teardown_world(body: dict):
                 "detail": "legacy teardown needs a session_id.",
             }
         try:
-            uuid.UUID(session_id)
+            # Canonicalize before it becomes a path component — uuid.UUID()
+            # accepts non-canonical spellings; the session file is named with
+            # the canonical id, so match on that.
+            session_id = str(uuid.UUID(session_id))
         except (ValueError, AttributeError, TypeError):
             raise HTTPException(
                 status_code=422,
@@ -247,8 +250,10 @@ async def teardown_world(body: dict):
         # failed (commit_snapshot is fire-and-log) is on disk but untracked. So
         # unlink unconditionally, then `git rm --cached --ignore-unmatch` to
         # de-index the tracked ones without erroring on the untracked.
+        # missing_ok tolerates a file that vanished between the exists() check
+        # and here (a concurrent removal).
         for rel in removed:
-            (REPO_ROOT / rel).unlink()
+            (REPO_ROOT / rel).unlink(missing_ok=True)
         repo.git.rm("--cached", "--ignore-unmatch", "--", *removed)
         # Commit ONLY the teardown's own pathspecs — `git commit -m` (no paths)
         # would sweep in anything else already staged (e.g. a concurrent

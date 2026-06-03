@@ -10,6 +10,8 @@ the chat scroll and continue play. Read-only; resolves the world's own tree
 
 from __future__ import annotations
 
+import uuid
+
 import engine
 from fastapi import APIRouter, HTTPException, Request, status
 
@@ -58,6 +60,14 @@ def delete_world(world_id: str, request: Request) -> dict:
     session). All data mutation stays in git-sync — the backend never removes
     files directly. The frontend gates this behind a confirmation.
     """
+    # Validate + canonicalize the path param up front (defense in depth + a
+    # clean 404 rather than a downstream 502 on a malformed id). The MCP server
+    # validates again before any removal — never trusts the backend blindly.
+    try:
+        world_id = str(uuid.UUID(world_id))
+    except (ValueError, AttributeError, TypeError):
+        raise HTTPException(status_code=404, detail="world not found")
+
     settings = request.app.state.settings
     found = find_world_session(
         settings.worlds_root, world_id, default_data_dir=settings.data_dir

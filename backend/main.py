@@ -54,7 +54,7 @@ def create_app() -> FastAPI:
             else list(settings.cors_allowed_origins)
         ),
         allow_credentials=False,
-        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
         allow_headers=["*"],
     )
 
