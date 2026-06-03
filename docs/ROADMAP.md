@@ -124,7 +124,10 @@ for real — and is a **hard gate** that must land two things in the *same* PR:
 
 1. **World provisioning** (`git init` + baseline `data/` tree). Without it,
    git-sync's `get_repo(world_id)` raises `InvalidGitRepositoryError` on the
-   first commit and writes never enter git history.
+   first commit and writes never enter git history. Provisioning must also
+   define the **static-shared vs. mutable-per-world split**: schemas, presets,
+   and authored core lore are read-only shared assets and must not be duplicated
+   into every world — only the mutable state / session tree belongs per-world.
 2. **World-aware session reads.** Slice 2 routes *writes* per-world; the backend
    still *reads* sessions from the shared tree. The moment `SENTINEL_WORLDS_ROOT`
    is set, a new per-world session would 404 on its next `/api/stream` unless the

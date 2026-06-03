@@ -12,9 +12,15 @@ Sentinel is designed to ingest community content without ever risking corruption
 > environment variable. **`SENTINEL_WORLDS_ROOT` is unset by default**, so per-world
 > routing is dormant and everything below describes the live default: a single
 > shared `data/` tree at the repo root. When the Slice 3 cutover sets the env var,
-> the entire `data/` layout shown in §1 is rooted at `<SENTINEL_WORLDS_ROOT>/<world_id>/`
-> instead. The Core-vs-Community namespace rules in this document apply *within*
-> each world's tree unchanged. See [ADR 0002](docs/adr/0002-world-identity-and-isolation.md).
+> the **mutable world state** that fs-manager writes for a world — `state/`,
+> session JSON, and the session-log markdown under `lore/` — is rooted at
+> `<SENTINEL_WORLDS_ROOT>/<world_id>/` instead. **Read-only shared assets are not
+> relocated**: the JSON `schemas/`, the `data/lore/core/presets/` content, and
+> authored core-lore codex continue to load from the shared repo, and should not
+> be duplicated into every world. Exactly which files are per-world-mutable vs.
+> shared-static is the boundary the Slice 3 provisioning step must pin down (see
+> ADR 0002 / BACKLOG). The Core-vs-Community namespace rules in this document apply
+> *within* each world's mutable tree unchanged. See [ADR 0002](docs/adr/0002-world-identity-and-isolation.md).
 
 ---
 
