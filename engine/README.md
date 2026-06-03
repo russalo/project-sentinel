@@ -99,6 +99,11 @@ turn_input = engine.DMTurnInput(
     world_context=load_world_context(),  # caller reads data/state/*.json
 )
 
+# world_id is minted once at session creation (POST /api/session/new) and
+# stored on the session; the caller threads it through every turn (ADR 0002).
+# Pass None for the legacy single-shared-tree behavior.
+world_id = session_world_id
+
 full = []
 for token in dm_agent.stream_turn(config, turn_input):
     full.append(token)
@@ -107,7 +112,11 @@ for token in dm_agent.stream_turn(config, turn_input):
 raw = "".join(full)
 result = fact_extractor.extract(raw, session_uuid, turn_number)
 if result.payload is not None:
-    dispatch_result = engine.apply_world_update(config, result.payload)
+    # world_id (optional) routes the write to that world's tree per ADR 0002;
+    # omit it / pass None for the legacy single-shared-tree behavior.
+    dispatch_result = engine.apply_world_update(
+        config, result.payload, world_id=world_id
+    )
     if not dispatch_result.ok:
         # feed the error back to the DM for retry, per ARCHITECTURE.md
         ...
@@ -121,6 +130,7 @@ commit_result = engine.commit_snapshot(
     session_id=session_uuid,
     turn_number=turn_number,
     summary=narrative[:200],
+    world_id=world_id,  # tags the commit + targets the world's repo (ADR 0002)
 )
 if not commit_result.ok:
     # Non-fatal: narrative + disk state are durable, only the audit
@@ -137,8 +147,18 @@ turn the frontend triggers runs through this engine package,
 writes to `data/` via fs-manager, and commits to git via git-sync
 — producing the per-turn audit trail ADR 0001 describes. The
 full pipeline was verified end-to-end against a real qwen3:32b
-model on 2026-04-14 and produces real git commits like
-`[sentinel] session=3182ff9f turn=3 — <summary>`.
+model on 2026-04-14 and produces real git commits.
+
+Since ADR 0002 Slice 1, the backend mints a `world_id` per session
+and threads it through both dispatch calls, so commit subjects now
+carry a `world=<id[:8]>` prefix:
+`[sentinel] world=9b3c1d2e session=3182ff9f turn=3 — <summary>`
+(the `world=` segment is omitted only for legacy callers that pass
+no `world_id`). `apply_world_update` sends `world_id` as a
+`?world_id=` query param — routing metadata, kept out of the
+schema-validated body — and `commit_snapshot` sends it in the
+request body. Both default to the legacy shared tree when it is
+absent. See [ADR 0002](../docs/adr/0002-world-identity-and-isolation.md).
 
 ## Install
 

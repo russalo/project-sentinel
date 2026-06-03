@@ -4,7 +4,7 @@
 > stack and architecture assumed fixed. For the long-term direction and
 > open stack questions, see [`VISION.md`](./VISION.md).
 
-_Last updated: 2026-05-30_
+_Last updated: 2026-06-03_
 
 ---
 
@@ -61,6 +61,17 @@ _Last updated: 2026-05-30_
   exercised end-to-end (real file writes, real git commits) instead
   of just contract-tested via httpx.MockTransport from the engine
   side. The "MCP servers have no unit tests" gap is closed.
+- **World isolation: ADR 0002 accepted, Slices 1–2 landed (2026-06-03).**
+  [ADR 0002](./adr/0002-world-identity-and-isolation.md) ratified repo-per-world
+  isolation (one player per world, concurrently). The first two implementation
+  slices are merged: `world_id` is minted per session and threaded through the
+  backend, the engine dispatcher, and the git-sync commit message
+  (`[sentinel] world=<id[:8]> session=… turn=… — …`); and both MCP servers
+  resolve a per-world tree/repo under the `SENTINEL_WORLDS_ROOT` env var,
+  UUID-validated and traversal-guarded. **`SENTINEL_WORLDS_ROOT` is unset by
+  default**, so per-world routing is dormant and runtime behavior is unchanged
+  (single shared `data/` tree) until the Slice 3 cutover. See the "ADR 0002
+  implementation — remaining slices" item in [`BACKLOG.md`](./BACKLOG.md).
 - **Mobile-responsive chat layout shipped (2026-05-30).** The game UI
   is now usable on phones. Side panels are hidden below the `lg`
   breakpoint and accessible via `Users` / `BookOpen` icon buttons in
@@ -103,22 +114,34 @@ SSE-event-emitting fake — no real backend required.
   end-to-end test covering the player → token → world_update → [DONE]
   ordering with delta insertion happening AFTER `commitStreamMessage()`.
 
-### 2. **World identity & multi-session ADR**
+### 2. **World isolation — Slice 3 (cutover + provisioning)**
 
-The "world identity, world_seed persistence, and multi-session semantics"
-BACKLOG item has been queued for a while and now sits as a precondition
-for two unblocked items: (a) the seed-entity step of WC Layer 2 (region
-preset files describe canonical NPCs/locations in prose, but there's no
-structured guarantee — needs to know whether regions are keyed per world
-or globally shared), and (b) Phase 2 of the Panel UX system log (the
-backend hydration endpoint needs to know what session-id-to-world
-mapping it's filtering by). An ADR-sized decision before any
-implementation: per-clone single-world vs. multi-world-per-clone, how
-`world_seed` persists, what session resume looks like.
+[ADR 0002](./adr/0002-world-identity-and-isolation.md) is accepted and Slices 1–2
+have landed (see "Where we are"): `world_id` is threaded end-to-end and both MCP
+servers can route to a per-world tree under `SENTINEL_WORLDS_ROOT`, but the env
+var is unset so the routing is dormant. Slice 3 is the cutover — flipping it on
+for real — and is a **hard gate** that must land two things in the *same* PR:
 
-- Backlog: [`World identity, world_seed persistence, and multi-session semantics`](./BACKLOG.md)
-- Exit criteria: ADR 0002 (or whatever number lands in order) merged
-  under `docs/adr/` capturing the decision and its rationale.
+1. **World provisioning** (`git init` + baseline `data/` tree). Without it,
+   git-sync's `get_repo(world_id)` raises `InvalidGitRepositoryError` on the
+   first commit and writes never enter git history. Provisioning must also
+   define the **static-shared vs. mutable-per-world split**: schemas, presets,
+   and authored core lore are read-only shared assets and must not be duplicated
+   into every world — only the mutable state / session tree belongs per-world.
+2. **World-aware session reads.** Slice 2 routes *writes* per-world; the backend
+   still *reads* sessions from the shared tree. The moment `SENTINEL_WORLDS_ROOT`
+   is set, a new per-world session would 404 on its next `/api/stream` unless the
+   read path (and `load_world_context`) becomes world-aware too.
+
+Gate the cutover on a deterministic **tracer-soak** harness (stub the DM with a
+per-world token, assert zero cross-world leak, hammer in CI — never against a
+live LLM). Slices 4 (`/w/<world_id>` frontend routing) and 5 (world lifecycle)
+follow.
+
+- Backlog: [`ADR 0002 implementation — remaining slices`](./BACKLOG.md)
+- Exit criteria: provisioning + world-aware reads land together behind the
+  tracer-soak gate; `SENTINEL_WORLDS_ROOT` can be set with zero cross-world
+  leak proven in CI.
 
 ---
 
