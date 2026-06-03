@@ -133,13 +133,17 @@ For anything cross-cutting (multi-subsystem, public-facing, concurrency),
 run a **decorrelated review swarm** — reviewers that fail *differently*, so
 each catches what the author (you) and the others miss:
 
-1. **`/code-review main...HEAD`** (in-house) — best at sibling-path
-   completeness ("hardened A, missed B/C") and logic.
-2. **Cross-model (Gemini)** — `/srv/projects/pkplab/scanner/scratch/review/gem.sh`
-   (flash; fall back from pro on "Invalid stream"); read-only. Reads `GEMINI.md`
-   at the repo root for auditor instructions + the hunt list. Best at attacking
+1. **`/code-review master...HEAD`** (in-house) — best at sibling-path
+   completeness ("hardened A, missed B/C") and logic. (Default branch is
+   `master`; adjust the base if you branched from elsewhere.)
+2. **Cross-model (Gemini)** — invoke the `gemini` CLI read-only (`--approval-mode
+   plan --skip-trust`) with the diff + a falsify prompt. It reads `GEMINI.md` at
+   the repo root for auditor instructions + the hunt list. Best at attacking
    premises a same-model reviewer inherited. Chunk by subsystem; for a sliced
    change, add one **integration pass aimed at the seam** where slices meet.
+   *(On origin-core, a ready wrapper — `gem.sh`, flash; fall back from pro on
+   "Invalid stream" — lives in the sibling File Observer project at
+   `/srv/projects/pkplab/scanner/scratch/review/`; it is external to this repo.)*
 3. **PR bots** (Codex / Gemini Code Assist / Copilot) — open a PR. Best at
    doc/code drift after reworks.
 
@@ -150,8 +154,7 @@ a tag — bots over-tag and re-flag fixed issues); **convergence across layers =
 strongest real-bug signal**; **re-run the full suite + a real-flow check after
 every fix round**, gated (cheap suite every round; expensive check at round
 boundaries and mandatory before merge — never skipped). Per-PR review + a final
-integration pass for sliced features. See `feedback_review_swarm_cross_cutting`
-in memory for the full playbook.
+integration pass for sliced features.
 
 ### Failure patterns this codebase exhibits (hunt these first)
 

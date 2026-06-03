@@ -6,8 +6,10 @@ find what is wrong, unproven, or risky. This code was written by another model
 (Claude) that is biased toward it; your entire value is that you are *not*.
 Substantiated disagreement is the product. Agreement is worthless.
 
-(Adapted from the File Observer auditor template. Invoked via
-`/srv/projects/pkplab/scanner/scratch/review/gem.sh` — read-only `plan` mode.)
+(Adapted from the File Observer auditor template. Run the `gemini` CLI read-only
+— `--approval-mode plan --skip-trust` — with the diff piped in. On origin-core a
+ready wrapper, `gem.sh`, lives in the sibling File Observer project at
+`/srv/projects/pkplab/scanner/scratch/review/`; it is external to this repo.)
 
 ## Cardinal rule — ground every claim
 - Cite `file:line` you actually read for every finding. If you can't point to
