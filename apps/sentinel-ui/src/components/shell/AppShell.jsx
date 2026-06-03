@@ -1,7 +1,10 @@
 import { useEffect, useRef } from 'react';
+import { useParams } from 'wouter';
 import { useUIStore } from '../../stores/uiStore';
 import { useChatStore } from '../../stores/chatStore';
 import { usePersonaStore } from '../../stores/personaStore';
+import { usePlayerStore } from '../../stores/playerStore';
+import { useWorldHydration } from '../../hooks/useWorldHydration';
 import { TopBar } from './TopBar';
 import { CommandBar } from './CommandBar';
 import { WorldStateDashboard } from '../world-state/WorldStateDashboard';
@@ -9,9 +12,15 @@ import { NarrativeScroll } from '../narrative/NarrativeScroll';
 import { PanelRouter } from '../panels/PanelRouter';
 
 export function AppShell() {
+  // Hydrate from /w/<worldId> on a fresh load / shared link / refresh (no-op
+  // when arriving from WorldCreation, which already populated the stores).
+  const { worldId } = useParams();
+  useWorldHydration(worldId);
+
   const { focusMode, toggleFocusMode, leftPanelCollapsed, rightPanelCollapsed, mobilePanelOpen, openMobilePanel, closeMobilePanel, selectedEntity } = useUIStore();
   const { messages, addMessage } = useChatStore();
   const personaName = usePersonaStore((s) => s.personaName);
+  const hydrating = usePlayerStore((s) => s.hydrating);
 
   // Focus mode keyboard shortcut (F key).
   //
@@ -90,6 +99,11 @@ export function AppShell() {
   // pre-session mount still renders a sensible author.
   const welcomeSeeded = useRef(false);
   useEffect(() => {
+    // Stay quiet while a world is hydrating from /w/<id> — the scroll is
+    // momentarily empty mid-fetch, and seeding here would flash a placeholder
+    // that the resumed turn log immediately replaces (and under the wrong,
+    // not-yet-restored persona).
+    if (hydrating) return;
     if (messages.length > 0) {
       welcomeSeeded.current = false;
       return;
@@ -102,7 +116,7 @@ export function AppShell() {
       author: personaName,
       timestamp: new Date(),
     });
-  }, [addMessage, messages.length, personaName]);
+  }, [addMessage, messages.length, personaName, hydrating]);
 
   return (
     <div className="flex flex-col h-screen bg-void">

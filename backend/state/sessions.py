@@ -65,6 +65,7 @@ class Session:
     # can be labelled with who actually spoke (the player's character and
     # the active DM persona) rather than generic "Player"/"DM".
     player_character_name: str = ""
+    player_character_class: str = ""
     dm_persona_name: str = ""
     # The world this session belongs to (ADR 0002). Additive in this slice —
     # threaded into git-sync commit messages; per-world data isolation lands
@@ -116,6 +117,7 @@ def read_session(data_dir: Path, session_id: str) -> Session | None:
         turns=raw.get("turns", []) if isinstance(raw.get("turns"), list) else [],
         active=bool(raw.get("active", True)),
         player_character_name=raw.get("player_character_name", ""),
+        player_character_class=raw.get("player_character_class", ""),
         dm_persona_name=raw.get("dm_persona_name", ""),
         world_id=raw.get("world_id", ""),
     )
@@ -146,6 +148,7 @@ def _build_session_payload(session: Session, log_entry: str, turn_number: int) -
                     "turns": session.turns,
                     "active": session.active,
                     "player_character_name": session.player_character_name,
+                    "player_character_class": session.player_character_class,
                     "dm_persona_name": session.dm_persona_name,
                     "world_id": session.world_id,
                 },

@@ -44,6 +44,25 @@ export const useWorldStore = create((set) => ({
   setDay: (day) => set({ day }),
   setTension: (tension) => set({ tension }),
 
+  // Reset to the empty baseline (ADR 0002 Slice 4). Called when hydrating a
+  // different world so the previous world's entities don't linger in the
+  // panels — without this, the next world_update would upsert into the old
+  // world's arrays (cross-world bleed). Mirrors the initial state above.
+  reset: () => set({
+    worldName: '',
+    genre: '',
+    tone: '',
+    currentLocation: '',
+    timeOfDay: '',
+    weather: '',
+    locations: [],
+    characters: [],
+    factions: [],
+    items: [],
+    day: 1,
+    tension: 'calm',
+  }),
+
   // Apply a WorldUpdate from the SSE stream (name-based upsert/remove)
   applyUpdate: (worldUpdate) => set((state) => {
     const next = { ...state };

@@ -179,6 +179,7 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
         turns=[turn_zero],
         active=True,
         player_character_name=body.player_character_name,
+        player_character_class=body.player_character_class,
         # Prefer the resolved persona display name; fall back to the id.
         dm_persona_name=body.persona_name or body.persona_id or "",
         world_id=world_id,

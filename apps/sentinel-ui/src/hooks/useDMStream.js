@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { API_BASE } from '../api/client';
 import { useChatStore } from '../stores/chatStore';
 import { useWorldStore } from '../stores/worldStore';
+import { usePlayerStore } from '../stores/playerStore';
 import { computeDelta, hasDelta } from '../utils/delta';
 
 export function useDMStream() {
@@ -13,12 +14,15 @@ export function useDMStream() {
       setIsStreaming(true);
       let buffer = '';
       const pendingDeltas = [];
+      // worldId is advisory for the backend (it routes by session_id), but the
+      // ADR 0002 Slice 4 contract carries it on the turn. Read at call time.
+      const worldId = usePlayerStore.getState().worldId;
 
       try {
         const response = await fetch(`${API_BASE}/stream`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action, sessionId }),
+          body: JSON.stringify({ action, sessionId, worldId }),
         });
 
         if (!response.ok) {
