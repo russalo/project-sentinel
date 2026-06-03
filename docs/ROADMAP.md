@@ -74,7 +74,7 @@ _Last updated: 2026-06-03_
   under concurrency — it caught and drove the fix for a real git-sync cwd race.
   The frontend now plays at a world's own URL (`/w/<world_id>`), so a game is
   shareable and survives a refresh (resume rebuilds the scroll from the turn
-  log via `GET /api/world/<id>`).
+  log via `GET /api/world/<world_id>`).
   **`SENTINEL_WORLDS_ROOT` is unset by default**, so per-world routing is dormant
   and runtime behavior is unchanged (single shared `data/` tree); the cutover is
   now a one-line operational flip (see `docs/WORKSPACE.md` § "Per-world isolation
