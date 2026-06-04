@@ -26,8 +26,15 @@ ready wrapper, `gem.sh`, lives in the sibling File Observer project at
 - **`data/` is canonical** (ADR 0001): git-backed `data/state/*.json` +
   `data/lore/*.md`. No database. Every write goes engine → fs-manager → git-sync.
 - **Design intent: one player per world** — each player gets an *isolated* world.
-  Isolation is being implemented per **ADR 0002** (repo-per-world). Today a single
-  shared tree is the legacy state.
+  Per **ADR 0002** (repo-per-world): Slices 1–5 (the Slice 5 provisioning entry
+  point remains) + per-world cross-process locking
+  have landed, but the per-world routing is **dormant by default** —
+  `SENTINEL_WORLDS_ROOT` is unset, so a single shared tree is still the live
+  state until the operational cutover. Per **ADR 0003** the access layer (per-world
+  tokens, rate limits, LLM ceiling) is in but **opt-in/dormant** (armed by env);
+  the edge invite gate + MCP network-isolation invariant + systemd are the
+  remaining public-exposure prerequisites. Review accordingly: code is written
+  for per-world mode but usually exercised in shared mode.
 - The **schema gate is control flow, not an error path**: a payload that fails
   `schemas/apply_world_update.schema.json` MUST be rejected and fed back to the
   DM, never silently written.
@@ -74,13 +81,24 @@ Seeded from real bugs; attack these first (they are where Sentinel breaks):
   build a filesystem path must be UUID-validated (`_require_uuid`) *before* any
   path is constructed — in the backend route AND the MCP servers (which must not
   trust the backend blindly).
-- **Concurrency / locking.** Unguarded concurrent writes; an in-process
-  (`asyncio`/`threading`) lock where cross-process is required (backend,
-  fs-manager, git-sync are separate processes — only a file lock serializes them).
-  Seeded: GitPython's in-memory index (`repo.index.add`/`commit`) resolves
-  working-tree paths against the **process cwd**, so concurrent commits to
-  different per-world repos race — use the subprocess form (`repo.git.add`/
-  `commit`). Same-**world** concurrent-commit serialization is still unguarded.
+- **Concurrency / locking.** Per-world cross-process locking landed (Path A/A1):
+  a portable `filelock` shared by fs-manager + git-sync (`_acquire_world_lock`),
+  lock file at `<WORLDS_ROOT>/.locks/<canonical_world_id>.lock` (UUID canonicalized
+  so spellings don't fragment) in per-world mode, or
+  `<REPO_ROOT>/.sentinel-locks/shared.lock` in shared mode — outside the world
+  tree so teardown's rmtree can't delete a held lock. New
+  write paths that skip it, or a lock keyed differently in the two servers (→ no
+  cross-process serialization), are bugs. An in-process (`asyncio`/`threading`)
+  lock where cross-process is required is wrong. Seeded: GitPython's in-memory
+  index (`repo.index.add`/`commit`) resolves working-tree paths against the
+  **process cwd**, so concurrent commits race — use the subprocess form
+  (`repo.git.add`/`commit`). Residual: the lock is per-operation, not held across
+  the apply→commit span (deferred).
+- **Per-world isolation fallback.** When `SENTINEL_WORLDS_ROOT` is set, a write
+  path with a **missing** `world_id` must NOT fall back to the shared `REPO_ROOT`
+  (inter-world leak / master-pollution). Require it (422) and canonicalize
+  (`str(uuid.UUID(...))`) at the route boundary — both MCP servers
+  (`_require_world_id_when_isolated`); shared mode keeps `world_id` advisory.
 - **Malformed-LLM-output intolerance.** Code that assumes the DM's `world_update`
   hint is well-formed — non-`dict` blocks, non-`list` collections, missing fields.
 - **Schema-gate bypass.** A write path that reaches fs-manager without the schema
