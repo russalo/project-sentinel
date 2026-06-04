@@ -35,16 +35,34 @@ PASS, WARN, FAIL, INFO = "PASS", "WARN", "FAIL", "INFO"
 _TRUTHY = {"1", "true", "yes", "on"}
 
 
+def _parse_env_text(text: str) -> dict:
+    """Parse `.env`-style text into a dict. Dependency-free (runs under bare
+    python3, no venv) but tolerant of the common shapes: a leading ``export``,
+    surrounding single/double quotes, blank/comment lines, and ``=`` in values.
+    Naive parsing here would produce a *false FAIL* (the worst mode for a
+    readiness gate) on a hand-edited `.env`."""
+    env: dict[str, str] = {}
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        if line.startswith("export "):
+            line = line[len("export ") :].lstrip()
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+            value = value[1:-1]
+        if key:
+            env[key] = value
+    return env
+
+
 def _load_env() -> dict:
     """infrastructure/.env overlaid with os.environ (the real environment wins)."""
     env: dict[str, str] = {}
     if ENV_PATH.exists():
-        for line in ENV_PATH.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, _, value = line.partition("=")
-            env[key.strip()] = value.strip()
+        env = _parse_env_text(ENV_PATH.read_text(encoding="utf-8"))
     env.update(os.environ)
     return env
 

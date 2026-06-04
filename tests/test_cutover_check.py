@@ -117,6 +117,24 @@ def test_all_zero_rate_limits_warns_not_fails(tmp_path):
     assert not [r for r in results if r["status"] == cc.FAIL]
 
 
+def test_env_parser_handles_export_quotes_and_comments():
+    text = "\n".join(
+        [
+            "# a comment",
+            "",
+            "export SENTINEL_WORLDS_ROOT=/srv/worlds",
+            'SENTINEL_SESSION_TOKEN_SECRET="s3 cret"',
+            "OPENAI_BASE_URL=http://h:4000/v1",  # '=' is fine in the URL, but no extra '='
+            "DM_MODEL='qwen3-32b'",
+        ]
+    )
+    env = cc._parse_env_text(text)
+    assert env["SENTINEL_WORLDS_ROOT"] == "/srv/worlds"  # export stripped
+    assert env["SENTINEL_SESSION_TOKEN_SECRET"] == "s3 cret"  # quotes stripped
+    assert env["OPENAI_BASE_URL"] == "http://h:4000/v1"
+    assert env["DM_MODEL"] == "qwen3-32b"  # single quotes stripped
+
+
 def test_health_not_checked_when_worlds_root_unset():
     # No worlds_root → the cutover isn't on → don't ping (and don't add health rows).
     called = []
