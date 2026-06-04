@@ -272,8 +272,8 @@ someone worry.
 
 ### Real-LLM smoke tests in CI
 
-A handful of end-to-end tests that actually hit a small local LLM
-(e.g. Groq, or an Ollama-backed model via LiteLLM) and verify that a real model
+A handful of end-to-end tests that actually hit a real LLM
+(e.g. cloud-hosted Groq, or a small local Ollama-backed model via LiteLLM) and verify that a real model
 emits a `<world_update>` block in a shape the Fact-Extractor can
 parse. This catches prompt-drift issues: the model's output subtly
 changes shape over time as upstream models update, and fixture-based
