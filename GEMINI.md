@@ -32,9 +32,10 @@ ready wrapper, `gem.sh`, lives in the sibling File Observer project at
   `SENTINEL_WORLDS_ROOT` is unset, so a single shared tree is still the live
   state until the operational cutover. Per **ADR 0003** the access layer (per-world
   tokens, rate limits, LLM ceiling) is in but **opt-in/dormant** (armed by env);
-  the edge invite gate + MCP network-isolation invariant + systemd are the
-  remaining public-exposure prerequisites. Review accordingly: code is written
-  for per-world mode but usually exercised in shared mode.
+  the MCP network-isolation invariant (servers refuse all-interfaces binds; a
+  backend cutover config-agreement check) also landed. The **edge invite gate +
+  systemd** are the remaining public-exposure prerequisites. Review accordingly:
+  code is written for per-world mode but usually exercised in shared mode.
 - The **schema gate is control flow, not an error path**: a payload that fails
   `schemas/apply_world_update.schema.json` MUST be rejected and fed back to the
   DM, never silently written.
