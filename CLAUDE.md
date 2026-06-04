@@ -241,6 +241,20 @@ in `GEMINI.md`.
   other task, but there's no longer a special stack-decision gate.
 - `just` is the command runner. Add new recipes to `justfile` rather than creating
   standalone scripts unless the logic is complex enough to warrant a separate file.
+- **The DM LLM is any OpenAI-compatible endpoint, configured in
+  `infrastructure/.env`** (gitignored) via `OPENAI_BASE_URL` / `DM_MODEL` /
+  `OPENAI_API_KEY`. The chezmoi template default is Groq
+  (`llama-3.3-70b-versatile`); swap the three vars to route elsewhere
+  (LiteLLM, real OpenAI, etc.). **Changing the LLM config — or any
+  `infrastructure/.env` value — requires a FULL backend restart, not a
+  `--reload`.** `config.Settings.load()` calls `load_dotenv()` with the default
+  `override=False`, so it will not overwrite a var already in the live process's
+  environment, and `uvicorn --reload` re-imports code but never re-reads the
+  process env. A `.env` edit is therefore invisible until the process is killed
+  and started fresh. When launching the backend yourself, `unset OPENAI_API_KEY
+  OPENAI_BASE_URL DM_MODEL` first so a stale shell-exported value can't win over
+  `.env`. Verify a turn (or the loaded config) after restarting — don't assume
+  `--reload` caught it.
 - **Local play/smoke sessions commit to the checked-out branch.** The
   engine's `git-sync` writes a per-turn
   `[sentinel] world=… session=… turn=…` commit (the `world=` prefix since
