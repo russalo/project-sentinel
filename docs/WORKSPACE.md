@@ -137,7 +137,7 @@ fragments into the DM system prompt as a "WORLD FOUNDATIONS" block.
 | `GET` | `/api/world/{world_id}` | Resume hydration — the world's session + world state |
 | `GET` | `/api/worlds` | List existing worlds (the "my worlds" picker) |
 | `DELETE` | `/api/world/{world_id}` | Hard-delete a world (teardown) |
-| `GET` | `/api/sessions`, `…/{id}`, `…/{id}/export` | Recorded-session training browser (the `/data` page) |
+| `GET` | `/api/sessions`, `/api/sessions/{id}`, `/api/sessions/{id}/export` | Recorded-session training browser (the `/data` page) |
 
 ---
 
