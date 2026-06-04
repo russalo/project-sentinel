@@ -17,6 +17,18 @@
 default_python_bin := if os_family() == "windows" { "python" } else { "python3" }
 python_bin := env_var_or_default("PYTHON_BIN", default_python_bin)
 
+# Interpreter for backend/server recipes. Prefer the repo-root `.venv` (created
+# during setup) so these recipes work without manually activating it — the
+# fragility that made `just dev-backend` fail with `uvicorn: not found` from a
+# non-activated shell. Cross-OS: `.venv/bin` on macOS/Linux, `.venv/Scripts` on
+# Windows. Falls back to python_bin when no venv exists. A PYTHON_BIN override
+# still wins (it takes precedence over venv autodetection).
+venv_python := \
+    if env_var_or_default("PYTHON_BIN", "") != "" { python_bin } \
+    else if path_exists(".venv/bin/python") == "true" { ".venv/bin/python" } \
+    else if path_exists(".venv/Scripts/python.exe") == "true" { ".venv/Scripts/python.exe" } \
+    else { python_bin }
+
 # Show all available recipes (default when you run `just` with no args)
 default:
     @just --list --unsorted
@@ -123,8 +135,10 @@ dev-frontend:
     pnpm --filter @sentinel/ui run dev
 
 # Start the FastAPI backend on :8001 (per ADR 0001 Phase 1)
+# Runs uvicorn as a module under venv_python so it works whether or not the venv
+# is activated — bare `uvicorn` only resolves on PATH inside an activated venv.
 dev-backend:
-    uvicorn backend.main:app --host 127.0.0.1 --port 8001 --reload --proxy-headers --forwarded-allow-ips=127.0.0.1
+    "{{ venv_python }}" -m uvicorn backend.main:app --host 127.0.0.1 --port 8001 --reload --proxy-headers --forwarded-allow-ips=127.0.0.1
 
 # Install backend Python dependencies (FastAPI stack)
 install-backend:
