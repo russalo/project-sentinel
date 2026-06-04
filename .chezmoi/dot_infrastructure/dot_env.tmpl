@@ -62,3 +62,29 @@ PYTHON_BIN=python
 {{ else -}}
 PYTHON_BIN=python3
 {{ end -}}
+
+# ─── Per-world isolation + access layer (ADR 0002 / 0003) ─────────────────────
+# All OFF by default — local & tailnet dev runs on the single shared tree,
+# anonymous + unthrottled. The public cutover (docs/WORKSPACE.md § "Per-world
+# isolation cutover") arms these; verify readiness with `just cutover-check`.
+#
+# Per-world isolation: blank = single shared tree (default). Set to the worlds
+# root dir to route each world to its own repo. MUST be the SAME value across
+# the backend, fs-manager, and git-sync (the backend refuses to start otherwise;
+# `just cutover-check` verifies they agree).
+SENTINEL_WORLDS_ROOT=
+# Per-world session-token enforcement: blank = anonymous. Set a strong secret to
+# require X-Sentinel-World-Token on world-scoped routes.
+SENTINEL_SESSION_TOKEN_SECRET=
+# Rate limits (0 = disabled): per-IP world creation / per-world turns / global
+# daily LLM-call ceiling — a lenient closed-beta cost backstop.
+SENTINEL_RL_SESSION_CREATE_PER_HOUR=0
+SENTINEL_RL_STREAM_PER_MINUTE=0
+SENTINEL_LLM_DAILY_CEILING=0
+# Do NOT set SENTINEL_ALLOW_PUBLIC_BIND — the MCP write layer must stay
+# loopback-only. The Caddy invite hash ($SENTINEL_INVITE_HASH) is Caddy-side
+# (its unit's EnvironmentFile), not read by the backend.
+
+# ─── Debug ────────────────────────────────────────────────────────────────────
+# OFF for safety. true = permissive CORS + verbose errors (dev only).
+SENTINEL_DEBUG=false
