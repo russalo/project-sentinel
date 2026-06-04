@@ -133,24 +133,28 @@ narrative). The capability is built and dormant (env unset); the production
 cutover is a one-line env flip (`docs/WORKSPACE.md` § "Per-world isolation
 cutover").
 
-Landed since (Path A toward public readiness, 2026-06-03): the "my worlds"
+Landed since (Path A toward public readiness, 2026-06-03 → -04): the "my worlds"
 picker + hard-delete teardown (Slice 5); **per-world cross-process write
-locking** (ADR 0002 — a `filelock` shared by fs-manager + git-sync); and the
+locking** (ADR 0002 — a `filelock` shared by fs-manager + git-sync); the
 **ADR 0003 access layer (Slices A+B)** — per-world HMAC session tokens, rate
-limits, and a global LLM-call ceiling, all opt-in/dormant by default.
+limits, and a global LLM-call ceiling, all opt-in/dormant by default; and the
+**MCP network-isolation invariant + cutover config-agreement check** (A2 —
+both servers refuse all-interfaces binds, backend refuses per-world startup
+unless both MCP `/health` agree).
 
 The remaining prerequisites before inviting public test users:
 
-- **Slice 5 — provisioning entry point** (the last lifecycle chunk). Residual
+- **[ADR 0003](./adr/0003-access-gating-and-public-exposure.md) Slice C (edge /
+  ops) — the last code/ops unit:** the Caddy `basic_auth` invite gate (committed
+  template; secret via chezmoi, never committed) + systemd unit templates for the
+  backend and both MCP servers. Then the operational cutover (set
+  `SENTINEL_WORLDS_ROOT` + the token secret + tune the rate limits across all
+  three services, behind the tracer-soak).
+- **Slice 5 — provisioning entry point** (a Slice-5 lifecycle remainder, *not* a
+  public-exposure blocker; underspecified — scope separately). Residual
   resume-fidelity follow-ups: persona available-mood *list* + `day` persistence
   (both need the genesis/`world_seed` item), and `active`-vs-mtime session
   selection.
-- **[ADR 0003](./adr/0003-access-gating-and-public-exposure.md) Slice C (edge /
-  ops):** the Caddy invite gate, the MCP network-isolation invariant (assert
-  fs-manager/git-sync never bind `0.0.0.0`; Caddy never proxies `:8010`/`:8012`),
-  and systemd units — a hard gate before exposing the mockup URLs. Then the
-  operational cutover (set `SENTINEL_WORLDS_ROOT` + the token secret + tune the
-  rate limits, behind the tracer-soak).
 
 - Backlog: [`ADR 0002 implementation — remaining slices`](./BACKLOG.md),
   [`Auth strategy — implement ADR 0003`](./BACKLOG.md)
