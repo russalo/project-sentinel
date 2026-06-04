@@ -15,7 +15,14 @@ const GENRE_TILES = {
   cyberpunk: cyberpunkTile,
 };
 
-export function GenreSelector({ value, onChange, genres }) {
+// Capitalize each hyphen-separated part: "sci-fi" → "Sci-Fi", "fantasy" → "Fantasy".
+const titleCase = (s) =>
+  s
+    .split('-')
+    .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+    .join('-');
+
+export function GenreSelector({ value, onChange, genres = [] }) {
   return (
     <div>
       <label className="block text-amber font-cinzel text-sm mb-3">GENRE</label>
@@ -54,7 +61,7 @@ export function GenreSelector({ value, onChange, genres }) {
                   selected ? 'bg-amber text-void' : 'bg-codex text-ink'
                 }`}
               >
-                {genre.charAt(0).toUpperCase() + genre.slice(1)}
+                {titleCase(genre)}
               </span>
             </button>
           );
