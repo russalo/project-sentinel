@@ -256,6 +256,22 @@ in `GEMINI.md`.
   OPENAI_BASE_URL DM_MODEL` first so a stale shell-exported value can't win over
   `.env`. Verify a turn (or the loaded config) after restarting — don't assume
   `--reload` caught it.
+- **This repo is tailnet-only; public-facing exposure is out of scope here.**
+  Sentinel runs behind the tailnet (`sentinel.dev.russalo.com`). The transition
+  to public-facing — DNS, TLS certs, the internet-facing edge — is managed
+  externally (system-managed Caddy + a separate infra agent), **not** by this
+  repo. Do not treat DNS/cert/edge work as repo tasks or list them as Sentinel
+  readiness gaps. The repo's contribution is the *artifacts + the invariant*:
+  the Caddy invite-gate template (`infrastructure/caddy/Caddyfile.example`), the
+  systemd unit templates (`infrastructure/systemd/`), and the hard rule that the
+  edge proxies **only** the backend `:8001` — never the MCP write layer
+  `:8010`/`:8012` (loopback/tailnet only; exposing them = unauthenticated world
+  read/write/rollback). The in-repo prerequisite is the access-layer cutover
+  (arm the `SENTINEL_*` knobs, `just cutover-check` green). Verify the armed
+  cutover safely with an **isolated stack** — armed fs-manager/git-sync/backend
+  on alt ports with a temp `SENTINEL_WORLDS_ROOT` (direct env injection;
+  `SENTINEL_SKIP_ENV_CHECK=1` if not loading `.env`) — so nothing touches the
+  running dev stack or commits to the repo.
 - **Local play/smoke sessions commit to the checked-out branch.** The
   engine's `git-sync` writes a per-turn
   `[sentinel] world=… session=… turn=…` commit (the `world=` prefix since
