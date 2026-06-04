@@ -3,7 +3,7 @@
 Developer context document. Covers stack, structure, data storage, AI
 architecture, and API routes for contributors and AI coding agents.
 
-_Last updated: 2026-05-30_
+_Last updated: 2026-06-04_
 
 ---
 
