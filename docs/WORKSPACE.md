@@ -34,7 +34,7 @@ packages are gone._
 | Frontend | React 19 + Vite + Tailwind v3 | `apps/sentinel-ui/` (`@sentinel/ui`) |
 | Styling | Tailwind CSS v3 | Custom design tokens (void, amber, codex…) |
 | State | Zustand | 5 stores: world, chat, player, ui, persona |
-| Routing | Wouter | Client-side, `/create` + `/` |
+| Routing | Wouter | Client-side: `/` (WorldList), `/create`, `/w/:worldId`, `/data` |
 | Backend | FastAPI | `backend/` — port `:8001` |
 | AI / Inference | Python engine package | `engine/` — DM agent + Fact-Extractor |
 | LLM endpoint | OpenAI-compatible (`OPENAI_BASE_URL`) | Currently Groq (`llama-3.3-70b-versatile`); any OpenAI-compatible API (LiteLLM / Ollama / OpenAI) works |
@@ -55,7 +55,7 @@ project-sentinel/
 │   └── sentinel-ui/        # React 19 + Vite frontend (@sentinel/ui)
 ├── backend/                # FastAPI app — :8001 (session, stream, healthz)
 ├── engine/                 # Pure-Python Inference Node package
-│   └── agents/             # dm.py, fact_extractor.py (lorekeeper.py stubbed)
+│   └── agents/             # dm.py, fact_extractor.py (lorekeeper planned, not yet created)
 ├── mcp-servers/
 │   ├── fs-manager/         # Writes data/state/*.json and data/lore/*.md — :8010
 │   └── git-sync/           # Atomic git commit after each world update — :8012
@@ -108,7 +108,7 @@ via `git-sync`, giving a full per-turn audit trail.
 |---|---|---|
 | DM | `dm.py` | Live — `run_turn`, `stream_turn`, `generate_intro` |
 | Fact-Extractor | `fact_extractor.py` | Live — `extract` parses `<world_update>` tags |
-| Lorekeeper | `lorekeeper.py` | Stubbed — ChromaDB RAG, unscheduled |
+| Lorekeeper | _(planned)_ | Not yet created — ChromaDB RAG, unscheduled |
 
 ### Turn loop
 
@@ -134,6 +134,10 @@ fragments into the DM system prompt as a "WORLD FOUNDATIONS" block.
 | `GET` | `/healthz` | Health check |
 | `POST` | `/api/session/new` | Start a new session — loads presets, calls DM intro, dispatches seed entities |
 | `POST` | `/api/stream` | Submit a player turn — SSE stream of DM tokens + `world_update` event |
+| `GET` | `/api/world/{world_id}` | Resume hydration — the world's session + world state |
+| `GET` | `/api/worlds` | List existing worlds (the "my worlds" picker) |
+| `DELETE` | `/api/world/{world_id}` | Hard-delete a world (teardown) |
+| `GET` | `/api/sessions`, `/api/sessions/{id}`, `/api/sessions/{id}/export` | Recorded-session training browser (the `/data` page) |
 
 ---
 
@@ -141,8 +145,10 @@ fragments into the DM system prompt as a "WORLD FOUNDATIONS" block.
 
 | Route | Page | Description |
 |---|---|---|
+| `/` | `WorldList` | "My worlds" picker — lists existing worlds + entry to create |
 | `/create` | `WorldCreation` | Pre-game form: genre, tone, region, persona, mood, modifiers |
-| `/` | `AppShell` | Game shell: responsive 3-panel layout (panels hidden on mobile, accessible via drawer) |
+| `/w/:worldId` | `AppShell` | Game shell: responsive 3-panel layout (panels hidden on mobile, accessible via drawer) |
+| `/data` | `DataBrowser` | Recorded-session training browser |
 
 ---
 

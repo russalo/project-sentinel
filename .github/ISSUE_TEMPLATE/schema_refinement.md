@@ -64,8 +64,8 @@ assignees: ""
         If so, describe what new information it must now extract from the DM narrative.
      3. Does this change affect the `dm.yaml` agent?
         If so, describe how the DM should use this new field in its narrative.
-     4. Does this change require a new database column in PostgreSQL?
-        If so, include the ALTER TABLE or new migration SQL.
+     4. Does this change require migrating existing on-disk JSON under `data/`?
+        If so, include the Python migration script outline (see option B above).
      5. Could this change break any existing community packs?
         If so, what is the communication plan for pack authors?
 -->

@@ -5,7 +5,7 @@
 > Structure follows the near-term / vision split from `CLAUDE.md`
 > — "Current" is a commitment, "Vision" is a direction.
 
-_Last updated: 2026-04-14_
+_Last updated: 2026-06-04_
 
 ---
 
@@ -28,7 +28,10 @@ continuity; as of PR #23 it actually runs every test under `tests/`, not just
 
 ### What the Python test suite covers
 
-`tests/` holds **111 tests** as of this writing, split into three concerns:
+`tests/` holds **431 tests** as of this writing, split into three concerns
+(the backend and engine suites have grown well beyond the original three files
+— e.g. `tests/backend/` now also covers the access layer, rate limits, the
+MCP config-agreement check, and per-world routing):
 
 - **`tests/test_schema_validation.py`** — fixture-based validation of every
   JSON Schema under `schemas/` against a set of known-good and known-bad
@@ -51,15 +54,15 @@ continuity; as of PR #23 it actually runs every test under `tests/`, not just
 
 Flagging gaps honestly so TESTING.md doesn't lie by omission:
 
-- **`apps/sentinel-ui/` test coverage is the first 34 tests, not zero.**
-  vitest + @testing-library/react infrastructure landed; first three
-  test files cover `utils/delta.js` (14 pure-function tests) and the
-  Panel UX primitives `EntityCard` (10 component tests) + `DeltaMessage`
-  (10 component tests). Stores, hooks (especially `useDMStream`), and
-  the rest of the components still have no coverage. Listed in
-  `docs/BACKLOG.md` Developer Experience as the next vitest target
-  set, but no longer load-bearing — the infrastructure is in place
-  and adding more tests is mechanical.
+- **`apps/sentinel-ui/` test coverage is ~61 tests across 10 files, not zero.**
+  vitest + @testing-library/react infrastructure landed and has grown beyond
+  the initial primitives: `utils/delta.js`, the Panel UX primitives `EntityCard`
+  + `DeltaMessage`, the `useWorldHydration` hook, and components `AppShell`,
+  `WorldList`, `DataBrowser`, `TopBar`, `StatusIndicator`, `PanelRouter`. Most
+  stores and the `useDMStream` hook still have no coverage. Listed in
+  `docs/BACKLOG.md` Developer Experience as the next vitest target set, but
+  no longer load-bearing — the infrastructure is in place and adding more
+  tests is mechanical.
 - **No end-to-end turn loop.** We don't spin up a real fs-manager
   subprocess + real git-sync + real LLM (or a fake one) and send a
   synthetic turn through the whole pipeline. The first live smoke test
@@ -135,22 +138,21 @@ Most of the "near-term" work that was originally queued has shipped
 (see "Resolved" below for what landed). What's left, ordered by
 dependency:
 
-1. **Expand frontend test coverage to stores and hooks.** vitest +
-   @testing-library/react infrastructure landed with the first 34
-   tests covering `utils/delta.js` + the `EntityCard` and
-   `DeltaMessage` primitives. The next slice is the Zustand stores
-   (`chatStore`, `worldStore`, `uiStore`, `personaStore`) and the
-   `useDMStream` hook — the latter is the trickiest because it
-   touches `fetch` and the stream parser, but it's also the highest
-   value for catching turn-loop regressions. Tests should mock
-   `fetch` with a small SSE-event-emitting fake.
+1. **Expand frontend test coverage to stores and the stream hook.** vitest +
+   @testing-library/react infrastructure landed and now covers `utils/delta.js`,
+   the `EntityCard`/`DeltaMessage` primitives, the `useWorldHydration` hook, and
+   several shell/page components (`AppShell`, `WorldList`, `DataBrowser`,
+   `TopBar`, `StatusIndicator`, `PanelRouter`). The next slice is the Zustand
+   stores (`chatStore`, `worldStore`, `uiStore`, `personaStore`) and the
+   `useDMStream` hook — the latter is the trickiest because it touches `fetch`
+   and the stream parser, but it's also the highest value for catching turn-loop
+   regressions. Tests should mock `fetch` with a small SSE-event-emitting fake.
 
-2. **Component tests for the rest of `apps/sentinel-ui/`.** The
-   Panel UX primitives are covered, but `NarrativeScroll`,
-   `WorldCreation`, `PersonaSheet`, `LiveSeedPreview`, the
-   left-panel lists, etc. all have zero coverage. Mechanical work
-   that benefits from the existing test patterns — defer until a
-   regression makes one of them load-bearing.
+2. **Component tests for the rest of `apps/sentinel-ui/`.** Several primitives
+   and shell components are covered, but `NarrativeScroll`, `WorldCreation`,
+   `PersonaSheet`, `LiveSeedPreview`, the left-panel lists, etc. still have zero
+   coverage. Mechanical work that benefits from the existing test patterns —
+   defer until a regression makes one of them load-bearing.
 
 ### Resolved (recent)
 

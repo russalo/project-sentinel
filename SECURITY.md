@@ -2,11 +2,11 @@
 
 ## Supported Versions
 
-Project Sentinel is currently in pre-release (`v0.1`). Security fixes are applied to the `main` branch only.
+Project Sentinel is currently in pre-release (`v0.1`). Security fixes are applied to the `master` branch only.
 
 | Version | Supported |
 |---------|-----------|
-| `main` (latest) | ✅ |
+| `master` (latest) | ✅ |
 | Any tagged release | ✅ |
 | Forks / community modifications | ❌ |
 
@@ -16,7 +16,7 @@ Project Sentinel is currently in pre-release (`v0.1`). Security fixes are applie
 
 **Please do not open a public GitHub issue for security vulnerabilities.**
 
-Report vulnerabilities privately via [GitHub Security Advisories](https://github.com/russalo/present/security/advisories/new). You will receive an acknowledgement within 72 hours and a resolution timeline within 7 days.
+Report vulnerabilities privately via [GitHub Security Advisories](https://github.com/russalo/project-sentinel/security/advisories/new). You will receive an acknowledgement within 72 hours and a resolution timeline within 7 days.
 
 Include the following in your report:
 - A description of the vulnerability and its impact

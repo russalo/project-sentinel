@@ -44,7 +44,7 @@ This Code of Conduct applies within all community spaces — GitHub Issues, Pull
 
 ## Enforcement
 
-Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the community leaders via [GitHub Security Advisories](https://github.com/russalo/present/security/advisories/new) (for privacy) or by opening a GitHub Issue tagged `conduct`.
+Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the community leaders via [GitHub Security Advisories](https://github.com/russalo/project-sentinel/security/advisories/new) (for privacy) or by opening a GitHub Issue tagged `conduct`.
 
 All complaints will be reviewed and investigated promptly and fairly. All community leaders are obligated to respect the privacy and security of the reporter of any incident.
 

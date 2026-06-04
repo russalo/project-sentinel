@@ -3,8 +3,10 @@
 Reference document for planned SVG icon and decorative element integration
 across `apps/sentinel-ui/`. Updated: 2026-04-15.
 
-**Icon library:** `lucide-react` — already installed, already used in 4 places
-(`Menu`, `Share2`, `Send`, `Dices`). No new packages needed for Tier 1 or Tier 2.
+**Icon library:** `lucide-react` — already installed, already used across six
+files (e.g. `Menu`, `Share2`, `Users`, `BookOpen`, `Database`, `Send`, `Globe`,
+`Plus`, `RefreshCw`, `Trash2`, `Download`, `ArrowLeft`, `X`, `Copy`). No new
+packages needed for Tier 1 or Tier 2.
 
 **Current state:** all panel section headers, entity list rows, and field labels
 use Unicode glyphs (`◎ ▸ ◈ ◆ ✦`) or plain text. These are inconsistent and
@@ -186,7 +188,7 @@ implement Tier 1 first.
 
 | Use case | Description | Format |
 |---|---|---|
-| Roll button d20 | Proper d20 outline to replace generic `Dices`. More distinctive for a tabletop RPG UI. | Inline `<svg>` React component, `currentColor`, viewBox `0 0 24 24`, 16px |
+| Roll button d20 | Proper d20 outline for a roll button (lucide's `Dices` is the generic fallback if one is ever needed). More distinctive for a tabletop RPG UI. | Inline `<svg>` React component, `currentColor`, viewBox `0 0 24 24`, 16px |
 | Tension meter | 5-pip bar (some filled `blood`, some `border`) instead of a number. Shows tension 0–10 as a visual threat gauge. | Inline SVG, hardcode 5 segments, fill based on `tension / 2` | 
 | Cinzel section ornament | Small decorative horizontal rule with a centred diamond glyph for Cinzel-font panel headings. | Pure CSS `::before`/`::after` with `border-border` + amber diamond, no SVG needed |
 
