@@ -1,0 +1,24 @@
+# Sentinel fs-manager MCP server (ADR 0003 Slice C). TEMPLATE.
+# Install on origin-core (Linux):
+#   1. Replace <REPO_ROOT> (e.g. /srv/projects/project-sentinel) and <USER>.
+#   2. sudo cp this to /etc/systemd/system/sentinel-fs-manager.service
+#   3. sudo systemctl daemon-reload && sudo systemctl enable --now sentinel-fs-manager
+# Linux-only; for macOS/Windows dev use `just fs-manager` / `just start`.
+[Unit]
+Description=Sentinel fs-manager MCP server (schema-gated writer for data/)
+After=network.target
+
+[Service]
+Type=simple
+User=<USER>
+WorkingDirectory=<REPO_ROOT>
+# SENTINEL_WORLDS_ROOT etc. — must match the backend and git-sync (the backend's
+# startup config-agreement check refuses per-world mode otherwise).
+EnvironmentFile=<REPO_ROOT>/infrastructure/.env
+# No --host → defaults to 127.0.0.1 (the A2 bind guard refuses all-interfaces).
+ExecStart=<REPO_ROOT>/.venv/bin/python mcp-servers/fs-manager/server.py --port 8010
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

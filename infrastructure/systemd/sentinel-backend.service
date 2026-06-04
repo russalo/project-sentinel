@@ -1,0 +1,32 @@
+# Sentinel FastAPI backend (ADR 0003 Slice C). TEMPLATE.
+# Install on origin-core (Linux):
+#   1. Replace <REPO_ROOT> (e.g. /srv/projects/project-sentinel) and <USER>.
+#   2. sudo cp this to /etc/systemd/system/sentinel-backend.service
+#   3. sudo systemctl daemon-reload && sudo systemctl enable --now sentinel-backend
+# Linux-only; for macOS/Windows dev use `just dev-backend` / `just dev`.
+[Unit]
+Description=Sentinel FastAPI backend (:8001)
+# Order after the MCP servers so the backend's startup config-agreement check
+# (A2) finds them up in per-world mode. After= orders START only — Type=simple is
+# "active" at exec, not when listening — so the backend may still come up before
+# the MCP servers accept connections; the check then fails and Restart=on-failure
+# retries until they're ready. Acceptable (fail-and-retry, no corruption).
+After=network.target sentinel-fs-manager.service sentinel-git-sync.service
+Wants=sentinel-fs-manager.service sentinel-git-sync.service
+
+[Service]
+Type=simple
+User=<USER>
+WorkingDirectory=<REPO_ROOT>
+# The cutover (A4) sets SENTINEL_WORLDS_ROOT + SENTINEL_SESSION_TOKEN_SECRET +
+# the SENTINEL_RL_* / SENTINEL_LLM_DAILY_CEILING knobs here. Must match the MCP
+# servers' SENTINEL_WORLDS_ROOT.
+EnvironmentFile=<REPO_ROOT>/infrastructure/.env
+# Production: no --reload. --proxy-headers + forwarded-allow-ips so the per-IP
+# rate-limiter sees the real client IP via Caddy's X-Forwarded-For.
+ExecStart=<REPO_ROOT>/.venv/bin/uvicorn backend.main:app --host 127.0.0.1 --port 8001 --proxy-headers --forwarded-allow-ips=127.0.0.1
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

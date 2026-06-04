@@ -206,6 +206,43 @@ own `localhost`. A local `just dev-frontend` ignores this — it uses the
 
 See `CLAUDE.md` § "Common Commands" for the full reference.
 
+## Production deployment (origin-core) — ADR 0003 Slice C
+
+Templates live in `infrastructure/`; the live config is applied by hand on
+`origin-core` (Linux). All of this is **opt-in** — a local `just start` / `just
+dev` setup needs none of it.
+
+**1. systemd units** (`infrastructure/systemd/*.service`) run the backend and
+both MCP servers as services that survive reboot. Each is a template — replace
+`<REPO_ROOT>` and `<USER>`, copy to `/etc/systemd/system/`, then
+`systemctl daemon-reload && systemctl enable --now sentinel-{fs-manager,git-sync,backend}`.
+The backend unit is ordered `After=`/`Wants=` the two MCP units so its startup
+config-agreement check (per-world mode) finds them up; if it races ahead before
+they're listening, `Restart=on-failure` retries — no corruption. They load
+`infrastructure/.env`, so the cutover vars below propagate to all three.
+(systemd is Linux-only; dev on macOS/Windows keeps `just start`.)
+
+**2. Caddy invite gate** (`infrastructure/caddy/Caddyfile.example`, ADR 0003
+§1) — a single shared `basic_auth` credential gates the SPA and `/api/*`;
+`/healthz` stays open for monitoring. So only invited testers reach the backend
+or spend LLM calls; rotate the bcrypt hash to revoke everyone. Apply:
+
+```bash
+caddy hash-password                       # → bcrypt hash for the shared invite pw
+# put the hash in $SENTINEL_INVITE_HASH (env / chezmoi-managed, NEVER committed)
+# fill <REPO_ROOT> in the dist root path, then:
+caddy reload --config /etc/caddy/Caddyfile
+```
+
+Caddy is assumed already system-managed on origin-core (no unit shipped). Per
+the isolation invariant above, the Caddyfile proxies **only** `:8001` — never
+`:8010`/`:8012` (`tests/test_caddy_invariant.py` guards the template).
+
+Rate-limiting is **not** at the edge (`rate_limit` needs a non-stock Caddy
+plugin) — it's in the backend (ADR 0003 Slice B): set `SENTINEL_RL_SESSION_CREATE_PER_HOUR`,
+`SENTINEL_RL_STREAM_PER_MINUTE`, `SENTINEL_LLM_DAILY_CEILING` in
+`infrastructure/.env`. Per-world session tokens arm with `SENTINEL_SESSION_TOKEN_SECRET`.
+
 ## Per-world isolation cutover (`SENTINEL_WORLDS_ROOT`)
 
 Per [ADR 0002](adr/0002-world-identity-and-isolation.md), each world can live in

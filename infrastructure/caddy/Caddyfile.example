@@ -1,0 +1,58 @@
+# Sentinel — Caddy site config (ADR 0003 Slice C edge gate). EXAMPLE / TEMPLATE.
+#
+# This is the public edge for the closed beta: TLS, a single shared invite gate
+# (basic_auth), reverse-proxy to the backend, and static serving of the SPA.
+# Copy to the live Caddyfile on origin-core and supply the real bcrypt hash via
+# the environment; DO NOT commit the real hash.
+#
+# Apply on origin-core:
+#   1. caddy hash-password            # prompts for the shared invite password
+#   2. put the bcrypt hash in $SENTINEL_INVITE_HASH (env / chezmoi-managed,
+#      NEVER committed) — e.g. via the caddy unit's EnvironmentFile.
+#   3. caddy reload --config /etc/caddy/Caddyfile
+#
+# INVARIANT (ADR 0003 §3): the MCP servers (fs-manager :8010, git-sync :8012)
+# are the unauthenticated write layer and MUST NEVER be proxied here. This file
+# proxies ONLY the backend (:8001). Adding a route to :8010/:8012 is a security
+# regression (tests/test_caddy_invariant.py guards against it).
+
+sentinel.dev.russalo.com {
+	# Automatic Let's Encrypt TLS (Caddy default).
+
+	# The invite gate: a single shared credential gates everything EXCEPT
+	# /healthz (which monitoring must reach un-gated). Scoping basic_auth with
+	# the `@gated` matcher is what exempts /healthz — a bare site-level
+	# basic_auth would gate it too. Rotating the hash revokes every tester.
+	# Username is fixed ("beta"); the bcrypt hash comes from the environment so
+	# it never lands in the repo.
+	@gated not path /healthz
+	basic_auth @gated {
+		beta {$SENTINEL_INVITE_HASH}
+	}
+
+	# Open health check for uptime monitoring (un-gated by the matcher above).
+	handle /healthz {
+		reverse_proxy 127.0.0.1:8001
+	}
+
+	# Backend API (gated): per-turn SSE stream, session/world routes.
+	# flush_interval -1 disables response buffering so SSE tokens stream live.
+	handle /api/* {
+		reverse_proxy 127.0.0.1:8001 {
+			flush_interval -1
+		}
+	}
+
+	# Everything else (gated): the built SPA. <REPO_ROOT> is the absolute path
+	# to the checkout on origin-core (e.g. /srv/projects/project-sentinel).
+	handle {
+		root * <REPO_ROOT>/apps/sentinel-ui/dist
+		try_files {path} /index.html
+		file_server
+	}
+
+	# NOTE: rate-limiting is NOT here — `rate_limit` is not a stock Caddy v2
+	# directive (it needs the third-party caddy-ratelimit plugin + an xcaddy
+	# build). Sentinel does per-IP / per-world / global-LLM rate limiting in the
+	# backend instead (ADR 0003 Slice B, backend/ratelimit.py).
+}
