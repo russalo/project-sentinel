@@ -27,6 +27,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import Settings
+from .mcp_agreement import verify_world_mode_agreement
 from .ratelimit import RateLimiter
 from .routes import health, session, stream, training, world
 
@@ -56,6 +57,11 @@ def create_app() -> FastAPI:
     # CORS middleware configuration. No lifespan context manager is
     # needed — nothing async has to happen at startup.
     settings = Settings.load()
+
+    # Cutover safety (ADR 0002 / A2): in per-world mode, refuse to start unless
+    # both MCP servers also report per-world mode. No-op in shared mode (default),
+    # so dev/test setups without the MCP servers running are unaffected.
+    verify_world_mode_agreement(settings)
 
     app = FastAPI(
         title="Project Sentinel Backend",

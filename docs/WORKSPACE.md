@@ -189,6 +189,14 @@ The tailnet dev site at `sentinel.dev.russalo.com` is served by Caddy on
 `127.0.0.1:8001`; everything else is static files from
 `apps/sentinel-ui/dist/`. Run `just build-site` to (re)generate that `dist/`.
 
+> **MCP network-isolation invariant (ADR 0003 §3).** Caddy proxies **only** the
+> backend. It must **never** proxy the MCP servers `fs-manager` (`:8010`) or
+> `git-sync` (`:8012`) — they are the unauthenticated write layer and their
+> safety is topology (loopback/tailnet only). As a backstop, both servers
+> default to `127.0.0.1` and **refuse an all-interfaces bind** (`0.0.0.0`/`::`)
+> unless `SENTINEL_ALLOW_PUBLIC_BIND=1` is set. Don't set that, and don't add a
+> Caddy route to `:8010`/`:8012`.
+
 The frontend reads its API base from `VITE_API_URL`, baked in at build time.
 `apps/sentinel-ui/.env.production` (committed — the URL is public, not secret)
 pins it to `https://sentinel.dev.russalo.com/api` so the served UI calls the
