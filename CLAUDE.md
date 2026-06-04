@@ -207,8 +207,9 @@ in `GEMINI.md`.
 - **Stale-cache-after-redeploy** — a cached `index.html` pointing at a purged
   hashed bundle → blank page.
 - **Provider/API param compat** (`max_completion_tokens` vs `max_tokens`);
-  **env/setup fragility** (PEP 668, missing venv, bare `pip`/`uvicorn` in
-  recipes); **biased validation corpus** (one smoke transcript ≠ coverage).
+  **env/setup fragility** (PEP 668, bare `pip` in `install` recipes — note
+  `dev-backend` now venv-autodetects via `venv_python`); **biased validation
+  corpus** (one smoke transcript ≠ coverage).
 
 ---
 

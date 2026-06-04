@@ -3,7 +3,7 @@
 Developer context document. Covers stack, structure, data storage, AI
 architecture, and API routes for contributors and AI coding agents.
 
-_Last updated: 2026-05-30_
+_Last updated: 2026-06-04_
 
 ---
 
@@ -37,7 +37,7 @@ packages are gone._
 | Routing | Wouter | Client-side, `/create` + `/` |
 | Backend | FastAPI | `backend/` — port `:8001` |
 | AI / Inference | Python engine package | `engine/` — DM agent + Fact-Extractor |
-| LLM proxy | LiteLLM | Model-agnostic; tested against Ollama locally |
+| LLM endpoint | OpenAI-compatible (`OPENAI_BASE_URL`) | Currently Groq (`llama-3.3-70b-versatile`); any OpenAI-compatible API (LiteLLM / Ollama / OpenAI) works |
 | MCP servers | Python / FastAPI | `mcp-servers/fs-manager` (`:8010`), `mcp-servers/git-sync` (`:8012`) |
 | Vector store | ChromaDB | Docker; reserved for future Lorekeeper RAG |
 | Python | 3.11+ | Backend, engine, MCP servers |

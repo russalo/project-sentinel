@@ -147,7 +147,11 @@ turn the frontend triggers runs through this engine package,
 writes to `data/` via fs-manager, and commits to git via git-sync
 — producing the per-turn audit trail ADR 0001 describes. The
 full pipeline was verified end-to-end against a real qwen3:32b
-model on 2026-04-14 and produces real git commits.
+model on 2026-04-14 (and again against Groq's
+`llama-3.3-70b-versatile` on 2026-06-04, ~4s/turn) and produces
+real git commits. The LLM is any OpenAI-compatible endpoint,
+configured via `OPENAI_BASE_URL` / `DM_MODEL` / `OPENAI_API_KEY`
+in `infrastructure/.env`.
 
 Since ADR 0002 Slice 1, the backend mints a `world_id` per session
 and threads it through both dispatch calls, so commit subjects now
