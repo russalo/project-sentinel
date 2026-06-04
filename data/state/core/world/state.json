@@ -1,4 +1,6 @@
 {
-  "tension": 8,
-  "currentLocation": "Hallowrun Inn"
+  "tension": 6,
+  "currentLocation": "Thornwatch forest edge",
+  "weather": "late day, overcast",
+  "timeOfDay": "dusk"
 }

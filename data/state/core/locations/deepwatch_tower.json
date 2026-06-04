@@ -1,0 +1,11 @@
+{
+  "name": "Deepwatch tower",
+  "type": "tower",
+  "description": "The fifth tower of the Thornwatch series, locked from the inside",
+  "region": "Thornwatch border",
+  "discovered": true,
+  "danger": 8,
+  "notableFeatures": [
+    "locked gate"
+  ]
+}

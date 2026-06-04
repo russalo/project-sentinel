@@ -1,0 +1,14 @@
+{
+  "name": "Sal",
+  "health": 100,
+  "status": "alive",
+  "currentLocation": "Thornwatch forest edge",
+  "description": "A Proctor",
+  "traits": [
+    "perceptive",
+    "cautious"
+  ],
+  "role": "player",
+  "class": "Proctor",
+  "level": 1
+}

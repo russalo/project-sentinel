@@ -1,0 +1,11 @@
+{
+  "name": "Thornwatch forest",
+  "type": "forest",
+  "description": "A dark, ominous forest with unnatural tree patterns",
+  "region": "Thornwatch border",
+  "discovered": true,
+  "danger": 7,
+  "notableFeatures": [
+    "Deepwatch tower"
+  ]
+}
