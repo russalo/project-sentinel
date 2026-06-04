@@ -1,0 +1,14 @@
+{
+  "name": "Ser Denna",
+  "health": 100,
+  "status": "alive",
+  "currentLocation": "Thornwatch forest edge",
+  "description": "A knight of the old Thornwatch order",
+  "traits": [
+    "honorable",
+    "dedicated"
+  ],
+  "role": "npc",
+  "class": "Knight",
+  "level": 5
+}

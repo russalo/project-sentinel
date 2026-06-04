@@ -1,0 +1,14 @@
+{
+  "name": "Briarfolk messenger",
+  "health": 100,
+  "status": "alive",
+  "currentLocation": "unknown",
+  "description": "A member of the scattered Briarfolk people",
+  "traits": [
+    "agile",
+    "enigmatic"
+  ],
+  "role": "npc",
+  "class": "Scout",
+  "level": 3
+}

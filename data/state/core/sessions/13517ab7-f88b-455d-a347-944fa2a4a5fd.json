@@ -1,0 +1,99 @@
+{
+  "session_id": "13517ab7-f88b-455d-a347-944fa2a4a5fd",
+  "world_name": "Laguna",
+  "started_at": "2026-06-04T12:18:03.168523+00:00",
+  "turns": [
+    {
+      "id": 1,
+      "session_id": "13517ab7-f88b-455d-a347-944fa2a4a5fd",
+      "turn_number": 0,
+      "player_action": "[Session Start] Sal the Proctor begins their journey in Laguna.",
+      "narrative": "As the day wanes, the last rays of sunlight filtering through the canopy of Thornwatch cast long, ominous shadows across the forest floor. The trees, adorned with leaves that rustle in the gentle breeze like a chorus of whispering voices, stand as sentinels along the edge of the forest, their bark bleeding a thin, iron-rich sap that stains the earth. The air is heavy with the scent of damp loam and the distant tang of smoke from a fire long since extinguished. This is a place where the weight of history hangs palpable, where the whispers of the past linger in every creaking branch and every faint, flickering shadow.\n\nYou, Sal, a Proctor, stand at the forest's edge, the worn earth of the Oldwatch Road beneath your feet. The road, once a proud thoroughfare between the kingdoms that Thornwatch was meant to guard, now lies cracked and overgrown, a testament to the passing of time and the erosion of purpose. Before you, the forest stretches out, a seemingly endless expanse of darkening trees that appear to lean, ever so slightly, towards the north, as if in deference to some forgotten power. To your left, the crumbling silhouette of Deepwatch, the fifth tower of the Thornwatch series, rises, its gates locked from the inside by some unseen hand. The locals whisper that if you knock on the gate, you will receive an answer, though the nature of that answer is always left unspoken.\n\nAs you ponder the mysteries of Deepwatch, a figure emerges from the trees, the sound of armor creaking and the soft jingle of spurs announcing the arrival of Ser Denna, a knight of the old Thornwatch order. Her armor, adorned with the emblem of the Thornwatch \u2013 a thorn-encircled crown \u2013 seems out of place in this forgotten landscape, a relic of a bygone era when honor and duty were the guiding principles of those who rode these woods. Her eyes, however, burn with a fire that suggests she has not forgotten her mandate, even if the world around her has. She approaches you with a measured stride, her gaze lingering on the forest as if searching for something, or someone.\n\nAs Ser Denna draws near, a smaller, more agile figure darts between the trees, weaving a path through the underbrush with an ease that belies the darkness gathering around you. This is one of the Briarfolk, a member of the scattered people who call Thornwatch home. They move with a quiet reverence, their eyes never leaving the trees as they navigate the forest with a deep, abiding knowledge that is both captivating and unnerving. The Briarfolk individual, whom you sense is a messenger or an observer, vanishes as suddenly as they appeared, leaving behind only the faintest hint of their presence \u2013 a softly spoken word, carried on the breeze, that sounds like a name: \"Kaelin\".\n\nYou are left to ponder the meaning of this encounter, the intentions of Ser Denna, and the mysterious summons that may have been conveyed by the Briarfolk. The forest, with its darkening trees and whispering leaves, seems to be waiting for your response. Will you approach Ser Denna, seek out the Briarfolk, or venture into the depths of Thornwatch, drawn by the siren call of the unknown?",
+      "world_updates": {
+        "world": {
+          "currentLocation": "Thornwatch forest edge",
+          "weather": "late day, overcast",
+          "timeOfDay": "dusk",
+          "tension": 6
+        },
+        "characters": [
+          {
+            "name": "Sal",
+            "action": "upsert",
+            "health": 100,
+            "status": "alive",
+            "currentLocation": "Thornwatch forest edge",
+            "description": "A Proctor",
+            "traits": [
+              "perceptive",
+              "cautious"
+            ],
+            "role": "player",
+            "class": "Proctor",
+            "level": 1
+          },
+          {
+            "name": "Ser Denna",
+            "action": "upsert",
+            "health": 100,
+            "status": "alive",
+            "currentLocation": "Thornwatch forest edge",
+            "description": "A knight of the old Thornwatch order",
+            "traits": [
+              "honorable",
+              "dedicated"
+            ],
+            "role": "npc",
+            "class": "Knight",
+            "level": 5
+          },
+          {
+            "name": "Briarfolk messenger",
+            "action": "upsert",
+            "health": 100,
+            "status": "alive",
+            "currentLocation": "unknown",
+            "description": "A member of the scattered Briarfolk people",
+            "traits": [
+              "agile",
+              "enigmatic"
+            ],
+            "role": "npc",
+            "class": "Scout",
+            "level": 3
+          }
+        ],
+        "locations": [
+          {
+            "name": "Thornwatch forest",
+            "action": "upsert",
+            "type": "forest",
+            "description": "A dark, ominous forest with unnatural tree patterns",
+            "region": "Thornwatch border",
+            "discovered": true,
+            "danger": 7,
+            "notableFeatures": [
+              "Deepwatch tower"
+            ]
+          },
+          {
+            "name": "Deepwatch tower",
+            "action": "upsert",
+            "type": "tower",
+            "description": "The fifth tower of the Thornwatch series, locked from the inside",
+            "region": "Thornwatch border",
+            "discovered": true,
+            "danger": 8,
+            "notableFeatures": [
+              "locked gate"
+            ]
+          }
+        ]
+      },
+      "created_at": "2026-06-04T12:18:03.168523+00:00"
+    }
+  ],
+  "active": true,
+  "player_character_name": "Sal",
+  "dm_persona_name": "The Chronicler"
+}
