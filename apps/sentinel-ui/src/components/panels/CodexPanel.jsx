@@ -41,7 +41,7 @@ export function CodexPanel() {
     return (
       <div className="text-sm text-dust">
         <CodexHeader />
-        <div className="px-4 pb-4">
+        <div className="px-4 pt-4 pb-4">
           <p className="text-xs mb-2">No discoveries yet.</p>
           <p className="text-xs text-ether">As you explore, locations, NPCs, and factions will appear here.</p>
         </div>
@@ -52,8 +52,8 @@ export function CodexPanel() {
   return (
     <div className="text-sm">
       <CodexHeader />
-      <div className="px-4 pb-4">
-      {characters.length > 0 && (
+      <div className="px-4 pt-4 pb-4">
+        {characters.length > 0 && (
         <div className="mb-4">
           <div className="text-ether text-xs mb-1.5 uppercase tracking-wide">Characters</div>
           <ul className="space-y-1.5 text-ink">
