@@ -163,6 +163,16 @@ meaningfully.
 
 ### World identity and multi-session support
 
+> **RESOLVED (2026-06-04) — settled by [ADR 0002](adr/0002-world-identity-and-isolation.md).**
+> Per-world identity shipped (Slices 1–5): every session is minted a `world_id`
+> (UUID) threaded into both dispatch calls and the git-sync commit subject, the
+> backend resolves a turn's world from its `session_id`, resume is live
+> (`GET /api/world/{world_id}` + the `/w/<world_id>` route + the "my worlds"
+> picker), and per-world isolation routes each world to its own `data/` tree /
+> git repo under `SENTINEL_WORLDS_ROOT` (dormant by default — an operational
+> cutover). See ROADMAP "Where we are." The original open-question text below is
+> kept as a record of the question before it was answered.
+
 Right now the backend creates a new session UUID on every
 `POST /api/session/new` but there's no concept of "the same world across
 multiple sessions" or "resume where I left off." The architecture

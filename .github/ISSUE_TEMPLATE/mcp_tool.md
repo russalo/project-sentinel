@@ -68,7 +68,7 @@ Define the exact Draft 2020-12 JSON Schema for the input and describe the output
      Answer all that apply. -->
 
 - **Files/Directories Accessed:** (e.g., `data/state/core/entities/*.json`)
-- **Ports/External APIs Used:** (e.g., port 5432 PostgreSQL, external weather API)
+- **Ports/External APIs Used:** (e.g., ChromaDB on :8000, an external weather API)
 - **Does it write to the filesystem?** Yes / No
   - If Yes: Specify the exact `target_file` pattern and confirm the path is protected by regex validation.
 - **Does it execute shell commands?** Yes / No
@@ -82,7 +82,7 @@ Define the exact Draft 2020-12 JSON Schema for the input and describe the output
      Answer these questions:
      1. Which existing MCP server should this live alongside?
      2. What new Python packages does this require? (add to requirements.txt)
-     3. Does this tool need a new PostgreSQL table? If so, include the CREATE TABLE statement.
+     3. Does this tool need new on-disk state under `data/`? If so, describe the JSON shape and which schema contract in `schemas/` gates it.
      4. Does this tool affect the Fact-Extractor's prompt? If so, describe the new <world_update> fields.
      5. Does the DM agent YAML need to be updated to document this new tool capability?
 -->
