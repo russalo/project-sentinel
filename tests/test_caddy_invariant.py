@@ -66,3 +66,12 @@ def test_healthz_is_exempt_from_the_gate(caddyfile):
     # un-gated). A bare site-level basic_auth would gate it, so the exemption is
     # an explicit `not path /healthz` matcher.
     assert "not path /healthz" in caddyfile
+
+
+def test_static_cache_headers_prevent_stale_index(caddyfile):
+    # stale-cache-after-redeploy guard: hashed /assets/* cache hard (immutable);
+    # everything else (index.html via the SPA fallback) must not cache — a stale
+    # index.html after a redeploy references purged bundles → blank page.
+    assert "Cache-Control" in caddyfile
+    assert "immutable" in caddyfile  # hashed assets
+    assert "no-cache" in caddyfile  # index.html / SPA fallback

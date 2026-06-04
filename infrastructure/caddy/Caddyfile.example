@@ -47,6 +47,15 @@ sentinel.dev.russalo.com {
 	# to the checkout on origin-core (e.g. /srv/projects/project-sentinel).
 	handle {
 		root * <REPO_ROOT>/apps/sentinel-ui/dist
+		# Cache policy (stale-cache-after-redeploy guard): Vite emits
+		# content-hashed bundles under /assets/ — immutable, cache hard. Everything
+		# else resolves to index.html via the SPA fallback; index.html points at
+		# the CURRENT hashed bundles, so a stale cached copy after a redeploy would
+		# 404 on purged bundles → blank page. Never cache it.
+		@assets path /assets/*
+		header @assets Cache-Control "public, max-age=31536000, immutable"
+		@notassets not path /assets/*
+		header @notassets Cache-Control "no-cache"
 		try_files {path} /index.html
 		file_server
 	}
