@@ -50,6 +50,11 @@ reset:
 health:
     bash scripts/health-check.sh
 
+# Pre-cutover readiness check (ADR 0002/0003) — READ-ONLY; exits 1 if NOT ready.
+# Run before flipping the per-world + public cutover (see docs/WORKSPACE.md).
+cutover-check:
+    "{{ python_bin }}" scripts/cutover-check.py
+
 # ─── Docker ───────────────────────────────────────────────────────────────────
 
 # Start infrastructure containers (ChromaDB)
