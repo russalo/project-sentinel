@@ -62,7 +62,10 @@ def _load_env() -> dict:
     """infrastructure/.env overlaid with os.environ (the real environment wins)."""
     env: dict[str, str] = {}
     if ENV_PATH.exists():
-        env = _parse_env_text(ENV_PATH.read_text(encoding="utf-8"))
+        try:
+            env = _parse_env_text(ENV_PATH.read_text(encoding="utf-8"))
+        except OSError:
+            pass  # unreadable .env (perms, is-a-dir) → fall back to the process env
     env.update(os.environ)
     return env
 
@@ -90,17 +93,22 @@ def check(env: dict, *, fetch=_http_get_json) -> list[dict]:
             "unset — per-world isolation is off; the cutover requires it set.",
         )
     else:
-        path = Path(worlds_root)
-        if not path.is_dir():
-            add(
-                "SENTINEL_WORLDS_ROOT",
-                FAIL,
-                f"{worlds_root} is not an existing directory.",
-            )
-        elif not os.access(path, os.W_OK):
-            add("SENTINEL_WORLDS_ROOT", FAIL, f"{worlds_root} is not writable.")
-        else:
-            add("SENTINEL_WORLDS_ROOT", PASS, f"set + writable: {worlds_root}")
+        try:
+            path = Path(worlds_root)
+            if not path.is_dir():
+                add(
+                    "SENTINEL_WORLDS_ROOT",
+                    FAIL,
+                    f"{worlds_root} is not an existing directory.",
+                )
+            elif not os.access(path, os.W_OK):
+                add("SENTINEL_WORLDS_ROOT", FAIL, f"{worlds_root} is not writable.")
+            else:
+                add("SENTINEL_WORLDS_ROOT", PASS, f"set + writable: {worlds_root}")
+        except OSError as exc:
+            # Never crash the readiness gate — invalid path chars (Windows),
+            # permission/OS errors → a clean FAIL, not a traceback.
+            add("SENTINEL_WORLDS_ROOT", FAIL, f"could not stat {worlds_root}: {exc}")
 
     # 2. MCP servers must agree on per-world mode (only meaningful once set).
     if worlds_root:
