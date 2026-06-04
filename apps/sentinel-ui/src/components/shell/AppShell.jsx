@@ -10,6 +10,7 @@ import { CommandBar } from './CommandBar';
 import { WorldStateDashboard } from '../world-state/WorldStateDashboard';
 import { NarrativeScroll } from '../narrative/NarrativeScroll';
 import { PanelRouter } from '../panels/PanelRouter';
+import bgPlate from '../../assets/generated/bg-plate.webp';
 
 export function AppShell() {
   // Hydrate from /w/<worldId> on a fresh load / shared link / refresh (no-op
@@ -119,7 +120,13 @@ export function AppShell() {
   }, [addMessage, messages.length, personaName, hydrating]);
 
   return (
-    <div className="flex flex-col h-screen bg-void">
+    // bg-void is the base color; the A3 plate is a faint near-black texture over
+    // it. Panels (bg-codex) cover their own areas, so it reads as subtle grain in
+    // the gaps + behind the narrative, never competing with text.
+    <div
+      className="flex flex-col h-screen bg-void bg-cover bg-center"
+      style={{ backgroundImage: `url(${bgPlate})` }}
+    >
       <TopBar />
 
       <div className="flex-1 flex overflow-hidden">

@@ -1,5 +1,22 @@
 import { useWorldStore } from '../../stores/worldStore';
 import { useUIStore } from '../../stores/uiStore';
+import codexHeader from '../../assets/generated/codex-header.webp';
+
+// A4 illuminated-manuscript banner: ornate filigree across the top, dark lower
+// band the title sits on (the image was generated with that empty dark strip
+// for exactly this). Shared by both panel states.
+function CodexHeader() {
+  return (
+    <div
+      className="relative h-20 w-full bg-cover bg-center flex items-end px-4 pb-2"
+      style={{ backgroundImage: `url(${codexHeader})` }}
+    >
+      <span className="text-amber font-cinzel text-xs tracking-wide drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">
+        DISCOVERED ENTITIES
+      </span>
+    </div>
+  );
+}
 
 function EntityRow({ icon, entity, type, label, onSelect }) {
   return (
@@ -22,18 +39,20 @@ export function CodexPanel() {
 
   if (total === 0) {
     return (
-      <div className="p-4 text-sm text-dust">
-        <div className="text-amber font-cinzel text-xs mb-3">DISCOVERED ENTITIES</div>
-        <p className="text-xs mb-2">No discoveries yet.</p>
-        <p className="text-xs text-ether">As you explore, locations, NPCs, and factions will appear here.</p>
+      <div className="text-sm text-dust">
+        <CodexHeader />
+        <div className="px-4 pb-4">
+          <p className="text-xs mb-2">No discoveries yet.</p>
+          <p className="text-xs text-ether">As you explore, locations, NPCs, and factions will appear here.</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="p-4 text-sm">
-      <div className="text-amber font-cinzel text-xs mb-3">DISCOVERED ENTITIES</div>
-
+    <div className="text-sm">
+      <CodexHeader />
+      <div className="px-4 pb-4">
       {characters.length > 0 && (
         <div className="mb-4">
           <div className="text-ether text-xs mb-1.5 uppercase tracking-wide">Characters</div>
@@ -87,6 +106,7 @@ export function CodexPanel() {
           </ul>
         </div>
       )}
+      </div>
     </div>
   );
 }
