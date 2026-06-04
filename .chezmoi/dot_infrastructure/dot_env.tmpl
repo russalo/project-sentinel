@@ -40,20 +40,25 @@ INFERENCE_NODE_IP=127.0.0.1
 INFERENCE_NODE_CALLBACK_PORT=9000
 
 # ─── LLM / DM AI ─────────────────────────────────────────────────────────────
-# Point OPENAI_BASE_URL at your LiteLLM instance to route to any provider.
-# Leave OPENAI_BASE_URL unset (or blank) to hit real OpenAI directly.
+# OPENAI_BASE_URL points at any OpenAI-compatible endpoint. The default is Groq
+# (fast, hosted; the current dev/recording provider). Swap it for your own
+# routing as needed:
 #
+# Groq (hosted, OpenAI-compatible):   https://api.groq.com/openai/v1
+# Real OpenAI directly:               (leave unset or blank)
 # LiteLLM on the same machine:        http://localhost:4000/v1
 # LiteLLM on Fedora via Tailscale:    http://<tailscale-ip>:4000/v1
 # LiteLLM inside Docker (Linux host): http://172.17.0.1:4000/v1
 #
-OPENAI_BASE_URL=http://localhost:4000/v1
-# LiteLLM accepts any non-empty string as the API key unless you configure auth.
-# For real OpenAI, set this to your sk-... key.
-OPENAI_API_KEY=sk-no-key-required-for-litellm
-# Model name exactly as LiteLLM (or OpenAI) expects it.
-# Examples: gpt-4o-mini  |  claude-haiku-4-5-20251001  |  gemini/gemini-1.5-flash
-DM_MODEL=gpt-4o-mini
+OPENAI_BASE_URL=https://api.groq.com/openai/v1
+# The API key for the endpoint above. For Groq, set your gsk_... key here.
+# For real OpenAI, use your sk-... key. LiteLLM accepts any non-empty string
+# unless you configure auth.
+OPENAI_API_KEY=gsk_your-groq-key-here
+# Model name exactly as the endpoint expects it.
+# Groq examples:  llama-3.3-70b-versatile  |  llama-3.1-8b-instant
+# Other examples: gpt-4o-mini  |  claude-haiku-4-5-20251001  |  gemini/gemini-1.5-flash
+DM_MODEL=llama-3.3-70b-versatile
 
 # ─── Python Binary (OS-specific hint) ────────────────────────────────────────
 # Scripts use python3; on Windows/WSL the binary may be `python`.
