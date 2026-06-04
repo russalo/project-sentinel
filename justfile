@@ -23,7 +23,11 @@ python_bin := env_var_or_default("PYTHON_BIN", default_python_bin)
 # non-activated shell. Cross-OS: `.venv/bin` on macOS/Linux, `.venv/Scripts` on
 # Windows. Falls back to python_bin when no venv exists. A PYTHON_BIN override
 # still wins (it takes precedence over venv autodetection).
-venv_python := if env_var_or_default("PYTHON_BIN", "") != "" { python_bin } else if path_exists(".venv/bin/python") == "true" { ".venv/bin/python" } else if path_exists(".venv/Scripts/python.exe") == "true" { ".venv/Scripts/python.exe" } else { python_bin }
+venv_python := \
+    if env_var_or_default("PYTHON_BIN", "") != "" { python_bin } \
+    else if path_exists(".venv/bin/python") == "true" { ".venv/bin/python" } \
+    else if path_exists(".venv/Scripts/python.exe") == "true" { ".venv/Scripts/python.exe" } \
+    else { python_bin }
 
 # Show all available recipes (default when you run `just` with no args)
 default:
