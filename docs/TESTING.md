@@ -130,17 +130,23 @@ Two output gotchas to know up front:
   ``--warmup N`` (default 1) runs N throwaway turns per world before
   measurement starts, so the published numbers reflect warm-path behavior.
   Set ``--warmup 0`` to see the cold-start contribution explicitly.
-- **A ``❌ broken`` verdict often means the LLM provider is rate-limiting**,
-  not that sentinel itself is failing. Check the error text for ``429`` /
-  "rate limit" — the load-smoke is the cleanest way to discover the
-  provider doesn't have headroom for your planned concurrency. Free-tier
-  Groq, for example, hits TPM 429s at small N + small M.
+- **Exit code 4 = LLM provider rate-limited**, not sentinel-broken. The
+  script classifies a ``429`` / rate-limit / TPM / RPM / quota error in any
+  turn as a provider-side limit and surfaces a distinct
+  ``⛔ LLM-provider-limited`` verdict (separate from ``❌ broken``) so an
+  operator knows to wait for the rate-limit window (~60s on most providers)
+  or upgrade the tier, *not* debug sentinel. Free-tier Groq, for example,
+  hits TPM 429s at small N + small M — the load-smoke is the cleanest way
+  to discover the provider doesn't have headroom for your planned
+  concurrency before alpha testers do.
 
 **When to run:** before opening the closed alpha to invited testers
 (establishes a baseline + flags an obvious cliff); after any change touching
 the streaming path, the LLM provider, or the per-world lock granularity; at
 the prod cutover before flipping the edge gate live. Exit codes are usable in
-CI/cutover pipelines: 0 healthy, 1 degraded, 2 broken, 3 setup error.
+CI/cutover pipelines: 0=healthy, 1=degraded, 2=broken, 3=setup-error,
+4=LLM-provider-rate-limited (distinct from broken so an operator knows to
+wait or upgrade the tier rather than debug sentinel).
 
 This is *sanity-check* coverage, not a benchmark suite. The Vision item
 "Load and performance tests" below is what a real benchmark would look like.

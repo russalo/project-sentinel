@@ -71,7 +71,8 @@ cutover-check:
 # Each turn is a real LLM call (costs money). Refuses to run unless
 # SENTINEL_WORLDS_ROOT is set (else per-turn commits pollute the checked-out
 # branch); pass extra args after `--`: `just load-smoke -- --concurrent 5 --turns 3`.
-# Exits 0=healthy, 1=degraded, 2=broken, 3=setup error. See docs/TESTING.md.
+# Exits: 0=healthy 1=degraded 2=broken 3=setup-error 4=LLM-provider-rate-limited.
+# See docs/TESTING.md.
 load-smoke *FLAGS:
     "{{ venv_python }}" scripts/load-smoke.py {{ FLAGS }}
 

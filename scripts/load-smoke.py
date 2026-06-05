@@ -69,7 +69,13 @@ Usage
 
 Exit codes
 ----------
-0 = healthy · 1 = degraded · 2 = broken · 3 = setup error (refused to run).
+0 = healthy
+1 = degraded (latency over threshold or some turns errored)
+2 = broken (most turns errored — sentinel/backend-side problem)
+3 = setup error (refused to run; bad args)
+4 = provider-limited (LLM provider returned 429 rate-limit; not a sentinel
+    bug — retry after the rate-limit window with smaller --concurrent/--turns,
+    or upgrade the provider tier)
 """
 
 from __future__ import annotations
@@ -108,6 +114,19 @@ _ERROR_RATE_BROKEN = 0.50           # >= 50% errors = broken
 _ERROR_RATE_DEGRADED = 0.10
 # Below this sample count, percentiles are noise — report min/median/max instead.
 _PERCENTILE_MIN_SAMPLES = 5
+
+# Substrings (case-insensitive) that mean "the LLM provider rate-limited us,"
+# not "sentinel itself broke." Detected in turn-error text so we can classify
+# the run as provider-limited rather than broken and give actionable guidance.
+_PROVIDER_LIMIT_MARKERS = (
+    "429",
+    "rate limit",
+    "ratelimit",
+    "tpm",  # tokens-per-minute (Groq, OpenAI use this term)
+    "rpm",  # requests-per-minute
+    "quota",
+    "too many requests",
+)
 
 
 @dataclass
@@ -292,6 +311,14 @@ def _format_table(label: str, values: list[float | None]) -> str:
     )
 
 
+def _looks_like_provider_limit(error_text: str | None) -> bool:
+    """True if the error text reads like an LLM-provider rate-limit."""
+    if not error_text:
+        return False
+    low = error_text.lower()
+    return any(marker in low for marker in _PROVIDER_LIMIT_MARKERS)
+
+
 def _verdict(
     *,
     provision_failures: int,
@@ -300,9 +327,23 @@ def _verdict(
     turns_total: int,
     first_token_p95: float | None,
     total_turn_p95: float | None,
+    turn_errors: list[str],
 ) -> tuple[int, str]:
-    """Return (exit_code, message). 0 healthy / 1 degraded / 2 broken."""
+    """Return (exit_code, message). 0 healthy / 1 degraded / 2 broken / 4 provider-limited."""
     reasons: list[str] = []
+
+    # Provider rate-limit takes precedence over "broken" — they look identical
+    # by error count but the operator response is different (wait/upgrade vs.
+    # debug sentinel). Inspect actual error text rather than counting.
+    provider_limited = sum(1 for e in turn_errors if _looks_like_provider_limit(e))
+    if turns_total > 0 and provider_limited > 0 and provider_limited == turn_failures:
+        return 4, (
+            f"⛔ LLM-provider-limited — {provider_limited}/{turns_total} turn(s) "
+            f"hit the LLM provider's rate limit (429/TPM/RPM). NOT a sentinel "
+            f"bug. Wait for the rate-limit window (~60s on most providers), "
+            f"then retry with smaller --concurrent / --turns, or upgrade the "
+            f"provider tier."
+        )
 
     if provisions_total > 0 and provision_failures == provisions_total:
         return 2, "❌ broken — every world failed to provision"
@@ -425,6 +466,7 @@ async def _run(args: argparse.Namespace) -> int:
         turns_total=len(all_turns),
         first_token_p95=_percentile(first_token_times, 95),
         total_turn_p95=_percentile(total_turn_times, 95),
+        turn_errors=[t.error for t in all_turns if t.error],
     )
     print(f"Verdict: {verdict}")
     return exit_code
