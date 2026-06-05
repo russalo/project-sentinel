@@ -331,8 +331,11 @@ the repo eliminates it.
 **Set it as a shell environment variable — *not* in `infrastructure/.env`.** That
 file is a regenerated artifact (`just env`, and the `env` prerequisite of `just
 start`, run `chezmoi apply --force` over it), so a hand-edited value is silently
-overwritten on the next stack start. The shell env is the durable single source
-that every consumer reads:
+overwritten on the next stack start. (The production cutover above is the
+opposite: there you *do* set it via the template → `.env`, because the systemd
+units load `.env` through `EnvironmentFile` and a shell `export` wouldn't reach
+them — that path doesn't run `just env` per stack start.) For local dev, the
+shell env is the durable single source that every consumer reads:
 
 ```
 export SENTINEL_WORLDS_ROOT="$HOME/sentinel-worlds"   # a path OUTSIDE this repo
