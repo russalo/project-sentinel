@@ -139,19 +139,17 @@ Landed since (Path A toward public readiness, 2026-06-03 → -04): the "my world
 picker + hard-delete teardown (Slice 5); **per-world cross-process write
 locking** (ADR 0002 — a `filelock` shared by fs-manager + git-sync); the
 **ADR 0003 access layer (Slices A+B)** — per-world HMAC session tokens, rate
-limits, and a global LLM-call ceiling, all opt-in/dormant by default; and the
+limits, and a global LLM-call ceiling, all opt-in/dormant by default; the
 **MCP network-isolation invariant + cutover config-agreement check** (A2 —
 both servers refuse all-interfaces binds, backend refuses per-world startup
-unless both MCP `/health` agree).
+unless both MCP `/health` agree); and **ADR 0003 Slice C** (A3, 2026-06-04 —
+the Caddy `basic_auth` invite-gate template `infrastructure/caddy/Caddyfile.example`
+guarded by `tests/test_caddy_invariant.py`, plus systemd unit templates for
+the backend and both MCP servers in `infrastructure/systemd/`). **All
+code/ops units for the public-exposure path are now in.**
 
 The remaining prerequisites before inviting public test users:
 
-- **[ADR 0003](./adr/0003-access-gating-and-public-exposure.md) Slice C (edge /
-  ops) — landed 2026-06-04:** the Caddy `basic_auth` invite-gate template
-  (`infrastructure/caddy/Caddyfile.example`, guarded by
-  `tests/test_caddy_invariant.py`) + systemd unit templates for the backend and
-  both MCP servers (`infrastructure/systemd/`). All code/ops units for the
-  public-exposure path are now in.
 - **The operational cutover itself (Path A / A4)** — *not* code: on origin-core
   (or the prod droplet) set `SENTINEL_WORLDS_ROOT` + `SENTINEL_SESSION_TOKEN_SECRET`
   + the `SENTINEL_RL_*` / `SENTINEL_LLM_DAILY_CEILING` knobs across all three
