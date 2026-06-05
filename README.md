@@ -54,7 +54,7 @@ project-sentinel/
 │   └── dispatch/              # httpx clients for fs-manager + git-sync
 ├── backend/                   # FastAPI production backend (:8001)
 │   ├── main.py                # App factory, uvicorn entry
-│   ├── routes/                # /healthz, /api/session/new, /api/stream, /api/world/{id}, /api/sessions*
+│   ├── routes/                # /healthz, /api/session/new, /api/stream, /api/world/{id}, /api/worlds, /api/sessions*
 │   └── state/                 # data/ readers: world_context, sessions
 ├── mcp-servers/               # The MCP Bridge
 │   ├── fs-manager/            # :8010 — schema-validated filesystem writes

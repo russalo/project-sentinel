@@ -4,7 +4,7 @@
 > stack and architecture assumed fixed. For the long-term direction and
 > open stack questions, see [`VISION.md`](./VISION.md).
 
-_Last updated: 2026-06-03_
+_Last updated: 2026-06-05_
 
 ---
 
@@ -32,7 +32,9 @@ _Last updated: 2026-06-03_
 - **Live smoke test passed on 2026-04-14.** Player → FastAPI → LLM →
   Fact-Extractor → fs-manager → git-sync worked end-to-end against a real
   Ollama-backed model over LiteLLM. The pipeline has been re-smoke-tested
-  via curl against the live fs-manager during PR #29's security work.
+  via curl against the live fs-manager during PR #29's security work, and
+  re-verified against the current dev LLM (Groq `llama-3.3-70b-versatile`,
+  ~4s/turn) on 2026-06-04.
 - **React is the 1.0 frontend.** Decided 2026-04-15 by the landing of
   `feat/panel-ux-entity-cards` — shipping real `EntityCard` primitives +
   wired left/right panel interactions is a de-facto commitment. The
