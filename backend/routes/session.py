@@ -69,7 +69,7 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
     limiter = request.app.state.rate_limiter
     enforce(
         limiter,
-        f"session_create:{client_ip(request)}",
+        f"session_create:{client_ip(request, settings.trusted_proxy_hops)}",
         settings.rl_session_create_per_hour,
         60 * 60,
         detail="too many world creations; try again later",
@@ -151,9 +151,13 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
     try:
         intro_result = dm_agent.generate_intro(config, intro_input)
     except Exception as exc:  # pragma: no cover - network/OpenAI failure
+        # Log the full traceback server-side (exc_info=True); do NOT leak it to
+        # the client — the upstream string can carry the provider org id + quota
+        # (red-team #4).
+        logger.warning("DM intro failed", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"DM agent failed during intro: {exc}",
+            detail="DM agent failed during intro; please retry.",
         ) from exc
 
     # 2. Extract the initial world payload from the intro.

@@ -86,6 +86,11 @@ SENTINEL_SESSION_TOKEN_SECRET=
 SENTINEL_RL_SESSION_CREATE_PER_HOUR=0
 SENTINEL_RL_STREAM_PER_MINUTE=0
 SENTINEL_LLM_DAILY_CEILING=0
+# Trusted reverse-proxy hops in front of the backend. 0 (default) = no proxy:
+# the per-IP rate-limit key uses the socket peer and IGNORES X-Forwarded-For (a
+# direct caller can spoof it). Behind the Caddy edge set 1 so the limiter keys on
+# the hop Caddy appends (the real client), not a client-spoofable XFF entry.
+SENTINEL_TRUSTED_PROXY_HOPS=0
 # Do NOT set SENTINEL_ALLOW_PUBLIC_BIND — the MCP write layer must stay
 # loopback-only. The Caddy invite hash ($SENTINEL_INVITE_HASH) is Caddy-side
 # (its unit's EnvironmentFile), not read by the backend.

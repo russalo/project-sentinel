@@ -22,9 +22,13 @@ WorkingDirectory=<REPO_ROOT>
 # the SENTINEL_RL_* / SENTINEL_LLM_DAILY_CEILING knobs here. Must match the MCP
 # servers' SENTINEL_WORLDS_ROOT.
 EnvironmentFile=<REPO_ROOT>/infrastructure/.env
-# Production: no --reload. --proxy-headers + forwarded-allow-ips so the per-IP
-# rate-limiter sees the real client IP via Caddy's X-Forwarded-For.
-ExecStart=<REPO_ROOT>/.venv/bin/uvicorn backend.main:app --host 127.0.0.1 --port 8001 --proxy-headers --forwarded-allow-ips=127.0.0.1
+# Production: no --reload. --no-proxy-headers is REQUIRED: uvicorn's proxy-headers
+# default is ON and trusts 127.0.0.1, rewriting request.client from the *leftmost*
+# X-Forwarded-For hop (client-spoofable), which defeated the per-IP rate-limit
+# (red-team #3). With it disabled, request.client stays the real socket peer and
+# the app resolves the client IP from X-Forwarded-For honoring
+# SENTINEL_TRUSTED_PROXY_HOPS (set =1 behind Caddy) — see backend/ratelimit.client_ip.
+ExecStart=<REPO_ROOT>/.venv/bin/uvicorn backend.main:app --host 127.0.0.1 --port 8001 --no-proxy-headers
 Restart=on-failure
 RestartSec=2
 

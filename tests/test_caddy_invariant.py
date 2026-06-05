@@ -8,6 +8,7 @@ property of the shipped template, so a future edit that adds an :8010/:8012
 route or drops the gate fails here instead of silently shipping.
 """
 
+import re
 from pathlib import Path
 
 import pytest
@@ -66,6 +67,19 @@ def test_healthz_is_exempt_from_the_gate(caddyfile):
     # un-gated). A bare site-level basic_auth would gate it, so the exemption is
     # an explicit `not path /healthz` matcher.
     assert "not path /healthz" in caddyfile
+
+
+def test_sessions_browser_not_exposed_on_edge(caddyfile):
+    # red-team #1 (2026-06-04): the cross-world `/api/sessions*` training browser
+    # is NOT gated by the per-world token and reads every world's transcripts, so
+    # it must not be proxied to the backend on the public edge. An explicit
+    # `handle /api/sessions*` block returns a response (404) instead of
+    # reverse-proxying to :8001 — keeping it tailnet-only.
+    block = re.search(r"handle\s+/api/sessions\*\s*\{([^}]*)\}", caddyfile)
+    assert block is not None, "missing `handle /api/sessions*` exclusion block"
+    body = block.group(1)
+    assert "respond" in body
+    assert "reverse_proxy" not in body
 
 
 def test_static_cache_headers_prevent_stale_index(caddyfile):

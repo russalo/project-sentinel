@@ -101,17 +101,35 @@ def enforce_llm_ceiling(limiter: RateLimiter, daily_ceiling: int) -> None:
     )
 
 
-def client_ip(request: Request) -> str:
-    """Best-effort client IP, honoring a single ``X-Forwarded-For`` hop.
+def client_ip(request: Request, trusted_proxy_hops: int = 0) -> str:
+    """Client IP for coarse per-IP rate-limiting.
 
-    Behind the Caddy edge the socket peer is ``127.0.0.1``; the real client is
-    the first entry of ``X-Forwarded-For``. Not trusted for security (a direct
-    caller can spoof the header) — only for coarse per-IP rate-limiting on the
-    closed beta, where the edge gate is the actual access control.
+    ``trusted_proxy_hops`` (``Settings.trusted_proxy_hops``) is the number of
+    trusted reverse proxies in front of the app:
+
+    - ``0`` (default, no proxy) — use the socket peer and **ignore**
+      ``X-Forwarded-For``. A direct caller can spoof XFF, so trusting it would
+      let an attacker rotate the header to dodge the per-IP bucket (the cost
+      backstop) — exactly the bypass the red-team confirmed (2026-06-04).
+    - ``N > 0`` — XFF is ``<client-claimed…>, <proxy1>, …, <proxyN>``; each proxy
+      *appends* the IP that connected to it, so the trustworthy client is the
+      **Nth entry from the right** (the hop the outermost trusted proxy — e.g.
+      Caddy — appended). Everything to its left is client-supplied and ignored.
+      Behind a single Caddy edge, set 1 → the rightmost hop.
+
+    Falls back to the socket peer when XFF is missing or has fewer than
+    ``trusted_proxy_hops`` entries (degraded-but-safe: over-limits, never
+    under-limits).
+
+    Requires uvicorn to run with ``--no-proxy-headers`` (see the systemd unit /
+    justfile): its default proxy-headers handling rewrites ``request.client`` from
+    the *leftmost* (spoofable) XFF hop, which would defeat this — the app must own
+    client resolution.
     """
-    xff = request.headers.get("x-forwarded-for")
-    if xff:
-        first = xff.split(",")[0].strip()
-        if first:
-            return first
+    if trusted_proxy_hops > 0:
+        xff = request.headers.get("x-forwarded-for")
+        if xff:
+            hops = [h.strip() for h in xff.split(",") if h.strip()]
+            if len(hops) >= trusted_proxy_hops:
+                return hops[-trusted_proxy_hops]
     return request.client.host if request.client else "unknown"

@@ -35,6 +35,17 @@ sentinel.dev.russalo.com {
 		reverse_proxy 127.0.0.1:8001
 	}
 
+	# /api/sessions* (the cross-world training / "/data" browser) is NOT gated by
+	# the per-world token and reads EVERY world's transcripts — it's an operator /
+	# dev tool, kept tailnet-only. Do NOT expose it on the public edge: return 404
+	# so an invited tester behind the gate can't enumerate or read other worlds'
+	# sessions (red-team #1, 2026-06-04). The backend still serves it on the
+	# tailnet. (handle blocks are matched most-specific-first, so this wins over
+	# the /api/* block below regardless of order.)
+	handle /api/sessions* {
+		respond 404
+	}
+
 	# Backend API (gated): per-turn SSE stream, session/world routes.
 	# flush_interval -1 disables response buffering so SSE tokens stream live.
 	handle /api/* {
