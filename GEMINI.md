@@ -117,5 +117,11 @@ Seeded from real bugs; attack these first (they are where Sentinel breaks):
   PEP 668 system-pip breakage, paths assuming a fixed repo layout.
 - **Biased validation** — a claim resting on "the tests/corpus pass" when the
   corpus omits the breaking input class; name the input it doesn't contain.
+- **Trusting a client-controlled header for a security/abuse decision** — keying
+  a rate-limit, auth, or identity check on `X-Forwarded-For` (or any header the
+  client sets). Only the hop a *trusted* proxy appends is reliable; the proxy
+  must overwrite inbound XFF and uvicorn's default `--proxy-headers` must be off
+  (it rewrites `request.client` from the spoofable leftmost hop). *(2026-06-04
+  red-team: the per-IP rate-limit was XFF-spoofable.)*
 
 Keep this list current: when a new class of bug is found, add it.
