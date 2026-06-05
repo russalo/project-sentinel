@@ -448,7 +448,10 @@ def test_traversal_attempt_in_session_id_is_rejected(client, tmp_path):
             }
         ],
     }
-    response = _apply(client, payload)
+    # namespace="core" so the request would reach the path-resolution defense if
+    # the session_id format check ever regressed — otherwise the namespace gate
+    # (403) would fire first and mask whether the traversal backstop still holds.
+    response = _apply(client, payload, namespace="core")
     # Either layer of defense is acceptable — format check (422) or
     # path resolution (403 PATH_VIOLATION). Both are correct; the
     # critical property is that the file system is untouched.
