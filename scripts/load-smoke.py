@@ -24,6 +24,27 @@ load smoke is to export ``SENTINEL_WORLDS_ROOT`` first so commits go to a
 worlds tree outside the repo (see ``docs/WORKSPACE.md`` § "Local dev: keep
 gameplay out of the code repo").
 
+Cleanup caveat: ``DELETE /api/world/<id>`` (run by default at end) ``rmtree``s
+the world's tree under per-world mode, but in shared mode it can only
+``git rm`` the session JSON — entity/location/faction files created during
+the test remain in ``data/state/core/`` because they aren't world-scoped on
+disk in shared mode. Per-world mode (the recommended setup) avoids this.
+
+Measurement notes
+-----------------
+- The *first* turn after the backend has been idle hits cold-start LLM
+  latency (especially on Groq) and is materially slower than warm calls.
+  ``--warmup N`` (default 1) runs N throwaway turns per world before
+  measurement so the published numbers reflect warm-path behavior.
+- Percentiles below ~5 samples are noise (p95 of N=2 is just max). The
+  script auto-degrades the report to ``min/median/max`` when N < 5 and
+  to ``p50/p95/p99`` only when N >= 5.
+- **A** ``❌ broken — N/M turns errored`` **verdict often means the LLM
+  provider is rate-limiting, not that sentinel itself is failing.** Check
+  the error text for ``429`` / ``rate limit``; the load-smoke is the
+  cleanest way to detect when the provider has too little headroom for
+  the planned concurrency.
+
 Cost
 ----
 Every turn is a real LLM call. With the defaults (3 worlds × 3 turns = 9
@@ -77,11 +98,16 @@ _ACTIONS: list[str] = [
 ]
 
 # Verdict thresholds — picked to flag obvious breakage, not enforce SLOs. A
-# real SLO comes after we have baseline data; these are placeholders.
-_FIRST_TOKEN_P95_DEGRADED_S = 5.0   # > this = degraded
+# real SLO comes after we have baseline data; these are placeholders. The
+# first-token threshold assumes warm-path behavior (--warmup >= 1); cold-start
+# on Groq can hit ~20s on the first call, which would falsely flag as
+# degraded without warmup.
+_FIRST_TOKEN_P95_DEGRADED_S = 8.0   # > this = degraded (warm path)
 _TOTAL_TURN_P95_DEGRADED_S = 15.0
 _ERROR_RATE_BROKEN = 0.50           # >= 50% errors = broken
 _ERROR_RATE_DEGRADED = 0.10
+# Below this sample count, percentiles are noise — report min/median/max instead.
+_PERCENTILE_MIN_SAMPLES = 5
 
 
 @dataclass
@@ -202,13 +228,22 @@ async def _drive_one_world(
     prefix: str,
     turns: int,
     timeout_s: float,
+    warmup: int,
 ) -> WorldResult:
-    """Provision a world and run M turns sequentially within it."""
+    """Provision, run ``warmup`` throwaway turns, then ``turns`` measured turns."""
     world = await _provision_world(client, idx, prefix)
     if world.provision_error:
         return world
+    # Warmup turns aren't appended to world.turns, so they don't poison the
+    # measurement. They DO still incur LLM cost — the budget note in the
+    # docstring accounts for them.
+    for w_idx in range(warmup):
+        action = _ACTIONS[w_idx % len(_ACTIONS)]
+        await _drive_one_turn(client, world, action, timeout_s)
     for turn_idx in range(turns):
-        action = _ACTIONS[turn_idx % len(_ACTIONS)]
+        # Rotate past the warmup actions so the measured turns don't repeat
+        # the warmup verbatim (different prompts → more representative variance).
+        action = _ACTIONS[(warmup + turn_idx) % len(_ACTIONS)]
         turn_result = await _drive_one_turn(client, world, action, timeout_s)
         world.turns.append(turn_result)
         # If turn errored, keep going — we want the full error picture, not
@@ -232,10 +267,22 @@ async def _teardown_world(client: httpx.AsyncClient, world: WorldResult) -> None
 
 
 def _format_table(label: str, values: list[float | None]) -> str:
-    """One-line table row: label, count, p50/p95/p99."""
+    """One-line table row: label, count, percentiles (or min/median/max on small N).
+
+    Percentiles below ~5 samples are noise (p95 of N=2 is just max), so we
+    report min/median/max instead — labeled clearly so a reader doesn't
+    confuse the two reports across runs of different sizes.
+    """
     real = [v for v in values if v is not None]
     if not real:
         return f"  {label:<22} (no data)"
+    if len(real) < _PERCENTILE_MIN_SAMPLES:
+        s = sorted(real)
+        return (
+            f"  {label:<22} n={len(real):<3}  "
+            f"min={s[0]:.2f}s  median={s[len(s) // 2]:.2f}s  max={s[-1]:.2f}s  "
+            f"(low-sample; bump --concurrent for percentiles)"
+        )
     p50 = _percentile(real, 50)
     p95 = _percentile(real, 95)
     p99 = _percentile(real, 99)
@@ -312,7 +359,12 @@ async def _run(args: argparse.Namespace) -> int:
         world_results: list[WorldResult] = await asyncio.gather(
             *(
                 _drive_one_world(
-                    client, idx, args.world_prefix, args.turns, args.timeout
+                    client,
+                    idx,
+                    args.world_prefix,
+                    args.turns,
+                    args.timeout,
+                    args.warmup,
                 )
                 for idx in range(args.concurrent)
             )
@@ -339,7 +391,8 @@ async def _run(args: argparse.Namespace) -> int:
     print("═══ Sentinel load smoke ═══")
     print(f"  base_url        {args.base_url}")
     print(f"  concurrent      {args.concurrent} worlds")
-    print(f"  turns/world     {args.turns}")
+    print(f"  warmup/world    {args.warmup} (excluded from stats)")
+    print(f"  turns/world     {args.turns} (measured)")
     print(f"  cleanup         {'no' if args.no_cleanup else 'yes'}")
     print(f"  wall-clock      {wall_clock:.1f}s")
     print()
@@ -399,7 +452,16 @@ def main(argv: list[str] | None = None) -> int:
         "--turns",
         type=int,
         default=3,
-        help="Turns per world (default: %(default)d). Each turn is one LLM call.",
+        help="Measured turns per world (default: %(default)d). Each turn is "
+        "one LLM call.",
+    )
+    p.add_argument(
+        "--warmup",
+        type=int,
+        default=1,
+        help="Throwaway turns per world before measurement (default: %(default)d). "
+        "Drops cold-start LLM latency from the measured numbers; set 0 to "
+        "disable. Each warmup turn is also a real LLM call.",
     )
     p.add_argument(
         "--world-prefix",
@@ -429,6 +491,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.concurrent < 1 or args.turns < 1:
         print("ERROR: --concurrent and --turns must be >= 1", file=sys.stderr)
+        return 3
+    if args.warmup < 0:
+        print("ERROR: --warmup must be >= 0", file=sys.stderr)
         return 3
 
     refused = _safety_gate(args)

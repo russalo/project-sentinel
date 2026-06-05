@@ -124,6 +124,18 @@ checked-out branch — see `docs/WORKSPACE.md` § "Local dev: keep gameplay out
 of the code repo"). It auto-cleans up created worlds via
 `DELETE /api/world/<id>` unless `--no-cleanup` is given.
 
+Two output gotchas to know up front:
+
+- **The first LLM call after idle is slow** (cold-start, especially on Groq).
+  ``--warmup N`` (default 1) runs N throwaway turns per world before
+  measurement starts, so the published numbers reflect warm-path behavior.
+  Set ``--warmup 0`` to see the cold-start contribution explicitly.
+- **A ``❌ broken`` verdict often means the LLM provider is rate-limiting**,
+  not that sentinel itself is failing. Check the error text for ``429`` /
+  "rate limit" — the load-smoke is the cleanest way to discover the
+  provider doesn't have headroom for your planned concurrency. Free-tier
+  Groq, for example, hits TPM 429s at small N + small M.
+
 **When to run:** before opening the closed alpha to invited testers
 (establishes a baseline + flags an obvious cliff); after any change touching
 the streaming path, the LLM provider, or the per-world lock granularity; at
