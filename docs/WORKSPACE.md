@@ -319,3 +319,36 @@ still resolves end-to-end. New worlds are isolated; the shared tree acts as
 
 Do **not** flip the cutover unless `tests/test_world_isolation_tracer_soak.py`
 is green in CI — it is the isolation gate.
+
+### Local dev: keep gameplay out of the code repo
+
+The same `SENTINEL_WORLDS_ROOT` knob solves a purely-local annoyance: by default,
+`git-sync` writes a per-turn `[sentinel] world=… session=… turn=…` commit to the
+**checked-out branch** (normally `master`), so playing or recording locally
+pollutes `master` and diverges it from origin. The throwaway-branch dance avoids
+it; pointing the worlds root outside the repo eliminates it.
+
+**Two steps — no public-exposure setup required:**
+
+1. In `infrastructure/.env`, set the var to a path **outside this repo**:
+   ```
+   SENTINEL_WORLDS_ROOT=/home/you/sentinel-worlds
+   ```
+   (Leave the access knobs — `SENTINEL_SESSION_TOKEN_SECRET`, the `SENTINEL_RL_*`
+   limits, `SENTINEL_LLM_DAILY_CEILING` — off; they're independent of isolation.)
+2. Restart all three services: `just start` (MCP servers) + `just dev-backend`.
+
+Each world is then its own git repo at `<worlds_root>/<world_id>/`, every
+per-turn commit lands **there**, and the code repo is never touched — you can
+even play/record on `master` itself. `just export-training-data` still finds the
+corpus (it scans every world's sessions under the worlds root).
+
+**Why it works:** `scripts/start-cloud.sh` `source`s `infrastructure/.env`
+(exporting it into both MCP server processes) and the backend loads `.env` itself
+(`backend/config.py`), so all three see the same value and the backend's
+`mcp_agreement` startup check passes.
+
+**Caveat:** the individual dev recipes `just fs-manager` / `just git-sync` do
+**not** source `.env`, so they'd start in shared mode and trip the agreement
+check. Use the `just start` path for split mode. (See `docs/BACKLOG.md` for the
+two `.env`-loading footguns this exposes.)

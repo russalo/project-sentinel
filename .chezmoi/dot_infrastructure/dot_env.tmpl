@@ -77,6 +77,13 @@ PYTHON_BIN=python3
 # root dir to route each world to its own repo. MUST be the SAME value across
 # the backend, fs-manager, and git-sync (the backend refuses to start otherwise;
 # `just cutover-check` verifies they agree).
+#
+# Local-dev tip (no public exposure needed): setting this to a path OUTSIDE the
+# repo makes each world its own git repo there, so gameplay's per-turn git-sync
+# commits stop landing on the checked-out branch (no more `master` pollution).
+# Set it, then restart all three via `just start` + `just dev-backend`. Example:
+#   SENTINEL_WORLDS_ROOT=/home/you/sentinel-worlds
+# See docs/WORKSPACE.md § "Local dev: keep gameplay out of the code repo".
 SENTINEL_WORLDS_ROOT=
 # Per-world session-token enforcement: blank = anonymous. Set a strong secret to
 # require X-Sentinel-World-Token on world-scoped routes.

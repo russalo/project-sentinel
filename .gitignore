@@ -59,6 +59,12 @@ venv/
 # Exported training datasets (build artifact — regenerate with `just export-training-data`)
 datasets/
 
+# Local per-world worlds root, if pointed inside the repo (the recommended
+# default is ~/sentinel-worlds, outside the repo — see docs/WORKSPACE.md
+# § "Local dev: keep gameplay out of the code repo"). Each world is its own
+# git repo; never track them in the code repo.
+/.worlds/
+
 # Secrets — never commit environment files
 infrastructure/.env
 
