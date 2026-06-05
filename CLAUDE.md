@@ -145,13 +145,19 @@ each catches what the author (you) and the others miss:
    "Invalid stream" — lives in the sibling File Observer project at
    `/srv/projects/pkplab/scanner/scratch/review/`; it is external to this repo.)*
    For a **whole-codebase** read (not a diff), Gemini's native review extensions
-   run via `gem-review.sh` (`--approval-mode yolo`): `/code-review` (diff) and
-   `/maestro:security-audit` (39-agent fan-out). Run on an **isolated `/tmp` copy**
-   of the code dirs (exclude `data/` + secrets), copy this repo's `GEMINI.md` into
-   the workspace root for the hunt list, **scope per-subsystem** and throttle
-   (`MAESTRO_MAX_CONCURRENT=3`) or flash 429s. **A Gemini-native swarm is still
-   ~1 vote** (same model family) — it buys coverage, not independent confirmation;
-   it stays one leg, and every finding still gets the triage below.
+   (`/code-review`, `/maestro:security-audit` — a 39-agent fan-out) are
+   *tool-using*, so they require `--approval-mode yolo` — the read-only `plan`
+   mode above is for the inline-diff prompts and denies the extensions' git/skill/
+   subagent tools (not a contradiction; different jobs). On origin-core a ready
+   wrapper, `gem-review.sh` (yolo + the same key handling), sits beside `gem.sh`
+   in that **same external scanner project** (not in this repo); the portable
+   form is `gemini --skip-trust --approval-mode yolo -p "/maestro:security-audit …"`
+   with the extensions installed. Because yolo can write, run it on an **isolated
+   `/tmp` copy** of the code dirs (exclude `data/` + secrets), copy this repo's
+   `GEMINI.md` into the workspace root for the hunt list, **scope per-subsystem**,
+   and throttle (`MAESTRO_MAX_CONCURRENT=3`) or flash 429s. **A Gemini-native
+   swarm is still ~1 vote** (same model family) — coverage, not independent
+   confirmation; it stays one leg, and every finding still gets the triage below.
 3. **PR bots** (Codex / Gemini Code Assist / Copilot) — open a PR. Best at
    doc/code drift after reworks.
 
