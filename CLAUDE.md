@@ -254,9 +254,10 @@ in `GEMINI.md`.
 - **Trusting a client-controlled header for a security/abuse decision** — keying
   a rate-limit, auth, or identity check on `X-Forwarded-For` (or any request
   header the client can set). Behind a proxy, only the hop the *trusted* proxy
-  appends is reliable (the Nth-from-right per `SENTINEL_TRUSTED_PROXY_HOPS`), the
-  proxy must overwrite inbound XFF, and uvicorn's default `--proxy-headers` must
-  be **off** (it rewrites `request.client` from the spoofable leftmost hop).
+  appends is reliable: count the **Nth-from-right** (per `SENTINEL_TRUSTED_PROXY_HOPS`),
+  which naturally ignores any client-spoofed hops on the left — so the proxy need
+  not overwrite inbound XFF. And uvicorn's default `--proxy-headers` must be
+  **off** (it rewrites `request.client` from the spoofable *leftmost* hop).
   *(red-team #3: the per-IP rate-limit was XFF-spoofable until #92.)*
 
 ---
