@@ -151,9 +151,10 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
     try:
         intro_result = dm_agent.generate_intro(config, intro_input)
     except Exception as exc:  # pragma: no cover - network/OpenAI failure
-        # Log the raw provider error server-side; do NOT leak it to the client —
-        # the upstream string can carry the provider org id + quota (red-team #4).
-        logger.warning("DM intro failed: %s", exc)
+        # Log the full traceback server-side (exc_info=True); do NOT leak it to
+        # the client — the upstream string can carry the provider org id + quota
+        # (red-team #4).
+        logger.warning("DM intro failed", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="DM agent failed during intro; please retry.",

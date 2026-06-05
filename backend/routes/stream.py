@@ -160,10 +160,11 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
             for token in dm_agent.stream_turn(config, turn_input):
                 buffer.append(token)
                 yield _sse_event({"type": "token", "content": token})
-        except Exception as exc:  # pragma: no cover - network/OpenAI failure
-            # Log the raw provider error server-side; send the client a generic
-            # message — the upstream string can carry org id + quota (red-team #4).
-            logger.warning("DM stream failed: %s", exc)
+        except Exception:  # pragma: no cover - network/OpenAI failure
+            # Log the full traceback server-side (exc_info=True); send the client a
+            # generic message — the upstream string can carry org id + quota
+            # (red-team #4).
+            logger.warning("DM stream failed", exc_info=True)
             yield _sse_event(
                 {"type": "error", "content": "DM agent failed; please retry."}
             )
