@@ -191,8 +191,8 @@ def test_protected_field_list_includes_core_faction_id(client, session_uuid, tmp
 def test_protected_field_blocked_when_list_wrapped(client, session_uuid, tmp_path):
     # red-team #5: the schema permits `data` as an array, and the old check
     # returned early on any non-dict — so a list-wrapped payload smuggled
-    # protected fields past the guard and wrote them verbatim. The recursive
-    # check now inspects each list element.
+    # top-level protected fields past the guard and wrote them verbatim. The
+    # check now inspects each list element's top-level keys.
     files_before = _count_files_under(tmp_path)
     payload = _minimal_payload(
         session_id=session_uuid,
@@ -207,21 +207,24 @@ def test_protected_field_blocked_when_list_wrapped(client, session_uuid, tmp_pat
     assert _count_files_under(tmp_path) == files_before  # nothing written
 
 
-def test_protected_field_blocked_when_nested(client, session_uuid, tmp_path):
-    # red-team #6: the old check only inspected top-level keys, so a protected
-    # field nested one level deep slipped through. The check now recurses.
-    files_before = _count_files_under(tmp_path)
+def test_nested_protected_field_is_allowed(client, session_uuid):
+    # codex P1 on #93: a protected field nested DEEPER than the top level is
+    # stored as ordinary nested data (shallow merge / verbatim write), not a
+    # mutation of the object's own protected field — so it must be ALLOWED.
+    # Recursing into it would 403 every legitimate session write, whose turn
+    # entries carry `created_at` nested in `data["turns"]` → 502 on new sessions.
     payload = _minimal_payload(
         session_id=session_uuid,
-        target_file="data/state/core/entities/nested.json",
+        target_file=f"data/state/core/sessions/{session_uuid}.json",
         operation="create",
-        data={"name": "X", "metadata": {"world_seed": "attacker-seed"}},
+        data={
+            "session_id": session_uuid,
+            "turns": [{"turn_number": 0, "created_at": "2026-06-05T00:00:00Z"}],
+        },
         namespace="core",
     )
     response = client.post("/tools/apply_world_update", json=payload)
-    assert response.status_code == 403
-    assert response.json()["detail"]["code"] == "PROTECTED_FIELD_VIOLATION"
-    assert _count_files_under(tmp_path) == files_before
+    assert response.status_code == 200, response.text  # nested created_at allowed
 
 
 def test_non_object_payload_returns_422_not_500(client, tmp_path):
@@ -249,6 +252,21 @@ def test_invalid_json_body_returns_422(client, tmp_path):
     )
     assert response.status_code == 422
     assert response.json()["detail"]["code"] == "VALIDATION_ERROR"
+
+
+def test_malformed_updates_field_returns_422(client, session_uuid):
+    # gemini on #93: a dict payload whose `updates` isn't a list (null / int)
+    # must be a clean schema 422, not a 500 — it passes the isinstance(dict)
+    # guard but fails JSON-Schema validation (`updates` is `type: array`).
+    for updates in (None, 5, "x"):
+        payload = {
+            "session_id": session_uuid,
+            "log_entry": "x",
+            "updates": updates,
+        }
+        response = client.post("/tools/apply_world_update", json=payload)
+        assert response.status_code == 422, f"updates={updates!r}"
+        assert response.json()["detail"]["code"] == "VALIDATION_ERROR"
 
 
 def test_protected_check_opt_out_is_rejected_by_schema(client, session_uuid):
