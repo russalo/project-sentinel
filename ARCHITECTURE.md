@@ -90,7 +90,7 @@ If a community contribution contradicts an established Core fact, **Core Lore al
 
 The `fs-manager` MCP server enforces this at write time. When processing an `apply_world_update` payload:
 
-1. It checks `target_file` against the path regex: writes to `data/state/core/` or `data/lore/core/` are **blocked** unless the request carries a `"namespace": "core"` authorization token.
+1. It checks `target_file` against the path regex: writes to `data/state/core/` or `data/lore/core/` are **blocked** unless the request carries the trusted `?namespace=core` query param. That param is set by the backend on dispatch (`engine.apply_world_update(namespace=…)`), **not** carried in the LLM-parsed `<world_update>` body — so a model can't self-assert "core" (red-team #7). The loopback network boundary (ADR 0003) is the control for any direct caller of fs-manager; the namespace scope is enforcement within it, not a secret token.
 2. Community writes are restricted to `data/state/community/<pack-name>/` and `data/lore/community/<author>/`.
 3. Core entity `unique_id` fields cannot be modified by any community payload (see Protected Fields below).
 
@@ -245,7 +245,7 @@ The `fs-manager` reads `x-sentinel-protected: true` and adds those keys to a blo
 |---|---|---|---|
 | Inference Node (`engine/`) | Generates narrative + `<world_update>` tags | Via MCP servers only | Filesystem directly |
 | FastAPI backend (`backend/`) | Serves frontend HTTP + SSE; reads `data/state/*.json` directly; calls engine for turns and dispatches writes through it | Never writes to `data/` directly — all writes route through `engine.dispatch` → fs-manager | `data/` (direct) |
-| fs-manager MCP (`:8010`) | Executes validated file writes | `data/state/community/`, `data/lore/community/`, `data/lore/core/sessions/` (and core paths with a `"namespace": "core"` token) | Anywhere outside `data/` |
+| fs-manager MCP (`:8010`) | Executes validated file writes | `data/state/community/`, `data/lore/community/`, `data/lore/core/sessions/` (and core paths with the trusted `?namespace=core` query param) | Anywhere outside `data/` |
 | git-sync MCP (`:8012`) | Commits after each world update | Git history only | N/A |
 | Core Team | Maintains Core namespace | All directories (human-gated PRs) | N/A |
 

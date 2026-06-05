@@ -327,29 +327,30 @@ def validate_path(target_file: str) -> None:
         )
 
 
-def validate_namespace(payload_namespace: str, target_file: str) -> None:
-    """Enforce payload-level namespace authorization for core-gated paths.
+def validate_namespace(namespace: str, target_file: str) -> None:
+    """Enforce the namespace authorization scope for core-gated paths.
 
     Per ARCHITECTURE.md §2, writes to data/state/core/ or data/lore/core/
     (excluding data/lore/core/sessions/, which every session must write)
-    require the payload to declare `"namespace": "core"` at the root.
-    Community payloads — those with `namespace` omitted or set to
-    "community" — are sandboxed to community paths.
+    require ``namespace == "core"``. The namespace is the **trusted query param**
+    the backend sets (``?namespace=``), NOT a field in the schema-validated body
+    — so a model-emitted ``<world_update>`` can't self-assert "core" (red-team
+    #7). A missing param defaults to "community" at the call site (least
+    privilege), which is sandboxed to community paths. The loopback network
+    boundary (ADR 0003) remains the control for direct callers of this server.
 
-    Raises 403 NAMESPACE_VIOLATION if a non-core payload targets a
-    core-gated path.
+    Raises 403 NAMESPACE_VIOLATION if a non-core scope targets a core-gated path.
     """
     if not CORE_GATED_PATH_PATTERN.match(target_file):
         return
-    if payload_namespace != "core":
+    if namespace != "core":
         raise HTTPException(
             status_code=403,
             detail={
                 "code": "NAMESPACE_VIOLATION",
                 "detail": (
                     f"Write to core-gated path '{target_file}' "
-                    f"requires payload-level 'namespace': 'core'. "
-                    f"Got: {payload_namespace!r}"
+                    f"requires the 'core' namespace scope. Got: {namespace!r}"
                 ),
             },
         )
@@ -530,7 +531,7 @@ async def apply_world_update(request: Request):
     validate_payload(payload)
     logger.info(
         f"apply_world_update — session_id={payload.get('session_id')}, "
-        f"namespace={payload.get('namespace', 'community')}, "
+        f"namespace={request.query_params.get('namespace', 'community')}, "
         f"updates={len(payload.get('updates', []))}"
     )
 
@@ -543,10 +544,12 @@ async def apply_world_update(request: Request):
     world_id = _require_world_id_when_isolated(world_id)
     world_root = _resolve_world_root(world_id)
 
-    # Payload-level namespace authorization. Default to "community" when
-    # the field is absent — community is the least-privileged posture,
-    # so unauthenticated or legacy payloads get the sandboxed behavior.
-    payload_namespace = payload.get("namespace", "community")
+    # Namespace authorization. Read from the trusted query param (set by the
+    # backend, NOT the LLM-parsed body) — like world_id, so a model-emitted
+    # <world_update> can't self-assert "core" (red-team #7 / ADR 0003). Default
+    # "community" (least privilege) when absent → sandboxed; a caller that omits
+    # it can't write core-gated paths.
+    request_namespace = request.query_params.get("namespace", "community")
 
     # Serialize the batch write + session-log append against concurrent writers
     # to this world (ADR 0002 per-world lock; the same lock git-sync's
@@ -561,7 +564,7 @@ async def apply_world_update(request: Request):
             data = update["data"]
 
             validate_path(target_file)
-            validate_namespace(payload_namespace, target_file)
+            validate_namespace(request_namespace, target_file)
             result = execute_update(target_file, operation, data, root=world_root)
             results.append(result)
 
