@@ -147,11 +147,17 @@ unless both MCP `/health` agree).
 The remaining prerequisites before inviting public test users:
 
 - **[ADR 0003](./adr/0003-access-gating-and-public-exposure.md) Slice C (edge /
-  ops) — the last code/ops unit:** the Caddy `basic_auth` invite gate (committed
-  template; secret via chezmoi, never committed) + systemd unit templates for the
-  backend and both MCP servers. Then the operational cutover (set
-  `SENTINEL_WORLDS_ROOT` + the token secret + tune the rate limits across all
-  three services, behind the tracer-soak).
+  ops) — landed 2026-06-04:** the Caddy `basic_auth` invite-gate template
+  (`infrastructure/caddy/Caddyfile.example`, guarded by
+  `tests/test_caddy_invariant.py`) + systemd unit templates for the backend and
+  both MCP servers (`infrastructure/systemd/`). All code/ops units for the
+  public-exposure path are now in.
+- **The operational cutover itself (Path A / A4)** — *not* code: on origin-core
+  (or the prod droplet) set `SENTINEL_WORLDS_ROOT` + `SENTINEL_SESSION_TOKEN_SECRET`
+  + the `SENTINEL_RL_*` / `SENTINEL_LLM_DAILY_CEILING` knobs across all three
+  services, supply the Caddy invite hash, and flip the gate live — behind the
+  tracer-soak gate. See `docs/WORKSPACE.md` § "Per-world isolation cutover" /
+  "Production deployment".
 - **Slice 5 — residual resume-fidelity follow-ups** (*not* a public-exposure
   blocker): persona available-mood *list* + `day` persistence (both need the
   genesis/`world_seed` item), and `active`-vs-mtime session selection. Backend
