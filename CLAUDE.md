@@ -329,10 +329,12 @@ in `GEMINI.md`.
   diverges it from origin (this is exactly what produced the 22 stray
   commits cleaned up on 2026-05-30). Run play/smoke sessions on a
   throwaway branch, or reset/clean up afterward, and never push those
-  auto-commits. **Simplest durable fix for local dev:** set
-  `SENTINEL_WORLDS_ROOT` to a path outside the repo (e.g. `~/sentinel-worlds`)
-  in `infrastructure/.env` and restart via `just start` + `just dev-backend` —
-  see `docs/WORKSPACE.md` § "Local dev: keep gameplay out of the code repo".
+  auto-commits. **Simplest durable fix for local dev:** `export
+  SENTINEL_WORLDS_ROOT=~/sentinel-worlds` (a path outside the repo) in your shell
+  and run the servers via the individual recipes (`just fs-manager` / `just
+  git-sync` / `just dev-backend`) — **not** `just start`, whose `env` prerequisite
+  regenerates `.env` and clobbers the value (and the Groq key). See
+  `docs/WORKSPACE.md` § "Local dev: keep gameplay out of the code repo".
   The `just reset-world` and smoke-harness items in `docs/BACKLOG.md` remain the
   broader fix. (This hazard holds while `SENTINEL_WORLDS_ROOT` is unset — the
   default. Once it's set — whether the ADR 0002 Slice 3 cutover or the local-dev

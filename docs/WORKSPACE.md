@@ -325,30 +325,36 @@ is green in CI — it is the isolation gate.
 The same `SENTINEL_WORLDS_ROOT` knob solves a purely-local annoyance: by default,
 `git-sync` writes a per-turn `[sentinel] world=… session=… turn=…` commit to the
 **checked-out branch** (normally `master`), so playing or recording locally
-pollutes `master` and diverges it from origin. The throwaway-branch dance avoids
-it; pointing the worlds root outside the repo eliminates it.
+pollutes `master` and diverges it from origin. Pointing the worlds root outside
+the repo eliminates it.
 
-**Two steps — no public-exposure setup required:**
+**Set it as a shell environment variable — *not* in `infrastructure/.env`.** That
+file is a regenerated artifact (`just env`, and the `env` prerequisite of `just
+start`, run `chezmoi apply --force` over it), so a hand-edited value is silently
+overwritten on the next stack start. The shell env is the durable single source
+that every consumer reads:
 
-1. In `infrastructure/.env`, set the var to a path **outside this repo**:
-   ```
-   SENTINEL_WORLDS_ROOT=/home/you/sentinel-worlds
-   ```
-   (Leave the access knobs — `SENTINEL_SESSION_TOKEN_SECRET`, the `SENTINEL_RL_*`
-   limits, `SENTINEL_LLM_DAILY_CEILING` — off; they're independent of isolation.)
-2. Restart all three services: `just start` (MCP servers) + `just dev-backend`.
+```
+export SENTINEL_WORLDS_ROOT="$HOME/sentinel-worlds"   # a path OUTSIDE this repo
+just fs-manager &   # MCP server — reads os.environ directly
+just git-sync   &   # MCP server — reads os.environ directly
+just dev-backend    # backend — load_dotenv(override=False), so the shell env wins
+```
 
-Each world is then its own git repo at `<worlds_root>/<world_id>/`, every
-per-turn commit lands **there**, and the code repo is never touched — you can
-even play/record on `master` itself. `just export-training-data` still finds the
-corpus (it scans every world's sessions under the worlds root).
+(Leave the access knobs — `SENTINEL_SESSION_TOKEN_SECRET`, the `SENTINEL_RL_*`
+limits, `SENTINEL_LLM_DAILY_CEILING` — unset; they're independent of isolation.)
 
-**Why it works:** `scripts/start-cloud.sh` `source`s `infrastructure/.env`
-(exporting it into both MCP server processes) and the backend loads `.env` itself
-(`backend/config.py`), so all three see the same value and the backend's
-`mcp_agreement` startup check passes.
+Each world is then its own git repo at `<worlds_root>/<world_id>/`, every per-turn
+commit lands **there**, and the code repo is never touched — you can even
+play/record on `master` itself. With the same shell env exported,
+`just export-training-data` finds the corpus (the script reads
+`$SENTINEL_WORLDS_ROOT` and scans every world's sessions).
 
-**Caveat:** the individual dev recipes `just fs-manager` / `just git-sync` do
-**not** source `.env`, so they'd start in shared mode and trip the agreement
-check. Use the `just start` path for split mode. (See `docs/BACKLOG.md` for the
-two `.env`-loading footguns this exposes.)
+**Why the individual recipes, not `just start`:** `just start` depends on `env`,
+which regenerates `infrastructure/.env` from the template — blanking
+`SENTINEL_WORLDS_ROOT` *and* resetting the placeholder Groq key — and
+`scripts/start-cloud.sh` then `source`s that regenerated `.env`, clobbering the
+value you exported. `just fs-manager` / `just git-sync` do neither: they just run
+`server.py`, which reads `os.environ`, so your exported value survives. (You skip
+ChromaDB this way, which the turn loop doesn't use.) See `docs/BACKLOG.md` for the
+`.env`-loading and placeholder-secret footguns behind this.
