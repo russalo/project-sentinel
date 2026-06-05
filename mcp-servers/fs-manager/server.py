@@ -282,18 +282,30 @@ def _resolve_session_log_path(session_id: str, root: Path | None = None) -> Path
 
 
 def check_protected_fields(data: Any, target_file: str) -> None:
-    """Reject payloads that attempt to modify protected fields."""
-    if not isinstance(data, dict):
-        return
-    violations = [f for f in PROTECTED_FIELDS if f in data]
-    if violations:
-        raise HTTPException(
-            status_code=403,
-            detail={
-                "code": "PROTECTED_FIELD_VIOLATION",
-                "detail": f"Attempted to modify protected field(s): {violations} in {target_file}",
-            },
-        )
+    """Reject payloads that set a protected field anywhere in ``data``.
+
+    Recurses through dicts (keys at every level) and lists (each element). The
+    old check looked only at the top-level keys of a ``dict`` and returned early
+    on any non-dict — so a protected key slipped through when ``data`` was a
+    list (the schema permits array ``data``, written verbatim) or nested one
+    level down (red-team #5/#6 + Maestro, 2026-06-04). A protected key at any
+    depth in any write is now rejected.
+    """
+    if isinstance(data, dict):
+        violations = [f for f in PROTECTED_FIELDS if f in data]
+        if violations:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": "PROTECTED_FIELD_VIOLATION",
+                    "detail": f"Attempted to modify protected field(s): {violations} in {target_file}",
+                },
+            )
+        for value in data.values():
+            check_protected_fields(value, target_file)
+    elif isinstance(data, list):
+        for item in data:
+            check_protected_fields(item, target_file)
 
 
 def validate_path(target_file: str) -> None:
@@ -481,7 +493,31 @@ async def apply_world_update(request: Request):
     Primary write tool. Validates and executes a batch of filesystem
     modifications as specified by the apply_world_update JSON Schema.
     """
-    payload = await request.json()
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "VALIDATION_ERROR",
+                "detail": "request body is not valid JSON",
+                "path": [],
+            },
+        )
+    # Guard the shape BEFORE the payload.get(...) log line below — a non-dict body
+    # (array / string / number / null) would otherwise raise an uncaught
+    # AttributeError → a bare 500 + server-side stack trace instead of the
+    # structured 422 (red-team #2/#8, 2026-06-04). validate_payload also requires
+    # an object, but the log line runs first.
+    if not isinstance(payload, dict):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "VALIDATION_ERROR",
+                "detail": f"payload must be a JSON object, got {type(payload).__name__}",
+                "path": [],
+            },
+        )
     logger.info(
         f"apply_world_update — session_id={payload.get('session_id')}, "
         f"namespace={payload.get('namespace', 'community')}, "

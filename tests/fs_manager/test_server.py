@@ -188,6 +188,69 @@ def test_protected_field_list_includes_core_faction_id(client, session_uuid, tmp
     assert response.json()["detail"]["code"] == "PROTECTED_FIELD_VIOLATION"
 
 
+def test_protected_field_blocked_when_list_wrapped(client, session_uuid, tmp_path):
+    # red-team #5: the schema permits `data` as an array, and the old check
+    # returned early on any non-dict — so a list-wrapped payload smuggled
+    # protected fields past the guard and wrote them verbatim. The recursive
+    # check now inspects each list element.
+    files_before = _count_files_under(tmp_path)
+    payload = _minimal_payload(
+        session_id=session_uuid,
+        target_file="data/state/core/entities/listwrap.json",
+        operation="create",
+        data=[{"name": "X", "world_seed": "attacker-seed"}],
+        namespace="core",
+    )
+    response = client.post("/tools/apply_world_update", json=payload)
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "PROTECTED_FIELD_VIOLATION"
+    assert _count_files_under(tmp_path) == files_before  # nothing written
+
+
+def test_protected_field_blocked_when_nested(client, session_uuid, tmp_path):
+    # red-team #6: the old check only inspected top-level keys, so a protected
+    # field nested one level deep slipped through. The check now recurses.
+    files_before = _count_files_under(tmp_path)
+    payload = _minimal_payload(
+        session_id=session_uuid,
+        target_file="data/state/core/entities/nested.json",
+        operation="create",
+        data={"name": "X", "metadata": {"world_seed": "attacker-seed"}},
+        namespace="core",
+    )
+    response = client.post("/tools/apply_world_update", json=payload)
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "PROTECTED_FIELD_VIOLATION"
+    assert _count_files_under(tmp_path) == files_before
+
+
+def test_non_object_payload_returns_422_not_500(client, tmp_path):
+    # red-team #2/#8: a non-dict top-level JSON body (array/string/number/null)
+    # used to raise an uncaught AttributeError at the log line → bare 500 +
+    # stack trace. It must now return the structured 422 envelope.
+    files_before = _count_files_under(tmp_path)
+    for body in ("[1,2,3]", '"x"', "42", "null"):
+        response = client.post(
+            "/tools/apply_world_update",
+            content=body,
+            headers={"content-type": "application/json"},
+        )
+        assert response.status_code == 422, f"body={body}"
+        assert response.json()["detail"]["code"] == "VALIDATION_ERROR"
+    assert _count_files_under(tmp_path) == files_before
+
+
+def test_invalid_json_body_returns_422(client, tmp_path):
+    # Malformed JSON must also be a clean 422, not a 500 from request.json().
+    response = client.post(
+        "/tools/apply_world_update",
+        content="{not valid json",
+        headers={"content-type": "application/json"},
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "VALIDATION_ERROR"
+
+
 def test_protected_check_opt_out_is_rejected_by_schema(client, session_uuid):
     # Regression test for the `protected_check: false` bypass.
     # Before this PR the schema allowed per-update `protected_check`
