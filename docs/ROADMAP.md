@@ -4,7 +4,7 @@
 > stack and architecture assumed fixed. For the long-term direction and
 > open stack questions, see [`VISION.md`](./VISION.md).
 
-_Last updated: 2026-06-03_
+_Last updated: 2026-06-05_
 
 ---
 
@@ -32,7 +32,9 @@ _Last updated: 2026-06-03_
 - **Live smoke test passed on 2026-04-14.** Player → FastAPI → LLM →
   Fact-Extractor → fs-manager → git-sync worked end-to-end against a real
   Ollama-backed model over LiteLLM. The pipeline has been re-smoke-tested
-  via curl against the live fs-manager during PR #29's security work.
+  via curl against the live fs-manager during PR #29's security work, and
+  re-verified against the current dev LLM (Groq `llama-3.3-70b-versatile`,
+  ~4s/turn) on 2026-06-04.
 - **React is the 1.0 frontend.** Decided 2026-04-15 by the landing of
   `feat/panel-ux-entity-cards` — shipping real `EntityCard` primitives +
   wired left/right panel interactions is a de-facto commitment. The
@@ -137,24 +139,28 @@ Landed since (Path A toward public readiness, 2026-06-03 → -04): the "my world
 picker + hard-delete teardown (Slice 5); **per-world cross-process write
 locking** (ADR 0002 — a `filelock` shared by fs-manager + git-sync); the
 **ADR 0003 access layer (Slices A+B)** — per-world HMAC session tokens, rate
-limits, and a global LLM-call ceiling, all opt-in/dormant by default; and the
+limits, and a global LLM-call ceiling, all opt-in/dormant by default; the
 **MCP network-isolation invariant + cutover config-agreement check** (A2 —
 both servers refuse all-interfaces binds, backend refuses per-world startup
-unless both MCP `/health` agree).
+unless both MCP `/health` agree); and **ADR 0003 Slice C** (A3, 2026-06-04 —
+the Caddy `basic_auth` invite-gate template `infrastructure/caddy/Caddyfile.example`
+guarded by `tests/test_caddy_invariant.py`, plus systemd unit templates for
+the backend and both MCP servers in `infrastructure/systemd/`). **All
+code/ops units for the public-exposure path are now in.**
 
 The remaining prerequisites before inviting public test users:
 
-- **[ADR 0003](./adr/0003-access-gating-and-public-exposure.md) Slice C (edge /
-  ops) — the last code/ops unit:** the Caddy `basic_auth` invite gate (committed
-  template; secret via chezmoi, never committed) + systemd unit templates for the
-  backend and both MCP servers. Then the operational cutover (set
-  `SENTINEL_WORLDS_ROOT` + the token secret + tune the rate limits across all
-  three services, behind the tracer-soak).
-- **Slice 5 — provisioning entry point** (a Slice-5 lifecycle remainder, *not* a
-  public-exposure blocker; underspecified — scope separately). Residual
-  resume-fidelity follow-ups: persona available-mood *list* + `day` persistence
-  (both need the genesis/`world_seed` item), and `active`-vs-mtime session
-  selection.
+- **The operational cutover itself (Path A / A4)** — *not* code: on origin-core
+  (or the prod droplet) set `SENTINEL_WORLDS_ROOT` + `SENTINEL_SESSION_TOKEN_SECRET`
+  + the `SENTINEL_RL_*` / `SENTINEL_LLM_DAILY_CEILING` knobs across all three
+  services, supply the Caddy invite hash, and flip the gate live — behind the
+  tracer-soak gate. See `docs/WORKSPACE.md` § "Per-world isolation cutover" /
+  "Production deployment".
+- **Slice 5 — residual resume-fidelity follow-ups** (*not* a public-exposure
+  blocker): persona available-mood *list* + `day` persistence (both need the
+  genesis/`world_seed` item), and `active`-vs-mtime session selection. Backend
+  world provisioning at session-create is wired (`backend/routes/session.py` →
+  `engine.init_world` when `SENTINEL_WORLDS_ROOT` is set).
 
 - Backlog: [`ADR 0002 implementation — remaining slices`](./BACKLOG.md),
   [`Auth strategy — implement ADR 0003`](./BACKLOG.md)

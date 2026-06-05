@@ -5,22 +5,26 @@
 Sentinel is designed to ingest community content without ever risking corruption of the primary world state. This document defines the exact rules that govern how Core and Community content coexist.
 
 > **World isolation (ADR 0002).** Sentinel is *one player per world*: each player
-> gets an isolated world, served concurrently. As of the ADR 0002 Slices 1–2, a
+> gets an isolated world, served concurrently. As of ADR 0002 Slices 1–5, a
 > `world_id` (UUID) is minted per session and threaded through the backend, the
-> engine dispatcher, and the git-sync commit message, and both MCP servers can
+> engine dispatcher, and the git-sync commit message; both MCP servers can
 > resolve a per-world `data/` tree / git repo under the `SENTINEL_WORLDS_ROOT`
-> environment variable. **`SENTINEL_WORLDS_ROOT` is unset by default**, so per-world
-> routing is dormant and everything below describes the live default: a single
-> shared `data/` tree at the repo root. When the Slice 3 cutover sets the env var,
-> the **mutable world state** that fs-manager writes for a world — `state/`,
-> session JSON, and the session-log markdown under `lore/` — is rooted at
-> `<SENTINEL_WORLDS_ROOT>/<world_id>/` instead. **Read-only shared assets are not
-> relocated**: the JSON `schemas/`, the `data/lore/core/presets/` content, and
-> authored core-lore codex continue to load from the shared repo, and should not
-> be duplicated into every world. Exactly which files are per-world-mutable vs.
-> shared-static is the boundary the Slice 3 provisioning step must pin down (see
-> ADR 0002 / BACKLOG). The Core-vs-Community namespace rules in this document apply
-> *within* each world's mutable tree unchanged. See [ADR 0002](docs/adr/0002-world-identity-and-isolation.md).
+> environment variable; worlds are provisioned at creation via git-sync
+> `init_world`; the backend rehydrates by `session_id` (the authoritative
+> routing key); and hard-delete teardown is in. The tracer-soak gate
+> (`tests/test_world_isolation_tracer_soak.py`) proves zero cross-world leak.
+> **`SENTINEL_WORLDS_ROOT` is unset by default**, so per-world routing is
+> dormant and everything below describes the live default: a single shared
+> `data/` tree at the repo root. The cutover is an operational env flip (see
+> `docs/WORKSPACE.md` § "Per-world isolation cutover"); once set, the **mutable
+> world state** that fs-manager writes for a world — `state/`, session JSON,
+> and the session-log markdown under `lore/` — is rooted at
+> `<SENTINEL_WORLDS_ROOT>/<world_id>/` instead. **Read-only shared assets are
+> not relocated**: the JSON `schemas/`, the `data/lore/core/presets/` content,
+> and authored core-lore codex continue to load from the shared repo, and
+> should not be duplicated into every world. The Core-vs-Community namespace
+> rules in this document apply *within* each world's mutable tree unchanged.
+> See [ADR 0002](docs/adr/0002-world-identity-and-isolation.md).
 
 ---
 

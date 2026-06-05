@@ -146,10 +146,11 @@ been retired. `backend/api/dm_ai.py` no longer exists. Every new
 turn the frontend triggers runs through this engine package,
 writes to `data/` via fs-manager, and commits to git via git-sync
 — producing the per-turn audit trail ADR 0001 describes. The
-full pipeline was verified end-to-end against a real qwen3:32b
-model on 2026-04-14 (and again against Groq's
-`llama-3.3-70b-versatile` on 2026-06-04, ~4s/turn) and produces
-real git commits. The LLM is any OpenAI-compatible endpoint,
+full pipeline is verified end-to-end against the current dev LLM,
+Groq's `llama-3.3-70b-versatile` (~4s/turn, re-smoked 2026-06-04),
+and historically against a local Ollama-hosted qwen3:32b on
+2026-04-14 — both producing real git commits. The LLM is any
+OpenAI-compatible endpoint,
 configured via `OPENAI_BASE_URL` / `DM_MODEL` / `OPENAI_API_KEY`
 in `infrastructure/.env`.
 
