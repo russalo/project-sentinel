@@ -138,7 +138,7 @@ dev-frontend:
 # Runs uvicorn as a module under venv_python so it works whether or not the venv
 # is activated — bare `uvicorn` only resolves on PATH inside an activated venv.
 dev-backend:
-    "{{ venv_python }}" -m uvicorn backend.main:app --host 127.0.0.1 --port 8001 --reload --proxy-headers --forwarded-allow-ips=127.0.0.1
+    "{{ venv_python }}" -m uvicorn backend.main:app --host 127.0.0.1 --port 8001 --reload --no-proxy-headers
 
 # Install backend Python dependencies (FastAPI stack)
 install-backend:

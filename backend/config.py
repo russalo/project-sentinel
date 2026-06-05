@@ -93,6 +93,12 @@ class Settings:
     rl_session_create_per_hour: int = 0
     rl_stream_per_minute: int = 0
     llm_daily_ceiling: int = 0
+    # Number of trusted reverse-proxy hops in front of the app. 0 (default) = no
+    # proxy: use the socket peer and IGNORE X-Forwarded-For (a direct caller can
+    # spoof it). Behind the Caddy edge set 1 → the per-IP rate-limit key uses the
+    # hop Caddy appends (the real client as Caddy saw it), not the
+    # client-controlled leftmost XFF entry. See ``ratelimit.client_ip``.
+    trusted_proxy_hops: int = 0
 
     @classmethod
     def load(cls) -> "Settings":
@@ -154,4 +160,5 @@ class Settings:
             ),
             rl_stream_per_minute=_int_env("SENTINEL_RL_STREAM_PER_MINUTE", "0"),
             llm_daily_ceiling=_int_env("SENTINEL_LLM_DAILY_CEILING", "0"),
+            trusted_proxy_hops=_int_env("SENTINEL_TRUSTED_PROXY_HOPS", "0"),
         )

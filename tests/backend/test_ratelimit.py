@@ -2,7 +2,8 @@
 
 A fake monotonic clock makes window behavior deterministic. Covers: the limit
 bites at N+1, windows reset after the period, ``limit <= 0`` disables, the
-global LLM ceiling, the 429 raised by ``enforce``, and X-Forwarded-For parsing.
+global LLM ceiling, the 429 raised by ``enforce``, and trusted-proxy
+X-Forwarded-For handling (the red-team #3 spoofing fix).
 """
 
 import pytest
@@ -124,9 +125,41 @@ class _FakeRequest:
         self.client = _FakeClient(host) if host else None
 
 
-def test_client_ip_prefers_first_forwarded_hop():
-    req = _FakeRequest(headers={"x-forwarded-for": "203.0.113.7, 70.0.0.1"})
-    assert client_ip(req) == "203.0.113.7"
+def test_client_ip_ignores_xff_without_a_trusted_proxy():
+    # Default (trusted_proxy_hops=0, no proxy in front): X-Forwarded-For is
+    # client-controlled and MUST be ignored — use the socket peer. This is the
+    # red-team #3 fix: an attacker can't rotate XFF to dodge the per-IP bucket.
+    req = _FakeRequest(
+        headers={"x-forwarded-for": "203.0.113.7, 70.0.0.1"}, host="10.0.0.9"
+    )
+    assert client_ip(req) == "10.0.0.9"
+
+
+def test_client_ip_uses_nth_hop_from_right_behind_trusted_proxies():
+    req = _FakeRequest(
+        headers={"x-forwarded-for": "203.0.113.7, 70.0.0.1, 198.51.100.2"}
+    )
+    # One trusted proxy (e.g. Caddy) → the hop it appended (rightmost).
+    assert client_ip(req, trusted_proxy_hops=1) == "198.51.100.2"
+    # Two trusted proxies → the second hop from the right.
+    assert client_ip(req, trusted_proxy_hops=2) == "70.0.0.1"
+
+
+def test_client_ip_spoofed_leftmost_xff_cannot_move_the_key():
+    # With one trusted proxy, prepending fake hops on the left changes nothing —
+    # the trustworthy hop is the one the proxy appended (rightmost).
+    real = _FakeRequest(headers={"x-forwarded-for": "1.1.1.1"}, host="127.0.0.1")
+    spoofed = _FakeRequest(
+        headers={"x-forwarded-for": "9.9.9.9, 8.8.8.8, 1.1.1.1"}, host="127.0.0.1"
+    )
+    assert client_ip(real, trusted_proxy_hops=1) == "1.1.1.1"
+    assert client_ip(spoofed, trusted_proxy_hops=1) == "1.1.1.1"  # spoof ineffective
+
+
+def test_client_ip_falls_back_to_peer_when_too_few_hops():
+    # Expect 2 trusted hops but only 1 present → degraded-but-safe: socket peer.
+    req = _FakeRequest(headers={"x-forwarded-for": "1.1.1.1"}, host="10.0.0.9")
+    assert client_ip(req, trusted_proxy_hops=2) == "10.0.0.9"
 
 
 def test_client_ip_falls_back_to_peer():

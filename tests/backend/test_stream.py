@@ -258,10 +258,14 @@ def test_stream_error_emits_error_event_then_done(
     assert response.status_code == 200
     events = _parse_sse_events(response.text)
 
-    assert any(
-        isinstance(e, dict) and e.get("type") == "error" and "simulated" in e["content"]
-        for e in events
-    )
+    # red-team #4: the SSE error must NOT leak the raw provider exception — it
+    # emits a generic message (the upstream string can carry org id + quota).
+    error_events = [
+        e for e in events if isinstance(e, dict) and e.get("type") == "error"
+    ]
+    assert error_events, "expected an error event"
+    assert all("simulated" not in e["content"] for e in error_events)  # no leak
+    assert any("retry" in e["content"].lower() for e in error_events)  # generic msg
     assert events[-1] == "[DONE]"
     # No dispatches on the error path — neither fs-manager nor git-sync.
     assert fake_dispatch_log == []

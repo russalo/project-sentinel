@@ -248,6 +248,11 @@ Rate-limiting is **not** at the edge (`rate_limit` needs a non-stock Caddy
 plugin) — it's in the backend (ADR 0003 Slice B): set `SENTINEL_RL_SESSION_CREATE_PER_HOUR`,
 `SENTINEL_RL_STREAM_PER_MINUTE`, `SENTINEL_LLM_DAILY_CEILING` in
 `infrastructure/.env`. Per-world session tokens arm with `SENTINEL_SESSION_TOKEN_SECRET`.
+Behind Caddy, also set **`SENTINEL_TRUSTED_PROXY_HOPS=1`** so the per-IP limiter
+keys on the hop Caddy appends, not a client-spoofable `X-Forwarded-For` (the
+default `0` ignores XFF and keys on the socket peer). The Caddy template also
+**excludes `/api/sessions*`** from the public edge (the cross-world training
+browser stays tailnet-only).
 
 ## Per-world isolation cutover (`SENTINEL_WORLDS_ROOT`)
 
@@ -280,8 +285,9 @@ the env, bind, and rate-limit posture — *before* you restart anything.
 1. Tracer-soak (`tests/test_world_isolation_tracer_soak.py`) is green in CI.
 2. In `infrastructure/.env` (chezmoi template → `just env`): set the **same**
    `SENTINEL_WORLDS_ROOT` (absolute path, outside this repo) for all three
-   services, plus `SENTINEL_SESSION_TOKEN_SECRET` and the `SENTINEL_RL_*` /
-   `SENTINEL_LLM_DAILY_CEILING` knobs. Leave `SENTINEL_ALLOW_PUBLIC_BIND` unset.
+   services, plus `SENTINEL_SESSION_TOKEN_SECRET`, the `SENTINEL_RL_*` /
+   `SENTINEL_LLM_DAILY_CEILING` knobs, and `SENTINEL_TRUSTED_PROXY_HOPS=1` (behind
+   Caddy). Leave `SENTINEL_ALLOW_PUBLIC_BIND` unset.
 3. Caddy: `caddy hash-password` → put the hash in `$SENTINEL_INVITE_HASH`; apply
    `infrastructure/caddy/Caddyfile.example` to the live Caddyfile; `caddy reload`.
 4. (Re)start the MCP servers (`systemctl restart sentinel-fs-manager sentinel-git-sync`).

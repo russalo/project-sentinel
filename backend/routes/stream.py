@@ -25,6 +25,7 @@ them defensively but the old backend never emitted them either).
 """
 
 import json
+import logging
 import re
 from typing import Iterator
 
@@ -43,6 +44,8 @@ from ..schemas import StreamRequest
 from ..state import sessions as session_state
 from ..state.world_context import load_world_context
 from ..state.world_root import find_session_data_dir
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api")
 
@@ -158,7 +161,12 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
                 buffer.append(token)
                 yield _sse_event({"type": "token", "content": token})
         except Exception as exc:  # pragma: no cover - network/OpenAI failure
-            yield _sse_event({"type": "error", "content": str(exc)})
+            # Log the raw provider error server-side; send the client a generic
+            # message — the upstream string can carry org id + quota (red-team #4).
+            logger.warning("DM stream failed: %s", exc)
+            yield _sse_event(
+                {"type": "error", "content": "DM agent failed; please retry."}
+            )
             yield "data: [DONE]\n\n"
             return
 
