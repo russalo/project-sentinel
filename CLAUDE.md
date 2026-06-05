@@ -144,6 +144,14 @@ each catches what the author (you) and the others miss:
    *(On origin-core, a ready wrapper — `gem.sh`, flash; fall back from pro on
    "Invalid stream" — lives in the sibling File Observer project at
    `/srv/projects/pkplab/scanner/scratch/review/`; it is external to this repo.)*
+   For a **whole-codebase** read (not a diff), Gemini's native review extensions
+   run via `gem-review.sh` (`--approval-mode yolo`): `/code-review` (diff) and
+   `/maestro:security-audit` (39-agent fan-out). Run on an **isolated `/tmp` copy**
+   of the code dirs (exclude `data/` + secrets), copy this repo's `GEMINI.md` into
+   the workspace root for the hunt list, **scope per-subsystem** and throttle
+   (`MAESTRO_MAX_CONCURRENT=3`) or flash 429s. **A Gemini-native swarm is still
+   ~1 vote** (same model family) — it buys coverage, not independent confirmation;
+   it stays one leg, and every finding still gets the triage below.
 3. **PR bots** (Codex / Gemini Code Assist / Copilot) — open a PR. Best at
    doc/code drift after reworks.
 
@@ -155,6 +163,33 @@ strongest real-bug signal**; **re-run the full suite + a real-flow check after
 every fix round**, gated (cheap suite every round; expensive check at round
 boundaries and mandatory before merge — never skipped). Per-PR review + a final
 integration pass for sliced features.
+
+### Red-teaming a security boundary (construct-and-run)
+
+Code-reading review (the legs above) finds logic flaws; it does **not** prove a
+boundary holds. For access/isolation/auth work, add a **construct-and-run
+red-team**: author a `Workflow` script that fans out one agent per attack
+surface (cross-tenant isolation, token forgery, path-traversal via id, the MCP
+write-firewall, rate-limit/ceiling bypass, schema-gate/protected-field bypass,
+malformed-LLM-output, SSE auth), each of which **constructs AND fires a real
+hostile request**, then a verify stage that **independently reproduces** each
+claimed break. Two non-negotiables (learned 2026-06-04):
+
+- **Attack a DISPOSABLE test instance, never prod** — stand up an armed stack on
+  alt ports + a temp `SENTINEL_WORLDS_ROOT` with throwaway worlds (the
+  cutover-verify recipe), point the swarm at it, tear it down after. yolo/attacks
+  can write.
+- **Ground every finding** — the verify stage pre-grounds (it ran the attack),
+  but re-check each CONFIRMED break against real source before it counts;
+  reachability matters (a loopback-only sink is network-isolated, but the same
+  logic may be reachable via untrusted LLM output on the engine→fs-manager path).
+
+This is leg 1's *attack* variant (Claude-side, many perspectives, one model) and
+complements the Gemini code-reading leg — for a boundary you want **both**.
+Triage docs live in gitignored `scratch/review/` (e.g. `redteam-<date>-<area>.md`).
+The first run (2026-06-04) found the happy-path hardening was incomplete: ungated
+`/api/sessions*`, an `X-Forwarded-For`-spoofable rate-limit key, and
+protected-field/schema-gate bypasses in fs-manager.
 
 ### Failure patterns this codebase exhibits (hunt these first)
 
