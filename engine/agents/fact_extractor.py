@@ -175,15 +175,14 @@ def extract(
     if confidence is not None:
         metadata["confidence"] = confidence
 
-    # Namespace authorization: the fact_extractor is only invoked from
-    # the core DM pipeline (FastAPI backend → engine → fs-manager), so
-    # every payload it produces is core-authorized. ARCHITECTURE.md §2
-    # says writes to data/state/core/ or data/lore/core/ require this
-    # token. If community packs ever become a runtime concern, this
-    # needs to become a parameter on `extract()` — the fact_extractor
-    # itself has no business deciding authorization scope.
+    # Namespace authorization is NO LONGER set here (red-team #7): the
+    # fact_extractor has no business deciding authorization scope, and a value
+    # in the LLM-parsed body could be a self-asserted escalation. The scope is a
+    # trusted query param the backend sets on dispatch (default "core" for the
+    # canonical world-write path) — see engine.apply_world_update(namespace=…)
+    # and fs-manager's validate_namespace. So `namespace` is intentionally absent
+    # from the payload body (and from the schema).
     payload: dict[str, Any] = {
-        "namespace": "core",
         "session_id": session_id,
         "log_entry": log_entry,
         "updates": updates,

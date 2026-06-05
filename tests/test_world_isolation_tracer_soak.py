@@ -124,9 +124,12 @@ def _config() -> engine.Config:
 
 
 def _entity_payload(session_id: str, token: str, slug: str) -> dict:
-    """A schema-valid apply_world_update that writes one token-bearing entity."""
+    """A schema-valid apply_world_update that writes one token-bearing entity.
+
+    namespace is no longer a body field (PR 3) — engine.apply_world_update sends
+    it as the trusted query param (default "core").
+    """
     return {
-        "namespace": "core",
         "session_id": session_id,
         "log_entry": f"tracer turn for {token}",
         "updates": [

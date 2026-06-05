@@ -10,10 +10,10 @@ Covers the full security-gap closure landed with this PR:
 - the per-update ``protected_check`` opt-out is gone entirely
   (previously: any payload could set ``protected_check: false``
   and bypass the protected-field check)
-- payload-level namespace gate: writes to ``data/state/core/`` or
-  ``data/lore/core/`` (excluding ``data/lore/core/sessions/``)
-  require ``"namespace": "core"`` at the payload root (previously:
-  no namespace check existed at all)
+- namespace gate: writes to ``data/state/core/`` or ``data/lore/core/``
+  (excluding ``data/lore/core/sessions/``) require the trusted
+  ``?namespace=core`` query param (PR 3 / red-team #7) — set by the backend on
+  dispatch, NOT a field in the LLM-parsed body; passed here via ``_apply``
 - session-log append at ``data/lore/core/sessions/<id>.md`` is
   exempt from the namespace gate so community callers can log
   their own sessions
@@ -36,17 +36,15 @@ def _minimal_payload(
     target_file: str,
     operation: str = "create",
     data: dict | str | list | None = None,
-    namespace: str | None = None,
 ) -> dict:
     """Build a minimally-valid apply_world_update payload.
 
-    Only sets ``namespace`` when the caller explicitly provides one,
-    so tests can distinguish "field absent" (defaults to community)
-    from "field set to community" (explicit) from "field set to core".
+    ``namespace`` is NOT a body field (PR 3 / red-team #7) — it's the trusted
+    query param the backend sets; pass it to ``_apply``, not here.
     """
     if data is None:
         data = {"name": "Test", "status": "alive"}
-    payload = {
+    return {
         "session_id": session_id,
         "log_entry": "Test log entry for the fs-manager unit tests.",
         "updates": [
@@ -57,9 +55,15 @@ def _minimal_payload(
             }
         ],
     }
-    if namespace is not None:
-        payload["namespace"] = namespace
-    return payload
+
+
+def _apply(client, payload, namespace=None):
+    """POST a payload to apply_world_update, sending ``namespace`` as the trusted
+    query param (PR 3). ``namespace=None`` sends no param → fs-manager defaults to
+    the least-privileged "community" scope.
+    """
+    params = {"namespace": namespace} if namespace is not None else None
+    return client.post("/tools/apply_world_update", json=payload, params=params)
 
 
 def _count_files_under(root: Path) -> int:
@@ -93,9 +97,8 @@ def test_path_validation_rejects_directory_traversal(client, session_uuid, tmp_p
     payload = _minimal_payload(
         session_id=session_uuid,
         target_file="data/state/core/entities/../../../etc/passwd.json",
-        namespace="core",
     )
-    response = client.post("/tools/apply_world_update", json=payload)
+    response = _apply(client, payload)
     assert response.status_code in (403, 422)
     # Security property: the rejected request must not have produced
     # any new files on disk — including a partial session log append.
@@ -107,9 +110,8 @@ def test_path_validation_rejects_absolute_path(client, session_uuid, tmp_path):
     payload = _minimal_payload(
         session_id=session_uuid,
         target_file="/etc/passwd.json",
-        namespace="core",
     )
-    response = client.post("/tools/apply_world_update", json=payload)
+    response = _apply(client, payload)
     assert response.status_code in (403, 422)
     assert _count_files_under(tmp_path) == files_before
 
@@ -119,9 +121,8 @@ def test_path_validation_rejects_path_outside_data(client, session_uuid, tmp_pat
     payload = _minimal_payload(
         session_id=session_uuid,
         target_file="README.md",
-        namespace="core",
     )
-    response = client.post("/tools/apply_world_update", json=payload)
+    response = _apply(client, payload)
     assert response.status_code in (403, 422)
     assert _count_files_under(tmp_path) == files_before
     # Extra defense: the target itself should never land under tmp_path.
@@ -142,9 +143,8 @@ def test_protected_field_blocks_update_with_world_seed(client, session_uuid, tmp
         target_file="data/state/core/entities/kael.json",
         operation="update",
         data={"world_seed": "attacker-controlled-seed"},
-        namespace="core",
     )
-    response = client.post("/tools/apply_world_update", json=payload)
+    response = _apply(client, payload, namespace="core")
     assert response.status_code == 403
     assert response.json()["detail"]["code"] == "PROTECTED_FIELD_VIOLATION"
 
@@ -159,9 +159,8 @@ def test_protected_field_blocks_create_with_world_seed(client, session_uuid):
         target_file="data/state/core/entities/new_entity.json",
         operation="create",
         data={"name": "NewEntity", "world_seed": "attacker-seed"},
-        namespace="core",
     )
-    response = client.post("/tools/apply_world_update", json=payload)
+    response = _apply(client, payload, namespace="core")
     assert response.status_code == 403
     assert response.json()["detail"]["code"] == "PROTECTED_FIELD_VIOLATION"
 
@@ -181,9 +180,8 @@ def test_protected_field_list_includes_core_faction_id(client, session_uuid, tmp
         target_file="data/state/core/factions/shadow_court.json",
         operation="update",
         data={"core_faction_id": "different-faction-id"},
-        namespace="core",
     )
-    response = client.post("/tools/apply_world_update", json=payload)
+    response = _apply(client, payload, namespace="core")
     assert response.status_code == 403
     assert response.json()["detail"]["code"] == "PROTECTED_FIELD_VIOLATION"
 
@@ -199,9 +197,8 @@ def test_protected_field_blocked_when_list_wrapped(client, session_uuid, tmp_pat
         target_file="data/state/core/entities/listwrap.json",
         operation="create",
         data=[{"name": "X", "world_seed": "attacker-seed"}],
-        namespace="core",
     )
-    response = client.post("/tools/apply_world_update", json=payload)
+    response = _apply(client, payload, namespace="core")
     assert response.status_code == 403
     assert response.json()["detail"]["code"] == "PROTECTED_FIELD_VIOLATION"
     assert _count_files_under(tmp_path) == files_before  # nothing written
@@ -221,9 +218,8 @@ def test_nested_protected_field_is_allowed(client, session_uuid):
             "session_id": session_uuid,
             "turns": [{"turn_number": 0, "created_at": "2026-06-05T00:00:00Z"}],
         },
-        namespace="core",
     )
-    response = client.post("/tools/apply_world_update", json=payload)
+    response = _apply(client, payload, namespace="core")
     assert response.status_code == 200, response.text  # nested created_at allowed
 
 
@@ -264,7 +260,7 @@ def test_malformed_updates_field_returns_422(client, session_uuid):
             "log_entry": "x",
             "updates": updates,
         }
-        response = client.post("/tools/apply_world_update", json=payload)
+        response = _apply(client, payload)
         assert response.status_code == 422, f"updates={updates!r}"
         assert response.json()["detail"]["code"] == "VALIDATION_ERROR"
 
@@ -278,7 +274,6 @@ def test_protected_check_opt_out_is_rejected_by_schema(client, session_uuid):
     payload = {
         "session_id": session_uuid,
         "log_entry": "Attempt to bypass protected-field enforcement.",
-        "namespace": "core",
         "updates": [
             {
                 "target_file": "data/state/core/entities/kael.json",
@@ -288,7 +283,7 @@ def test_protected_check_opt_out_is_rejected_by_schema(client, session_uuid):
             }
         ],
     }
-    response = client.post("/tools/apply_world_update", json=payload)
+    response = _apply(client, payload)
     assert response.status_code == 422
     assert response.json()["detail"]["code"] == "VALIDATION_ERROR"
 
@@ -305,30 +300,25 @@ def test_namespace_gate_blocks_community_default_core_write(client, session_uuid
         operation="create",
         data={"name": "Injection"},
     )
-    response = client.post("/tools/apply_world_update", json=payload)
+    response = _apply(client, payload)
     assert response.status_code == 403
     assert response.json()["detail"]["code"] == "NAMESPACE_VIOLATION"
 
 
 def test_namespace_gate_blocks_explicit_community_core_write(client, session_uuid):
-    # Uses the same target as the "default community" test above but
-    # with `namespace` explicitly set to "community". Both the default
-    # (omitted) and the explicit case must reach the namespace gate
-    # and get rejected — no "explicit community is a magic token that
-    # bypasses protection" footgun. The target is a data/state/core/
-    # path because that's the only namespace-gated path class that
-    # ALLOWED_PATH_PATTERN also permits at the schema layer
-    # (data/lore/core/ writes are schema-rejected for everything
-    # except sessions/, which is gate-exempt, so the gate would never
-    # fire on a lore/core path in the current design).
+    # Same target as the "default community" test above, but with the explicit
+    # ?namespace=community query param. Both the default (omitted param) and the
+    # explicit-community case must reach the namespace gate and get rejected — no
+    # "explicit community is a magic token that bypasses protection" footgun. The
+    # target is a data/state/core/ path because that's the only namespace-gated
+    # path class ALLOWED_PATH_PATTERN also permits at the schema layer.
     payload = _minimal_payload(
         session_id=session_uuid,
         target_file="data/state/core/entities/injection.json",
         operation="create",
         data={"name": "Injection"},
-        namespace="community",
     )
-    response = client.post("/tools/apply_world_update", json=payload)
+    response = _apply(client, payload, namespace="community")
     assert response.status_code == 403
     assert response.json()["detail"]["code"] == "NAMESPACE_VIOLATION"
 
@@ -341,9 +331,8 @@ def test_namespace_gate_allows_core_payload_to_write_core(
         target_file="data/state/core/entities/kael.json",
         operation="create",
         data={"name": "Kael", "status": "alive"},
-        namespace="core",
     )
-    response = client.post("/tools/apply_world_update", json=payload)
+    response = _apply(client, payload, namespace="core")
     assert response.status_code == 200
     assert (tmp_path / "data" / "state" / "core" / "entities" / "kael.json").exists()
 
@@ -357,7 +346,7 @@ def test_namespace_gate_allows_community_payload_to_write_community(
         operation="create",
         data={"npcs": ["Old Maren"]},
     )
-    response = client.post("/tools/apply_world_update", json=payload)
+    response = _apply(client, payload)
     assert response.status_code == 200
     written = tmp_path / "data" / "state" / "community" / "bard_pack" / "npcs.json"
     assert written.exists()
@@ -377,7 +366,7 @@ def test_session_log_exempt_from_namespace_gate_for_community_payload(
         operation="create",
         data={"npcs": ["Old Maren"]},
     )
-    response = client.post("/tools/apply_world_update", json=payload)
+    response = _apply(client, payload)
     assert response.status_code == 200
 
     session_log = (
@@ -401,7 +390,7 @@ def test_schema_validation_rejects_missing_session_id(client):
             }
         ],
     }
-    response = client.post("/tools/apply_world_update", json=payload)
+    response = _apply(client, payload)
     assert response.status_code == 422
     assert response.json()["detail"]["code"] == "VALIDATION_ERROR"
 
@@ -417,7 +406,6 @@ def test_schema_validation_rejects_non_uuid_session_id(client, tmp_path):
     # interpolate it into a filesystem path.
     files_before = _count_files_under(tmp_path)
     payload = {
-        "namespace": "core",
         "session_id": "not-a-uuid-string",
         "log_entry": "session_id is not a UUID and must be rejected.",
         "updates": [
@@ -428,7 +416,7 @@ def test_schema_validation_rejects_non_uuid_session_id(client, tmp_path):
             }
         ],
     }
-    response = client.post("/tools/apply_world_update", json=payload)
+    response = _apply(client, payload)
     assert response.status_code == 422
     assert response.json()["detail"]["code"] == "VALIDATION_ERROR"
     assert _count_files_under(tmp_path) == files_before
@@ -448,7 +436,6 @@ def test_traversal_attempt_in_session_id_is_rejected(client, tmp_path):
     # the filesystem boundary honest.
     files_before = _count_files_under(tmp_path)
     payload = {
-        "namespace": "core",
         # Not a valid UUID; format check will fire first, but even
         # if it didn't, the path resolution would catch it.
         "session_id": "../../../etc/passwd",
@@ -461,7 +448,10 @@ def test_traversal_attempt_in_session_id_is_rejected(client, tmp_path):
             }
         ],
     }
-    response = client.post("/tools/apply_world_update", json=payload)
+    # namespace="core" so the request would reach the path-resolution defense if
+    # the session_id format check ever regressed — otherwise the namespace gate
+    # (403) would fire first and mask whether the traversal backstop still holds.
+    response = _apply(client, payload, namespace="core")
     # Either layer of defense is acceptable — format check (422) or
     # path resolution (403 PATH_VIOLATION). Both are correct; the
     # critical property is that the file system is untouched.

@@ -64,6 +64,7 @@ def apply_world_update(
     payload: dict[str, Any],
     *,
     world_id: str | None = None,
+    namespace: str = "core",
     client: httpx.Client | None = None,
     timeout: float = 30.0,
 ) -> DispatchResult:
@@ -112,7 +113,15 @@ def apply_world_update(
     # dispatcher agrees with fs-manager's `not world_id` fallback test — an
     # empty world_id must mean "legacy shared root", never a stray `?world_id=`
     # that the server silently re-routes.
-    params = {"world_id": world_id} if world_id else None
+    # namespace is the trusted, backend-set authorization scope. It is NOT carried
+    # in the LLM-parsed body (the fact-extractor no longer sets it) — it rides as a
+    # query param like world_id (red-team #7 / ADR 0003): the backend decides it,
+    # the model can't. Default "core" is the canonical world-write path this
+    # dispatcher serves; a community-pack caller passes "community". fs-manager
+    # enforces it for core-gated paths.
+    params: dict[str, str] = {"namespace": namespace}
+    if world_id:
+        params["world_id"] = world_id
 
     try:
         try:

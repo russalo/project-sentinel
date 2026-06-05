@@ -55,7 +55,12 @@ def test_success_returns_ok_result():
     assert "results" in result.body
 
     assert captured["method"] == "POST"
-    assert captured["url"] == "http://fs-manager.test/tools/apply_world_update"
+    # namespace=core now always rides as a query param (red-team #7), so compare
+    # the path, not the full URL.
+    assert (
+        captured["url"].split("?")[0]
+        == "http://fs-manager.test/tools/apply_world_update"
+    )
 
 
 def test_schema_violation_returns_422():
@@ -152,7 +157,7 @@ def test_url_uses_config_fs_manager_url():
     apply_world_update(config, {}, client=_client_returning(handler))
 
     assert (
-        captured["url"]
+        captured["url"].split("?")[0]
         == "https://sentinel.tailscale.net:8010/tools/apply_world_update"
     )
 
@@ -169,7 +174,10 @@ def test_trailing_slash_in_fs_manager_url_is_normalized():
     config = _config("http://fs-manager.test/")  # note trailing slash
     apply_world_update(config, {}, client=_client_returning(handler))
 
-    assert captured["url"] == "http://fs-manager.test/tools/apply_world_update"
+    assert (
+        captured["url"].split("?")[0]
+        == "http://fs-manager.test/tools/apply_world_update"
+    )
     assert "//tools" not in captured["url"]
 
 
@@ -183,7 +191,10 @@ def test_multiple_trailing_slashes_are_all_normalized():
     config = _config("http://fs-manager.test///")
     apply_world_update(config, {}, client=_client_returning(handler))
 
-    assert captured["url"] == "http://fs-manager.test/tools/apply_world_update"
+    assert (
+        captured["url"].split("?")[0]
+        == "http://fs-manager.test/tools/apply_world_update"
+    )
 
 
 def test_2xx_non_200_responses_count_as_success():
@@ -213,8 +224,8 @@ def test_accepts_list_body_gracefully():
 
 
 def test_world_id_omitted_from_query_when_none():
-    """No world_id → the request URL carries no query string at all, so a
-    legacy single-world fs-manager keeps writing the shared tree (ADR 0002
+    """No world_id → the query carries the namespace scope but NO ``world_id``,
+    so a legacy single-world fs-manager keeps writing the shared tree (ADR 0002
     backward-compatibility). Falsify-first: this fails if the dispatcher ever
     sends ``?world_id=`` or ``?world_id=None``."""
     captured = {}
@@ -227,7 +238,9 @@ def test_world_id_omitted_from_query_when_none():
     config = _config()
     apply_world_update(config, {}, client=_client_returning(handler))
 
-    assert captured["query"] == ""
+    # namespace=core always rides along now (red-team #7); the invariant here is
+    # that no world_id leaks.
+    assert captured["query"] == "namespace=core"
     assert "world_id" not in captured["url"]
 
 
@@ -244,7 +257,8 @@ def test_empty_world_id_omitted_from_query():
     config = _config()
     apply_world_update(config, {}, world_id="", client=_client_returning(handler))
 
-    assert captured["query"] == ""
+    assert "world_id" not in captured["query"]
+    assert captured["query"] == "namespace=core"
 
 
 def test_world_id_appended_as_query_param_when_supplied():
@@ -274,6 +288,33 @@ def test_world_id_appended_as_query_param_when_supplied():
     # world_id is routing metadata — it must NOT leak into the schema-validated
     # body, or fs-manager's additionalProperties:false gate would reject it.
     assert "world_id" not in json.loads(captured["body"])
+
+
+def test_namespace_rides_as_query_param_not_body():
+    """red-team #7: namespace is the trusted, backend-set scope — it rides as a
+    ``?namespace=`` query param (default 'core'), NOT in the schema-validated
+    body, so a model-emitted <world_update> can't self-assert it."""
+    import json
+
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["ns"] = request.url.params.get("namespace")
+        captured["body"] = request.content.decode()
+        return httpx.Response(200, json={"success": True})
+
+    config = _config()
+    apply_world_update(config, {"updates": []}, client=_client_returning(handler))
+    assert captured["ns"] == "core"  # default scope
+    assert "namespace" not in json.loads(captured["body"])  # never in the body
+
+    apply_world_update(
+        config,
+        {"updates": []},
+        namespace="community",
+        client=_client_returning(handler),
+    )
+    assert captured["ns"] == "community"  # caller can scope down
 
 
 if __name__ == "__main__":  # pragma: no cover

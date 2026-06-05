@@ -5,12 +5,6 @@
   "description": "Strict contract for the fs-manager MCP server to execute safe, zero-touch filesystem modifications across hybrid storage layers. The Inference Node must conform to this schema exactly — any deviation is rejected before execution.",
   "type": "object",
   "properties": {
-    "namespace": {
-      "type": "string",
-      "enum": ["core", "community"],
-      "default": "community",
-      "description": "Authorization namespace for this write batch. A value of 'core' is required to write under data/state/core/ or data/lore/core/ (except data/lore/core/sessions/*, which is always writable so every session can log its own transcript). When omitted, the fs-manager treats the payload as 'community' and sandboxes writes to community paths. Enforced by the namespace gate in mcp-servers/fs-manager/server.py."
-    },
     "session_id": {
       "type": "string",
       "format": "uuid",

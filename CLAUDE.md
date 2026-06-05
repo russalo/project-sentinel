@@ -418,7 +418,7 @@ The two nodes communicate over a Tailscale mesh in production; locally they run 
 5. Next turn reads the updated `data/state/*.json` directly (no cache layer)
 
 **Hybrid storage under `data/`** — human-readable Markdown for lore, machine-readable JSON for state, everything under git. Namespace separation is enforced at write time by fs-manager:
-- `data/{lore,state}/core/` — Core team only; writes require a `"namespace": "core"` authorization token
+- `data/{lore,state}/core/` — Core team only; writes require the trusted `?namespace=core` query param the backend sets on dispatch (`engine.apply_world_update(namespace=…)`), **not** a field in the LLM-parsed body (red-team #7). The loopback boundary (ADR 0003) is the control for direct fs-manager callers.
 - `data/{lore,state}/community/<pack>/` — community packs, additive only
 - Protected fields (`unique_id`, `world_seed`, `namespace`, `created_at`, `canon`, `core_faction_id`) are immutable to community payloads — enforced in code by fs-manager's `check_protected_fields()` against the `PROTECTED_FIELDS` set in `mcp-servers/fs-manager/server.py` (not a JSON-schema keyword).
 

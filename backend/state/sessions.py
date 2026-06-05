@@ -134,14 +134,14 @@ def _build_session_payload(session: Session, log_entry: str, turn_number: int) -
     """Produce an apply_world_update payload that writes a session file.
 
     Session files always live under ``data/state/core/sessions/`` per
-    ADR 0001, which is a namespace-gated path. This backend is the
-    core DM, so every payload it dispatches carries
-    ``"namespace": "core"`` for authorization. Community pack runtimes
-    (when they exist) will need a different write path entirely —
-    session files are a core concept.
+    ADR 0001, which is a namespace-gated path. Authorization is the trusted
+    ``namespace`` query param the dispatcher sets (default "core"; see
+    ``engine.apply_world_update``), NOT a field in this body — so it is
+    intentionally absent here (red-team #7). Community pack runtimes (when they
+    exist) will need a different write path entirely — session files are a core
+    concept.
     """
     return {
-        "namespace": "core",
         "session_id": session.session_id,
         "log_entry": log_entry,
         "updates": [
