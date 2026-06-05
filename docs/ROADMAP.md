@@ -152,11 +152,11 @@ The remaining prerequisites before inviting public test users:
   backend and both MCP servers. Then the operational cutover (set
   `SENTINEL_WORLDS_ROOT` + the token secret + tune the rate limits across all
   three services, behind the tracer-soak).
-- **Slice 5 — provisioning entry point** (a Slice-5 lifecycle remainder, *not* a
-  public-exposure blocker; underspecified — scope separately). Residual
-  resume-fidelity follow-ups: persona available-mood *list* + `day` persistence
-  (both need the genesis/`world_seed` item), and `active`-vs-mtime session
-  selection.
+- **Slice 5 — residual resume-fidelity follow-ups** (*not* a public-exposure
+  blocker): persona available-mood *list* + `day` persistence (both need the
+  genesis/`world_seed` item), and `active`-vs-mtime session selection. Backend
+  world provisioning at session-create is wired (`backend/routes/session.py` →
+  `engine.init_world` when `SENTINEL_WORLDS_ROOT` is set).
 
 - Backlog: [`ADR 0002 implementation — remaining slices`](./BACKLOG.md),
   [`Auth strategy — implement ADR 0003`](./BACKLOG.md)
