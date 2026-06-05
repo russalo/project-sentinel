@@ -282,18 +282,37 @@ def _resolve_session_log_path(session_id: str, root: Path | None = None) -> Path
 
 
 def check_protected_fields(data: Any, target_file: str) -> None:
-    """Reject payloads that attempt to modify protected fields."""
-    if not isinstance(data, dict):
-        return
-    violations = [f for f in PROTECTED_FIELDS if f in data]
-    if violations:
-        raise HTTPException(
-            status_code=403,
-            detail={
-                "code": "PROTECTED_FIELD_VIOLATION",
-                "detail": f"Attempted to modify protected field(s): {violations} in {target_file}",
-            },
-        )
+    """Reject payloads that set a protected field at the **top level** of the
+    written object — or of any element when ``data`` is a list.
+
+    Scope is deliberately top-level-only, NOT a deep recurse. ``execute_update``
+    writes ``data`` verbatim on ``create`` and does a shallow ``existing.update``
+    on ``update``, so only top-level keys land as the object's own fields. The
+    old check inspected a ``dict``'s top-level keys but returned early on any
+    non-dict, so a **list-wrapped** ``data`` (the schema permits array ``data``,
+    written verbatim) smuggled protected fields past it (red-team #5). Now each
+    list element's top-level keys are checked too.
+
+    A protected field nested *deeper* is intentionally allowed: under the shallow
+    merge / verbatim write it's stored as ordinary nested data, not a mutation of
+    the object's protected field — and recursing would wrongly 403 legitimate
+    session writes, whose turn entries carry ``created_at`` nested in
+    ``data["turns"]`` (codex P1 on #93). That false-positive would 502 every new
+    session and break turn persistence.
+    """
+    items = data if isinstance(data, list) else [data]
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        violations = [f for f in PROTECTED_FIELDS if f in item]
+        if violations:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": "PROTECTED_FIELD_VIOLATION",
+                    "detail": f"Attempted to modify protected field(s): {violations} in {target_file}",
+                },
+            )
 
 
 def validate_path(target_file: str) -> None:
@@ -481,14 +500,39 @@ async def apply_world_update(request: Request):
     Primary write tool. Validates and executes a batch of filesystem
     modifications as specified by the apply_world_update JSON Schema.
     """
-    payload = await request.json()
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "VALIDATION_ERROR",
+                "detail": "request body is not valid JSON",
+                "path": [],
+            },
+        )
+    # Validate BEFORE the payload.get(...) log line below. A non-dict body
+    # (array/string/number/null) or a dict with a malformed `updates` (e.g.
+    # `null`/int) would otherwise crash the log line — `payload.get(...)` /
+    # `len(payload.get('updates', []))` raise an uncaught AttributeError/TypeError
+    # → a bare 500 + server-side stack trace instead of the structured 422
+    # (red-team #2/#8 + #93 review). The isinstance guard gives a clearer message
+    # for a non-dict body; validate_payload then enforces the full schema.
+    if not isinstance(payload, dict):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "VALIDATION_ERROR",
+                "detail": f"payload must be a JSON object, got {type(payload).__name__}",
+                "path": [],
+            },
+        )
+    validate_payload(payload)
     logger.info(
         f"apply_world_update — session_id={payload.get('session_id')}, "
         f"namespace={payload.get('namespace', 'community')}, "
         f"updates={len(payload.get('updates', []))}"
     )
-
-    validate_payload(payload)
 
     # Per-world routing (ADR 0002): world_id is passed as a query param — it's
     # routing metadata (which world to write to), not update content, so it
