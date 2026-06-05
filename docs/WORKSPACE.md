@@ -319,3 +319,45 @@ still resolves end-to-end. New worlds are isolated; the shared tree acts as
 
 Do **not** flip the cutover unless `tests/test_world_isolation_tracer_soak.py`
 is green in CI — it is the isolation gate.
+
+### Local dev: keep gameplay out of the code repo
+
+The same `SENTINEL_WORLDS_ROOT` knob solves a purely-local annoyance: by default,
+`git-sync` writes a per-turn `[sentinel] world=… session=… turn=…` commit to the
+**checked-out branch** (normally `master`), so playing or recording locally
+pollutes `master` and diverges it from origin. Pointing the worlds root outside
+the repo eliminates it.
+
+**Set it as a shell environment variable — *not* in `infrastructure/.env`.** That
+file is a regenerated artifact (`just env`, and the `env` prerequisite of `just
+start`, run `chezmoi apply --force` over it), so a hand-edited value is silently
+overwritten on the next stack start. (The production cutover above is the
+opposite: there you *do* set it via the template → `.env`, because the systemd
+units load `.env` through `EnvironmentFile` and a shell `export` wouldn't reach
+them — that path doesn't run `just env` per stack start.) For local dev, the
+shell env is the durable single source that every consumer reads:
+
+```
+export SENTINEL_WORLDS_ROOT="$HOME/sentinel-worlds"   # a path OUTSIDE this repo
+just fs-manager &   # MCP server — reads os.environ directly
+just git-sync   &   # MCP server — reads os.environ directly
+just dev-backend    # backend — load_dotenv(override=False), so the shell env wins
+```
+
+(Leave the access knobs — `SENTINEL_SESSION_TOKEN_SECRET`, the `SENTINEL_RL_*`
+limits, `SENTINEL_LLM_DAILY_CEILING` — unset; they're independent of isolation.)
+
+Each world is then its own git repo at `<worlds_root>/<world_id>/`, every per-turn
+commit lands **there**, and the code repo is never touched — you can even
+play/record on `master` itself. With the same shell env exported,
+`just export-training-data` finds the corpus (the script reads
+`$SENTINEL_WORLDS_ROOT` and scans every world's sessions).
+
+**Why the individual recipes, not `just start`:** `just start` depends on `env`,
+which regenerates `infrastructure/.env` from the template — blanking
+`SENTINEL_WORLDS_ROOT` *and* resetting the placeholder Groq key — and
+`scripts/start-cloud.sh` then `source`s that regenerated `.env`, clobbering the
+value you exported. `just fs-manager` / `just git-sync` do neither: they just run
+`server.py`, which reads `os.environ`, so your exported value survives. (You skip
+ChromaDB this way, which the turn loop doesn't use.) See `docs/BACKLOG.md` for the
+`.env`-loading and placeholder-secret footguns behind this.
