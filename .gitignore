@@ -76,3 +76,8 @@ chatlogs/
 # dir under the repo root; per-world locks live under SENTINEL_WORLDS_ROOT
 # (outside the code repo). Runtime artifacts, never committed.
 .sentinel-locks/
+
+# Internal review / red-team artifacts (triage docs, audit captures). Process
+# notes kept out of the public repo — mirrors the sibling scanner project's
+# gitignored scratch/review/. Never committed.
+scratch/
