@@ -118,17 +118,68 @@ def test_alpha_hostname_is_apex_not_dev_subdomain(caddyfile):
     # The closed alpha is published on the apex `sentinel.russalo.com`, NOT
     # the tailnet-dev `sentinel.dev.russalo.com`. Catch an accidental hostname
     # regression that would either leak the alpha onto the tailnet hostname
-    # or break TLS provisioning on the apex.
+    # or break the public hostname.
     assert "sentinel.russalo.com" in caddyfile
-    # First non-comment line that opens a site block must be the apex.
+    # First non-comment line that opens a site block must be the apex, with
+    # the explicit http:// scheme (see test_origin_core_does_not_provision_tls
+    # for the scheme rationale).
     site_lines = [
         ln.strip()
         for ln in caddyfile.splitlines()
         if ln.strip() and not ln.strip().startswith("#")
     ]
     assert site_lines, "Caddyfile has no directive lines"
-    assert site_lines[0].startswith("sentinel.russalo.com"), (
-        f"first site block is not sentinel.russalo.com — got: {site_lines[0]!r}"
+    assert site_lines[0].startswith("http://sentinel.russalo.com"), (
+        f"first site block is not http://sentinel.russalo.com — got: {site_lines[0]!r}"
+    )
+
+
+def test_origin_core_does_not_provision_tls(caddyfile):
+    # Gate-fronted topology (decided 2026-06-06): gate is the public edge and
+    # terminates TLS; origin-core's Caddy serves cleartext HTTP over tailnet.
+    # The `http://` scheme on the site address tells Caddy to NOT auto-provision
+    # a cert — without it, origin-core would try to issue Let's Encrypt for
+    # sentinel.russalo.com on every reload (and fail, because origin-core isn't
+    # the DNS target). A regression to bare `sentinel.russalo.com {` or to
+    # `https://` would re-enable that broken cert-issuance attempt.
+    assert "http://sentinel.russalo.com" in caddyfile
+    # And no implicit (scheme-less) site block, which would also auto-https.
+    # Check the first directive-line opens with the explicit scheme.
+    site_lines = [
+        ln.strip()
+        for ln in caddyfile.splitlines()
+        if ln.strip() and not ln.strip().startswith("#")
+    ]
+    assert site_lines[0].startswith("http://"), (
+        f"first site block must use explicit http:// scheme (TLS terminates "
+        f"at gate, not origin-core) — got: {site_lines[0]!r}"
+    )
+    # No `https://sentinel.russalo.com` anywhere — that would re-enable TLS
+    # provisioning at origin-core.
+    assert "https://sentinel.russalo.com" not in caddyfile, (
+        "https:// scheme on origin-core's Caddy re-enables auto-cert-provisioning "
+        "for a hostname origin-core doesn't own (DNS points at gate). Use http://."
+    )
+
+
+def test_listener_bound_to_tailnet_only(directives):
+    # Gate-fronted security invariant: origin-core's Caddy must NEVER listen
+    # on the public interface — the `bind` directive scopes the listener to
+    # the tailnet IP only. Without `bind`, Caddy defaults to listening on all
+    # interfaces (0.0.0.0/::), so even a firewall hole or a future IP change
+    # could expose the basic_auth-gated SPA + API directly to the internet,
+    # defeating the gate-fronted topology's whole point.
+    assert "bind " in directives, (
+        "missing `bind` directive — origin-core's Caddy must bind only to the "
+        "tailnet IP (defense in depth — gate is the only public-facing edge)"
+    )
+    # The bind directive must NOT bind to all interfaces (an explicit
+    # mis-configuration regression).
+    assert "bind 0.0.0.0" not in directives, (
+        "`bind 0.0.0.0` would defeat the gate-fronted topology"
+    )
+    assert "bind [::]" not in directives, (
+        "`bind [::]` would defeat the gate-fronted topology"
     )
 
 

@@ -230,12 +230,30 @@ conditional `base: '/alpha/'` in `vite.config.js`. The output `dist/`:
   in `App.jsx` — single source of truth, no parallel constant to drift)
 - targets the same-origin relative API path `/alpha/api/...`
 
-Caddy strips the `/alpha` prefix at the edge (`handle_path /alpha/*`) before
-reverse-proxy, so the backend stays mounted at `/api/...` unchanged and the
-file_server reads `dist/assets/...` unchanged. The two builds — `pnpm build`
-for the tailnet dev site (no prefix) and `pnpm build:alpha` for the alpha
-(with prefix) — produce different `dist/` outputs; switching deployments
-requires the matching build.
+The closed alpha is deployed **gate-fronted, not direct-to-origin-core**
+(decided 2026-06-06, same shape as `blog.russalo.com`). DNS for
+`sentinel.russalo.com` resolves to a separate **gate** machine (tailnet
+Claude's lane) that owns DNS, TLS provisioning, and TLS termination. Gate
+reverse-proxies cleartext HTTP over tailnet to origin-core's Caddy, which
+runs the committed template (`infrastructure/caddy/Caddyfile.example`).
+Origin-core's Caddy is `bind`-scoped to the tailnet IP only — it never
+listens on the public interface, by construction, not by firewall. Inside
+the site block, our template owns the sentinel-specific shape: `basic_auth`
+invite gate, `handle_path /alpha/*`, the SPA fallback, and the static-asset
+cache headers. `handle_errors` (operational, deploy-only) is scoped inside
+the alpha block per tailnet Claude — non-alpha paths already 404.
+
+Caddy strips the `/alpha` prefix at origin-core (`handle_path /alpha/*`)
+before reverse-proxy, so the backend stays mounted at `/api/...` unchanged
+and the file_server reads `dist/assets/...` unchanged. The two builds —
+`pnpm build` for the tailnet dev site (no prefix) and `pnpm build:alpha`
+for the alpha (with prefix) — produce different `dist/` outputs; switching
+deployments requires the matching build.
+
+**Operational note for the backend env:** with gate fronting, set
+`SENTINEL_TRUSTED_PROXY_HOPS=1` in `infrastructure/.env` so the per-IP
+rate-limiter counts the real client IP (one hop in: gate). Without it, gate
+gets one shared bucket for every alpha tester.
 
 The default `pnpm build` flow for the tailnet dev site is unchanged.
 

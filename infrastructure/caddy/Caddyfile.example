@@ -1,16 +1,34 @@
 # Sentinel — Caddy site config (ADR 0003 Slice C edge gate). EXAMPLE / TEMPLATE.
 #
-# This is the public edge for the closed alpha: TLS, a single shared invite gate
-# (basic_auth), reverse-proxy to the backend, and static serving of the SPA.
-# Copy to the live Caddyfile on origin-core and supply the real bcrypt hash via
-# the environment; DO NOT commit the real hash.
+# DEPLOYMENT TOPOLOGY (decided 2026-06-06, gate-fronted):
+#
+#   Internet ──TLS──> gate (DNS owner, TLS terminator)
+#                       │ reverse_proxy over tailnet (cleartext HTTP)
+#                       ▼
+#                     origin-core ── THIS Caddy (basic_auth + handle_path + SPA + reverse_proxy)
+#                                      │
+#                                      ▼ (loopback)
+#                                    backend :8001
+#
+# DNS for sentinel.russalo.com resolves to GATE's public IP, not origin-core's.
+# Origin-core never accepts a public-internet connection — it only listens on
+# tailnet (the `bind` directive below enforces this). TLS provisioning happens
+# at gate; this Caddy serves cleartext HTTP over the trusted tailnet link
+# (encrypted by WireGuard at the network layer).
+#
+# The gate-side Caddyfile is tailnet Claude's lane (gate is the public edge);
+# this file is what lives on ORIGIN-CORE as the inner reverse-proxy target.
+# Sentinel-specific shape (basic_auth, handle_path /alpha/*, the path
+# matchers, the SPA fallback, the static-asset cache headers) all live HERE.
 #
 # Apply on origin-core:
 #   1. caddy hash-password            # prompts for the shared invite password
 #   2. put the bcrypt hash in $SENTINEL_INVITE_HASH (env / chezmoi-managed,
 #      NEVER committed) — e.g. via the caddy unit's EnvironmentFile.
 #   3. pnpm --filter @sentinel/ui build:alpha   # produces dist/ with /alpha/-prefixed assets
-#   4. caddy reload --config /etc/caddy/Caddyfile
+#   4. substitute <TAILNET_IP> below with origin-core's tailnet IP and
+#      <REPO_ROOT> with the absolute checkout path
+#   5. caddy reload --config /etc/caddy/Caddyfile
 #
 # URL SHAPE: the alpha lives at sentinel.russalo.com/alpha/ — the SPA, its
 # assets, and the API all sit under that prefix. The hostname root
@@ -27,9 +45,30 @@
 # are the unauthenticated write layer and MUST NEVER be proxied here. This file
 # proxies ONLY the backend (:8001). Adding a route to :8010/:8012 is a security
 # regression (tests/test_caddy_invariant.py guards against it).
+#
+# OPERATIONAL NOTE for the backend env: with gate fronting, the
+# X-Forwarded-For chain hitting origin-core's backend has gate as the trusted
+# hop. Set `SENTINEL_TRUSTED_PROXY_HOPS=1` in infrastructure/.env so the
+# per-IP rate-limiter counts the real client IP (not gate's). Without it,
+# gate's IP gets one shared bucket for every alpha tester (red-team #3,
+# 2026-06-04 — the same X-Forwarded-For spoofability fix relies on this knob
+# being correct).
 
-sentinel.russalo.com {
-	# Automatic Let's Encrypt TLS (Caddy default).
+# `http://` scheme is explicit — overrides Caddy's automatic TLS so origin-core
+# does NOT try to provision its own cert. Gate already terminated TLS on the
+# public side; this Caddy serves cleartext HTTP over tailnet (encrypted at the
+# network layer by WireGuard). The site address still matches the public
+# hostname so gate's reverse_proxy with `Host: sentinel.russalo.com` resolves
+# to this site block.
+http://sentinel.russalo.com {
+	# Bind the listener to origin-core's tailnet IP only. Without this, Caddy
+	# would listen on all interfaces (0.0.0.0/::) — and even though origin-core
+	# is firewalled, the gate-fronted topology's whole point is that
+	# origin-core's listener is unreachable from the public internet by
+	# construction, not by firewall. Substitute the actual tailnet IP (e.g.
+	# 100.x.y.z) at deploy time. If origin-core has multiple tailnet IPs
+	# (IPv4 + IPv6 over Tailscale), list both: `bind <v4> <v6>`.
+	bind <TAILNET_IP>
 
 	# Everything under /alpha/* is the closed-alpha SPA + its API. `handle_path`
 	# (not `handle`) strips the matched `/alpha` prefix before evaluating inner
