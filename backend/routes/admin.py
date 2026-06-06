@@ -92,9 +92,7 @@ def admin_status(request: Request) -> dict:
             "fs_manager": _mcp_health_one(
                 settings.fs_manager_url.rstrip("/") + "/health"
             ),
-            "git_sync": _mcp_health_one(
-                settings.git_sync_url.rstrip("/") + "/health"
-            ),
+            "git_sync": _mcp_health_one(settings.git_sync_url.rstrip("/") + "/health"),
         },
         "settings_posture": {
             "world_token_enforced": bool(settings.session_token_secret),
