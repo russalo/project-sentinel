@@ -5,10 +5,10 @@
 > [Canon/Modules conceptual model](../README.md) in what already exists on disk
 > vs. what would have to be built, so a future session doesn't have to re-derive.
 >
-> **Conceptual companion:** `~/.claude/projects/-srv-projects-project-sentinel/memory/project_canon_modules_framing.md`
-> (the conceptual model — Modules = the 6 baseline datasets per genre; Canon =
+> **Conceptual companion:** the `project_canon_modules_framing` memory note (the
+> conceptual model — Modules = the 6 baseline datasets per genre; Canon =
 > seed-authored + emergent-via-History; 2-vector chatlog harvest;
-> History-as-link-table).
+> History-as-link-table). Auto-loaded via MEMORY.md.
 >
 > **When this becomes hot:** post-cutover, when the closed alpha generates
 > real corpus + the smoke harness exists. Until then this informs Entity Sweeper
@@ -37,7 +37,7 @@ gaps that are documented but not built" problem.
 | **Protected fields catalog** | `ARCHITECTURE.md` §4 | ✅ Six fields: `unique_id`, `world_seed`, `namespace`, `created_at`, `canon`, `core_faction_id`. But ⚠️ — see gap below. |
 | **Per-genre framing layer (Layer 1 of Modules' precursor)** | `data/lore/core/presets/` — 5 genres × {3 personas, 6 moods, 5 regions} = 34 TOML files | ✅ PR #39 shipped. Fantasy has its `prompt_fragment` + 4 regions (Crown City, The Breach, The Wastes, Thornwatch). |
 | **Preset → DM intro composition** | `backend/presets.py` + `engine/agents/dm.py::_build_intro_messages` + `backend/routes/session.py:120-138` | ✅ Live. Player picks genre/persona/mood/region → backend resolves TOML fragments → injected as "WORLD FOUNDATIONS" block. |
-| **Per-world isolation infrastructure** | ADR 0002 Slices 1–5 + Path A | ✅ Built, dormant. When `SENTINEL_WORLDS_ROOT` flips, each world gets its own `data/` tree. Canon-per-world and History-per-world land **automatically** if we put them under `data/`. |
+| **Per-world isolation infrastructure** | ADR 0002 Slices 1–5 + Path A | ✅ Built, dormant. When `SENTINEL_WORLDS_ROOT` flips, each world gets its own **mutable state tree** (`state/`, sessions, lore session-logs). **Read-only shared assets are NOT relocated** — `schemas/`, presets, and the core-lore codex continue to load from the shared repo (per ARCHITECTURE.md §"World isolation"). So *emergent Canon* (the History module) lands per-world automatically if we put it under `state/`; *seed Canon* (pantheon TOMLs, pre-game history) stays shared-static and loaded from the repo root. The Modules-per-world / Canon-shared split is a feature, not a problem to solve. |
 | **DM state-discipline rules** | `engine/prompts/dm.py` — "STATE DISCIPLINE" section | ✅ Partial: "Entity singularity" rule + "No invented history" rule already injected. These ARE Canon-enforcement rules in prompt form — just informal. |
 | **Per-session log + per-turn structured shape** | `data/state/core/sessions/<uuid>.json` | ✅ Each session has `turns[]` with `id, turn_number, player_action, narrative, world_updates, created_at`. Different shape from History-as-link-table — these are per-DM-output records, not relational event records. |
 | **Architectural scaffolding** | Scanner's `scratch/scanner_sentinel_parallels.md` (cross-linked) + `project_canon_modules_framing` memo | ✅ The promotion-machinery isomorphism gives us the design template for Vector-2 harvest when the work lands. |
@@ -78,7 +78,7 @@ concept being implicit rather than formal.
 
 1. **No code path in `apply_world_update.schema.json` exists today for History entries.** Adding a Module-aware schema (with referential validation: `actors[]` ids must exist) is genuinely new schema engineering.
 2. **The Fact-Extractor is a regex parser** — `engine/agents/fact_extractor.py:320 lines, _BLOCK_PATTERN = re.compile(r"<world_update>...</world_update>")`. It can only see what the DM emits. Either (a) the DM has to emit `<history_entry>` explicitly, or (b) Entity Sweeper (LLM-driven, second-pass) does it.
-3. **The smoke harness doesn't exist** (BACKLOG: "Repeatable smoke test harness — scripted player inputs, deterministic seed, captured transcripts"). The minimum-viable-structure loop in VISION needs it as the prerequisite for *measuring* whether Canon/Modules actually improves coherence. **Without the harness, Canon/Modules design becomes faith-based.** This is also blocked on the paid Groq tier (free-tier TPM 429s on any sustained run).
+3. **The *coherence* smoke harness doesn't exist** (BACKLOG: "Repeatable smoke test harness — scripted player inputs, deterministic seed, captured transcripts"). **NOT to be confused with `scripts/load-smoke.py`** (the concurrency/latency tester landed in PR #98) — that's a *different* harness for capacity testing, and it works. What's missing is the *replayable scripted-player-input* harness the minimum-viable-structure loop in VISION needs as the prerequisite for *measuring* whether Canon/Modules actually improves coherence. **Without that coherence harness, Canon/Modules design becomes faith-based.** Building it is gated on the paid Groq tier (free-tier TPM 429s on any sustained run; same constraint as `load-smoke.py` re-baselining).
 4. **`data/lore/core/codex/` being empty is a content authoring problem, not a code problem.** Fantasy's canon (pantheon, pre-game history) is genuinely missing content; someone has to write it. Russell or a curation pass.
 5. **Per-world isolation must be flipped on before History becomes meaningful** — otherwise History from world A bleeds into world B (the BACKLOG "session boundary isn't world boundary" failure mode). Not a Canon/Modules problem per se, but a prerequisite cutover.
 6. **The closed alpha is the data-generation event.** The chatlog corpus needed to drive Vector-2 promotion doesn't exist yet — until real testers play, there's nothing to induce schemas from.
