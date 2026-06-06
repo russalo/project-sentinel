@@ -342,6 +342,42 @@ in `GEMINI.md`.
   default. Once it's set — whether the ADR 0002 Slice 3 cutover or the local-dev
   recipe above — git-sync commits to each world's own repo *outside* the code
   repo, and local play no longer touches the checked-out branch.)
+- **Tailnet Claude owns the public-facing edge.** The lane split:
+  *sentinel-side (mine):* the app, the app-side cutover (env flip arming
+  `SENTINEL_WORLDS_ROOT` / `SENTINEL_SESSION_TOKEN_SECRET` / `SENTINEL_RL_*` / `SENTINEL_LLM_DAILY_CEILING`),
+  the structural edge artifacts (`infrastructure/caddy/Caddyfile.example` +
+  `infrastructure/systemd/*.service` templates), and the **hard invariant
+  Caddy proxies only `:8001`, never `:8010`/`:8012`** (the MCP write layer
+  stays loopback; `tests/test_caddy_invariant.py` guards it). *tailnet-Claude-side:*
+  DNS, TLS certs, the live edge, cloud-key management, prod-LiteLLM build, and
+  **operational page content in the deployed Caddyfile** (maintenance HTML,
+  `handle_errors` blocks — see `project_caddy_handle_errors_lane` memory). Don't
+  list DNS/cert/public-edge work as a sentinel gap or try to fix it here. Term
+  precision: "tailnet Claude" is the project's deliberate term for this role
+  (used throughout memory + commit messages + Caddyfile.example); keep it even
+  when a review bot suggests genericizing it — the convention is repo-wide.
+- **Cross-lane coordination protocol** (validated on the `handle_errors`
+  loop 2026-06-06): when sentinel knows the shape of an artifact but
+  tailnet (or another peer agent) owns its placement, *draft → relay → verify
+  → commit*. Sentinel drafts the artifact + rationale + open questions; user
+  relays to the peer; the peer's response is treated as authoritative on
+  placement / ops concerns. Operational infrastructure (maintenance pages,
+  runtime-iterating content) lives in the deployed artifact only — NOT mirrored
+  in our template; a discoverability comment is the right amount of mirroring.
+  Don't couple operational iteration to sentinel's `pnpm build` / PR cycle.
+- **Cross-pollination with peer projects (Scanner / file-observer).** Lane split
+  is **substrate ↔ interpreter**: file-observer observes (chatlog detection,
+  reference_tokens, provenance vectors — "every time a raven flies by, write
+  it down"); Sentinel interprets (what the raven means). Schemas fork at the
+  consumer layer. **Soft external contracts** are named explicitly across the
+  boundary: `backend/datasets.py::build_chatlog` mirrors
+  `file_observer.scanner.CHATLOG_SPEAKER_LABEL_RE` (schema 1.3) — neither side
+  changes it without routing through Russell first. The relationship is
+  cross-pollination, NOT coordinated work: patterns and design lessons flow
+  both ways (orthogonal-axes ladders, `rules_fingerprint` over stored IDs), but
+  neither side files work for the other. Scanner's `scratch/scanner_sentinel_parallels.md`
+  (2026-04-11) is load-bearing architectural scaffolding when Entity Sweeper
+  spins up — see `project_entity_sweeper_direction` memory for the cross-link.
 
 ---
 
