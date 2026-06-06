@@ -37,6 +37,7 @@ from engine.agents import dm as dm_agent
 from engine.agents import fact_extractor
 
 from ..auth.access import enforce_world_token
+from ..concurrency import StreamSlotLimiter
 from ..config import Settings
 from ..engine_bridge import build_engine_config
 from ..ratelimit import enforce, enforce_llm_ceiling
@@ -264,8 +265,35 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
 
         yield "data: [DONE]\n\n"
 
+    # ADR 0003 access dim #3 — max concurrent /api/stream. Acquire AFTER the
+    # rate-limit + auth checks and the synchronous setup (load_world_context,
+    # turn_input) so a fast-path 4xx never holds a slot. The slot is held
+    # from here through the generator's exhaustion (normal completion,
+    # exception, or client-disconnect — Starlette closes the body iterator,
+    # which fires `finally`). No-op when settings.max_concurrent_streams=0.
+    stream_limiter: StreamSlotLimiter = request.app.state.stream_limiter
+    if not stream_limiter.try_acquire():
+        raise HTTPException(
+            status_code=503,
+            detail="sentinel is at concurrency capacity; retry shortly",
+            headers={"Retry-After": "5"},
+        )
+
+    def slot_releasing(inner):
+        """Wrap the SSE generator so the slot releases on iterator close.
+
+        Fires on: normal completion (after `[DONE]`), exception inside the
+        generator, and Starlette closing the body iterator on client
+        disconnect / response teardown. The limiter's `release()` swallows
+        excess-release ValueError so a misuse here can never 500 the route.
+        """
+        try:
+            yield from inner
+        finally:
+            stream_limiter.release()
+
     return StreamingResponse(
-        generator(),
+        slot_releasing(generator()),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

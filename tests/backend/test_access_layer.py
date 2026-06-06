@@ -185,3 +185,55 @@ def test_stream_per_world_rate_limit(client, tmp_data_dir, fake_openai):
     body = {"action": "look", "sessionId": SESSION_ID}
     assert client.post("/api/stream", json=body).status_code == 200
     assert client.post("/api/stream", json=body).status_code == 429
+
+
+# ── Concurrency cap (ADR 0003 access dim #3) ─────────────────────────
+
+
+def test_stream_returns_503_at_concurrency_cap(client, tmp_data_dir, fake_openai):
+    """When the slot semaphore is exhausted, /api/stream returns 503 + Retry-After.
+
+    Setup: hold the only slot manually (simulating an in-flight stream that
+    hasn't completed yet), then verify a fresh request is rejected. This
+    isolates the cap-bite from the streaming machinery — actual generator
+    teardown is covered by the unit tests on StreamSlotLimiter.
+    """
+    from backend.concurrency import StreamSlotLimiter
+
+    _seed_session(tmp_data_dir)
+    # Recreate the app's stream_limiter with cap=1 (mirrors what main.py
+    # would do if SENTINEL_MAX_CONCURRENT_STREAMS=1 was set on startup).
+    client.app.state.stream_limiter = StreamSlotLimiter(1)
+    # Hold the slot — represents an in-flight stream we haven't released.
+    assert client.app.state.stream_limiter.try_acquire() is True
+    fake_openai.chat.completions.set_stream_tokens(["A ", "turn."])
+    body = {"action": "look", "sessionId": SESSION_ID}
+    r = client.post("/api/stream", json=body)
+    assert r.status_code == 503
+    assert r.headers.get("retry-after") == "5"
+    assert "capacity" in r.json()["detail"].lower()
+
+
+def test_stream_releases_slot_after_normal_completion(
+    client, tmp_data_dir, fake_openai
+):
+    """Slot is freed after the SSE response is consumed end-to-end.
+
+    Verifies the `slot_releasing` generator's `finally` block fires when the
+    client iterates the response to completion. With cap=1, a second
+    sequential request must succeed (not 503).
+    """
+    from backend.concurrency import StreamSlotLimiter
+
+    _seed_session(tmp_data_dir)
+    client.app.state.stream_limiter = StreamSlotLimiter(1)
+    fake_openai.chat.completions.set_stream_tokens(["A ", "turn."])
+    body = {"action": "look", "sessionId": SESSION_ID}
+    # First request: consume the SSE stream fully (drains the generator,
+    # fires its finally → release).
+    r1 = client.post("/api/stream", json=body)
+    assert r1.status_code == 200
+    _ = r1.text  # force-drain
+    # Second request: the slot should be available again
+    r2 = client.post("/api/stream", json=body)
+    assert r2.status_code == 200

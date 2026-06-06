@@ -286,7 +286,9 @@ the env, bind, and rate-limit posture — *before* you restart anything.
 2. In `infrastructure/.env` (chezmoi template → `just env`): set the **same**
    `SENTINEL_WORLDS_ROOT` (absolute path, outside this repo) for all three
    services, plus `SENTINEL_SESSION_TOKEN_SECRET`, the `SENTINEL_RL_*` /
-   `SENTINEL_LLM_DAILY_CEILING` knobs, and `SENTINEL_TRUSTED_PROXY_HOPS=1` (behind
+   `SENTINEL_LLM_DAILY_CEILING` knobs, `SENTINEL_MAX_CONCURRENT_STREAMS=10`
+   (closed-alpha planning target — caps in-flight `/api/stream` requests;
+   503 + `Retry-After: 5` past cap), and `SENTINEL_TRUSTED_PROXY_HOPS=1` (behind
    Caddy). Leave `SENTINEL_ALLOW_PUBLIC_BIND` unset.
 3. Caddy: `caddy hash-password` → put the hash in `$SENTINEL_INVITE_HASH`; apply
    `infrastructure/caddy/Caddyfile.example` to the live Caddyfile; `caddy reload`.

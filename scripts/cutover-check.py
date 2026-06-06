@@ -181,6 +181,22 @@ def check(env: dict, *, fetch=_http_get_json) -> list[dict]:
             "SENTINEL_LLM_DAILY_CEILING.",
         )
 
+    # Concurrency cap (ADR 0003 access dim #3 — max in-flight /api/stream).
+    max_streams = (env.get("SENTINEL_MAX_CONCURRENT_STREAMS") or "0").strip()
+    if _positive(max_streams):
+        add(
+            "SENTINEL_MAX_CONCURRENT_STREAMS",
+            PASS,
+            f"cap set to {max_streams} — /api/stream returns 503 + Retry-After at cap",
+        )
+    else:
+        add(
+            "SENTINEL_MAX_CONCURRENT_STREAMS",
+            WARN,
+            "unset (0) — unlimited concurrent streams; for closed alpha set =10 "
+            "(matches the planning target) so the system hard-rejects past cap.",
+        )
+
     # 6. Reminders this script can't verify from here.
     add(
         "Caddy invite gate",
