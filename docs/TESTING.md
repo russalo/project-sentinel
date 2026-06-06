@@ -100,6 +100,57 @@ the `infrastructure/.env` presence check. CI sets this at the job level;
 set it manually when running the backend tests outside the repo root or
 without a generated `.env`.
 
+### Load smoke (manual, against a live stack)
+
+`scripts/load-smoke.py` drives N concurrent worlds × M turns through a real
+backend over SSE and reports first-token / total-turn p50/p95/p99 + an error
+rate. It is **not in CI** (every turn is a real LLM call); run it manually:
+
+```bash
+# Set the worlds root FIRST so per-turn git-sync commits don't pollute master
+export SENTINEL_WORLDS_ROOT=~/sentinel-worlds
+just fs-manager &  just git-sync &  just dev-backend
+
+# Default: 3 worlds × 3 turns (~9 LLM calls)
+just load-smoke
+
+# Real run: 10 worlds × 5 turns against a remote prod-like instance
+just load-smoke -- --base-url https://sentinel.example.com --concurrent 10 --turns 5
+```
+
+The script refuses to run when `SENTINEL_WORLDS_ROOT` is unset unless you pass
+`--allow-shared-tree` (the per-turn commits would otherwise land on the
+checked-out branch — see `docs/WORKSPACE.md` § "Local dev: keep gameplay out
+of the code repo"). It auto-cleans up created worlds via
+`DELETE /api/world/<id>` unless `--no-cleanup` is given.
+
+Two output gotchas to know up front:
+
+- **The first LLM call after idle is slow** (cold-start, especially on Groq).
+  ``--warmup N`` (default 1) runs N throwaway turns per world before
+  measurement starts, so the published numbers reflect warm-path behavior.
+  Set ``--warmup 0`` to see the cold-start contribution explicitly.
+- **Exit code 4 = LLM provider rate-limited**, not sentinel-broken. The
+  script classifies a ``429`` / rate-limit / TPM / RPM / quota error in any
+  turn as a provider-side limit and surfaces a distinct
+  ``⛔ LLM-provider-limited`` verdict (separate from ``❌ broken``) so an
+  operator knows to wait for the rate-limit window (~60s on most providers)
+  or upgrade the tier, *not* debug sentinel. Free-tier Groq, for example,
+  hits TPM 429s at small N + small M — the load-smoke is the cleanest way
+  to discover the provider doesn't have headroom for your planned
+  concurrency before alpha testers do.
+
+**When to run:** before opening the closed alpha to invited testers
+(establishes a baseline + flags an obvious cliff); after any change touching
+the streaming path, the LLM provider, or the per-world lock granularity; at
+the prod cutover before flipping the edge gate live. Exit codes are usable in
+CI/cutover pipelines: 0=healthy, 1=degraded, 2=broken, 3=setup-error,
+4=LLM-provider-rate-limited (distinct from broken so an operator knows to
+wait or upgrade the tier rather than debug sentinel).
+
+This is *sanity-check* coverage, not a benchmark suite. The Vision item
+"Load and performance tests" below is what a real benchmark would look like.
+
 ### Standing rules (load-bearing — don't relax without discussion)
 
 These are the testing commitments that outlive any individual PR. If
@@ -259,18 +310,30 @@ ships with "I forgot to test this" as its followup.
 
 ### Load and performance tests
 
-The bet underneath ADR 0001 is that re-reading `data/state/*.json` per
-turn is cheap enough that it doesn't need a cache layer. At v1.0 scale
-(hundreds of entities, not millions) this is probably true, but nobody
-has measured it. Vision: a benchmark suite that generates a world with
-N entities and M sessions, replays synthetic turns through the
-backend, and measures p50/p95 turn latency and per-turn allocation
-pressure. If the filesystem-as-truth assumption ever starts to break
-under realistic load, we want the benchmark to tell us before a real
-player does.
+The entry-level slice landed: `scripts/load-smoke.py` (`just load-smoke`)
+drives N concurrent worlds × M turns through a real backend and reports
+p50/p95/p99 first-token + total-turn latency + error rate (see the "Load
+smoke" subsection under *Current*). That's enough to catch an obvious cliff
+before opening alpha.
 
-**Trigger:** a real player session generates enough entities to make
-someone worry.
+What it does **not** cover (and a real benchmark suite would):
+
+- **Aged-world performance.** The smoke creates fresh worlds; the ADR 0001
+  filesystem-as-truth bet is that re-reading `data/state/*.json` stays cheap
+  as a world accumulates hundreds of entities and a long session log. Nobody
+  has measured what happens at, say, a 6-month-old world with 500 entities
+  and 2,000 turns. A real suite would seed an aged world and replay turns
+  against it.
+- **Per-turn allocation pressure / GC churn.** The smoke measures wall-clock,
+  not memory profile.
+- **Disk I/O ceiling.** Each turn does N entity writes + one git commit. On
+  a single-spindle prod box with M concurrent worlds, disk saturation could
+  bite before the LLM does. The smoke would surface it as latency
+  degradation but not isolate the cause.
+
+**Trigger to invest in the deeper benchmark:** a real player session
+generates enough entities to make someone worry, OR the load smoke starts
+showing degradation we can't trivially trace to the LLM provider.
 
 ### Real-LLM smoke tests in CI
 

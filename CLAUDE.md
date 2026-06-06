@@ -275,6 +275,8 @@ in `GEMINI.md`.
 - `scripts/` — shell scripts for automation and dev lifecycle
 - `tests/` — pytest suites (Python)
 
+**Chatlog home:** `/srv/projects/pkplab/chatlogs/project-sentinel/` (origin-core; transitioned 2026-06-05). The `~/.claude/projects/-srv-projects-project-sentinel/*.jsonl` paths are symlinks into that shared dir. New-session jsonls land at the old path; `/srv/projects/pkplab/chatlogs/sync.sh` migrates them periodically.
+
 ---
 
 ## Things to Know About This Project
