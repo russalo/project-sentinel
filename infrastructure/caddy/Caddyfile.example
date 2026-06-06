@@ -75,4 +75,13 @@ sentinel.dev.russalo.com {
 	# directive (it needs the third-party caddy-ratelimit plugin + an xcaddy
 	# build). Sentinel does per-IP / per-world / global-LLM rate limiting in the
 	# backend instead (ADR 0003 Slice B, backend/ratelimit.py).
+
+	# NOTE: the live edge Caddyfile (deployed on origin-core, NOT this template)
+	# also installs a `handle_errors` block for 5xx (friendly HTML for browser
+	# users; JSON for /api/* + /healthz so the SPA's fetch/SSE handler and uptime
+	# monitoring stay parsable). It lives ONLY in the deployed Caddyfile
+	# (operational, not app-shape — owned by tailnet Claude). Don't mirror it
+	# here: doing so would couple maintenance-page iteration to sentinel's
+	# pnpm-build / PR cycle, which is precisely what the deploy-only placement
+	# avoids.
 }
