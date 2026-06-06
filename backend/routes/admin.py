@@ -34,15 +34,22 @@ _MCP_HEALTH_TIMEOUT_S = 2.0
 
 
 def _mcp_health_one(url: str) -> dict:
-    """Fetch /health on one MCP server. Never raises — returns a result dict."""
+    """Fetch /health on one MCP server. Never raises — returns a result dict.
+
+    Defensively handles a non-dict JSON body: `r.json()` can return a list,
+    string, or null for well-formed-but-unexpected payloads, and calling
+    `.get()` on those would raise AttributeError (gemini medium on PR #107).
+    The isinstance() guard treats anything non-dict as "ok-but-no-fields",
+    same as a missing content-type header.
+    """
     try:
         r = httpx.get(url, timeout=_MCP_HEALTH_TIMEOUT_S)
         if r.status_code == 200:
-            body = (
-                r.json()
-                if r.headers.get("content-type", "").startswith("application/json")
-                else {}
-            )
+            body: dict = {}
+            if r.headers.get("content-type", "").startswith("application/json"):
+                parsed = r.json()
+                if isinstance(parsed, dict):
+                    body = parsed
             return {
                 "status": body.get("status", "ok"),
                 "worlds_root": bool(body.get("worlds_root", False)),
@@ -76,9 +83,18 @@ def admin_status(request: Request) -> dict:
             "streams_served_total": snap["streams_served_total"],
             "rate_limited_total": snap["rate_limited_total"],
         },
+        # Use the BACKEND-configured MCP URLs (settings.fs_manager_url /
+        # git_sync_url), not hardcoded loopback addresses (codex P2 on PR
+        # #107). A deploy with FS_MANAGER_URL=http://fs-manager.tailnet:8010
+        # or a Docker-service-name URL would otherwise report unreachable for
+        # MCP servers that are actually healthy — the dashboard would lie.
         "mcp": {
-            "fs_manager": _mcp_health_one("http://127.0.0.1:8010/health"),
-            "git_sync": _mcp_health_one("http://127.0.0.1:8012/health"),
+            "fs_manager": _mcp_health_one(
+                settings.fs_manager_url.rstrip("/") + "/health"
+            ),
+            "git_sync": _mcp_health_one(
+                settings.git_sync_url.rstrip("/") + "/health"
+            ),
         },
         "settings_posture": {
             "world_token_enforced": bool(settings.session_token_secret),
@@ -142,6 +158,13 @@ async function refresh() {
   let d;
   try { d = await (await fetch('/api/admin/status')).json(); }
   catch (e) { $('footer').textContent = 'unreachable: ' + e; return; }
+  // Defensive: malformed response (non-object, missing sections) would crash
+  // accessor chains below with TypeError. Fail visibly without crashing the
+  // dashboard so the operator sees what went wrong.
+  if (!d || typeof d !== 'object' || !d.concurrency || !d.throughput || !d.mcp || !d.settings_posture) {
+    $('footer').textContent = 'malformed response: ' + JSON.stringify(d).slice(0, 200);
+    return;
+  }
   const cap = d.concurrency.max || '∞';
   const capCls = d.concurrency.max && d.concurrency.active >= d.concurrency.max ? 'err'
                : d.concurrency.max && d.concurrency.active >= d.concurrency.max * 0.8 ? 'warn'

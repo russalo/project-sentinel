@@ -181,3 +181,86 @@ def test_status_html_page_returns_polling_dashboard(client):
     assert "<script" in body
     # No external script URLs (defends against drive-by drift adding a CDN)
     assert "src=" not in body or 'src="http' not in body
+
+
+# ── Defense-in-depth (bot review on PR #107) ───────────────────────────
+
+
+def test_mcp_health_handles_non_dict_json(client, monkeypatch):
+    """gemini medium on PR #107: if an MCP server returns non-dict JSON (a
+    list, string, null — well-formed-but-unexpected), the dashboard must
+    treat it as "no fields" rather than crash with AttributeError on .get()."""
+    import httpx
+
+    class _FakeResp:
+        status_code = 200
+        headers = {"content-type": "application/json"}
+
+        def json(self):
+            return ["unexpected", "list", "shape"]
+
+    def fake_get(url, timeout=None):
+        return _FakeResp()
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    r = client.get("/api/admin/status")
+    assert r.status_code == 200
+    d = r.json()
+    # Both MCP entries should have the default fields populated, not a 500
+    assert d["mcp"]["fs_manager"]["status"] == "ok"
+    assert d["mcp"]["fs_manager"]["worlds_root"] is False
+
+
+def test_mcp_health_uses_configured_urls(client, monkeypatch):
+    """codex P2 on PR #107: a deploy with non-default FS_MANAGER_URL /
+    GIT_SYNC_URL (e.g. a Docker service name) must have its actual URL hit,
+    not hardcoded localhost. The dashboard would otherwise lie about
+    actually-healthy MCP servers."""
+    from dataclasses import replace
+    import httpx
+
+    client.app.state.settings = replace(
+        client.app.state.settings,
+        fs_manager_url="http://fs-manager.example:9999",
+        git_sync_url="http://git-sync.example:9999",
+    )
+
+    seen_urls = []
+
+    def fake_get(url, timeout=None):
+        seen_urls.append(url)
+
+        class _R:
+            status_code = 200
+            headers = {"content-type": "application/json"}
+
+            def json(self):
+                return {"status": "ok", "worlds_root": False}
+
+        return _R()
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    r = client.get("/api/admin/status")
+    assert r.status_code == 200
+    # The configured URLs (with /health appended) must have been called —
+    # NOT 127.0.0.1:8010/8012.
+    assert "http://fs-manager.example:9999/health" in seen_urls
+    assert "http://git-sync.example:9999/health" in seen_urls
+
+
+def test_status_html_validates_response_shape():
+    """gemini high on PR #107: the dashboard JS must validate the response
+    shape before accessing nested properties, or a malformed payload would
+    crash the polling loop with TypeError.
+
+    We verify the source has the guard rather than running the JS — exact
+    behavior is documented in the comment in admin.py.
+    """
+    from backend.routes import admin as admin_mod
+
+    assert "typeof d !== 'object'" in admin_mod._STATUS_HTML, (
+        "dashboard JS must defensively type-check the API response"
+    )
+    assert "malformed response" in admin_mod._STATUS_HTML, (
+        "dashboard JS must surface the malformed-response case to the operator"
+    )
