@@ -53,6 +53,68 @@ router = APIRouter(prefix="/api")
 _BLOCK_RE = re.compile(r"<world_update>([\s\S]*?)</world_update>")
 
 
+class _SlotReleasingIterator:
+    """Iterator wrapping the SSE body that releases its concurrency slot once.
+
+    Defends against the GEN_CREATED edge case (gemini high on PR #106):
+    a Python generator that has been ``close()`` d **before its first
+    ``next()``** does NOT execute its ``try/finally``. Starlette will close
+    the body iterator on response teardown OR client disconnect; if that
+    happens before iteration begins, a `finally`-based release would leak
+    the slot permanently.
+
+    Class-based pattern with belt-and-suspenders coverage:
+    - ``__next__`` releases on StopIteration and on exception (mid-stream).
+    - ``close()`` releases (Starlette's explicit teardown hook).
+    - ``__del__`` releases (GC safety net for any escape we missed).
+    - ``_released`` flag makes all paths idempotent — the limiter's own
+      double-release defense is the second line; this is the first.
+    """
+
+    def __init__(self, inner_iterable, limiter: "StreamSlotLimiter") -> None:
+        self._iter = iter(inner_iterable)
+        self._limiter = limiter
+        self._released = False
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        try:
+            return next(self._iter)
+        except BaseException:
+            # Includes StopIteration (normal completion) and any other
+            # exception inside the inner generator. Release, then propagate
+            # so Starlette sees the same flow it would have seen otherwise.
+            self._release_once()
+            raise
+
+    def close(self) -> None:
+        """Called by Starlette on response teardown / client disconnect.
+
+        Forwards to the inner generator's close() if present (so its
+        finally fires when it WAS started), then releases the slot.
+        """
+        close = getattr(self._iter, "close", None)
+        if close is not None:
+            try:
+                close()
+            except Exception:
+                # Inner close failure must not prevent slot release.
+                pass
+        self._release_once()
+
+    def __del__(self) -> None:
+        # Final GC-time safety net. May not run during interpreter shutdown,
+        # which is fine — the process exiting releases the OS-level resources.
+        self._release_once()
+
+    def _release_once(self) -> None:
+        if not self._released:
+            self._released = True
+            self._limiter.release()
+
+
 def _sse_event(payload: dict) -> str:
     return f"data: {json.dumps(payload)}\n\n"
 
@@ -120,17 +182,39 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
     # that only occurs in shared-tree dev where enforcement is off anyway.
     enforce_world_token(request, settings, session.world_id or "")
 
-    # ADR 0003 Slice B — per-world turn rate-limit + the global daily LLM-call
-    # ceiling, before the (paid) DM stream starts. Both no-op when unset.
-    limiter = request.app.state.rate_limiter
-    enforce(
-        limiter,
-        f"stream:{session.world_id or body.session_id}",
-        settings.rl_stream_per_minute,
-        60,
-        detail="too many turns; slow down",
-    )
-    enforce_llm_ceiling(limiter, settings.llm_daily_ceiling)
+    # ADR 0003 access dim #3 — max concurrent /api/stream. Acquire BEFORE the
+    # rate-limit + LLM-ceiling checks so a 503-capacity-rejected request never
+    # burns budget counters (codex P1 on #106: a burst of over-capacity attempts
+    # otherwise consumes the daily LLM ceiling without ever calling an LLM, then
+    # blocks real turns with 429s). Released on slot teardown in
+    # `_SlotReleasingIterator` (defense-in-depth: explicit `close()`, `__del__`,
+    # and idempotent `release_once()` — gemini high on #106 about the
+    # GEN_CREATED edge case where a generator's `finally` doesn't run if it's
+    # never iterated).
+    stream_limiter: StreamSlotLimiter = request.app.state.stream_limiter
+    if not stream_limiter.try_acquire():
+        raise HTTPException(
+            status_code=503,
+            detail="sentinel is at concurrency capacity; retry shortly",
+            headers={"Retry-After": "5"},
+        )
+
+    try:
+        # ADR 0003 Slice B — per-world turn rate-limit + the global daily LLM-call
+        # ceiling, before the (paid) DM stream starts. Both no-op when unset.
+        # Inside the try so a rate-limit or ceiling raise releases the slot.
+        limiter = request.app.state.rate_limiter
+        enforce(
+            limiter,
+            f"stream:{session.world_id or body.session_id}",
+            settings.rl_stream_per_minute,
+            60,
+            detail="too many turns; slow down",
+        )
+        enforce_llm_ceiling(limiter, settings.llm_daily_ceiling)
+    except Exception:
+        stream_limiter.release()
+        raise
 
     # Build the world context the DM will see for this turn.
     recent = [
@@ -265,35 +349,15 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
 
         yield "data: [DONE]\n\n"
 
-    # ADR 0003 access dim #3 — max concurrent /api/stream. Acquire AFTER the
-    # rate-limit + auth checks and the synchronous setup (load_world_context,
-    # turn_input) so a fast-path 4xx never holds a slot. The slot is held
-    # from here through the generator's exhaustion (normal completion,
-    # exception, or client-disconnect — Starlette closes the body iterator,
-    # which fires `finally`). No-op when settings.max_concurrent_streams=0.
-    stream_limiter: StreamSlotLimiter = request.app.state.stream_limiter
-    if not stream_limiter.try_acquire():
-        raise HTTPException(
-            status_code=503,
-            detail="sentinel is at concurrency capacity; retry shortly",
-            headers={"Retry-After": "5"},
-        )
-
-    def slot_releasing(inner):
-        """Wrap the SSE generator so the slot releases on iterator close.
-
-        Fires on: normal completion (after `[DONE]`), exception inside the
-        generator, and Starlette closing the body iterator on client
-        disconnect / response teardown. The limiter's `release()` swallows
-        excess-release ValueError so a misuse here can never 500 the route.
-        """
-        try:
-            yield from inner
-        finally:
-            stream_limiter.release()
-
+    # Wrap the inner generator so the slot is guaranteed released exactly once,
+    # even in the GEN_CREATED edge case where a generator is gc'd without ever
+    # being iterated (gemini high on #106): `finally` blocks don't run on a
+    # generator that's been close()d before its first `next()`. Class-based
+    # iterator + explicit `close()` + `__del__` safety net + idempotent
+    # `release_once()` covers normal completion, mid-stream exception, client
+    # disconnect, AND the never-started case.
     return StreamingResponse(
-        slot_releasing(generator()),
+        _SlotReleasingIterator(generator(), stream_limiter),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
