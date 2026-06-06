@@ -84,7 +84,6 @@ import argparse
 import asyncio
 import json
 import os
-import statistics
 import sys
 import time
 from dataclasses import dataclass, field
@@ -108,9 +107,9 @@ _ACTIONS: list[str] = [
 # first-token threshold assumes warm-path behavior (--warmup >= 1); cold-start
 # on Groq can hit ~20s on the first call, which would falsely flag as
 # degraded without warmup.
-_FIRST_TOKEN_P95_DEGRADED_S = 8.0   # > this = degraded (warm path)
+_FIRST_TOKEN_P95_DEGRADED_S = 8.0  # > this = degraded (warm path)
 _TOTAL_TURN_P95_DEGRADED_S = 15.0
-_ERROR_RATE_BROKEN = 0.50           # >= 50% errors = broken
+_ERROR_RATE_BROKEN = 0.50  # >= 50% errors = broken
 _ERROR_RATE_DEGRADED = 0.10
 # Below this sample count, percentiles are noise — report min/median/max instead.
 _PERCENTILE_MIN_SAMPLES = 5
@@ -132,6 +131,7 @@ _PROVIDER_LIMIT_MARKERS = (
 @dataclass
 class TurnResult:
     """One streaming turn — timings in seconds, error message if any."""
+
     first_token_s: float | None = None
     total_s: float | None = None
     error: str | None = None
@@ -141,6 +141,7 @@ class TurnResult:
 @dataclass
 class WorldResult:
     """One world's lifecycle — provisioning + N turns."""
+
     world_index: int
     world_id: str | None = None
     session_id: str | None = None
@@ -211,7 +212,9 @@ async def _drive_one_turn(
             if resp.status_code >= 400:
                 # Drain the body so the error message is informative.
                 body = await resp.aread()
-                result.error = f"HTTP {resp.status_code}: {body.decode('utf-8', 'replace')[:200]}"
+                result.error = (
+                    f"HTTP {resp.status_code}: {body.decode('utf-8', 'replace')[:200]}"
+                )
                 result.total_s = time.monotonic() - started
                 return result
             async for line in resp.aiter_lines():
@@ -233,9 +236,7 @@ async def _drive_one_turn(
                             # before .get() or we crash the async task with
                             # AttributeError instead of recording the turn.
                             if isinstance(evt, dict) and evt.get("type") == "error":
-                                result.error = (
-                                    f"stream error event: {evt.get('content', '')[:200]}"
-                                )
+                                result.error = f"stream error event: {evt.get('content', '')[:200]}"
                         except json.JSONDecodeError:
                             pass
             result.total_s = time.monotonic() - started
@@ -354,16 +355,27 @@ def _verdict(
     if turns_total > 0:
         err_rate = turn_failures / turns_total
         if err_rate >= _ERROR_RATE_BROKEN:
-            return 2, f"❌ broken — {turn_failures}/{turns_total} turns errored ({err_rate:.0%})"
+            return (
+                2,
+                f"❌ broken — {turn_failures}/{turns_total} turns errored ({err_rate:.0%})",
+            )
         if err_rate >= _ERROR_RATE_DEGRADED:
-            reasons.append(f"{turn_failures}/{turns_total} turns errored ({err_rate:.0%})")
+            reasons.append(
+                f"{turn_failures}/{turns_total} turns errored ({err_rate:.0%})"
+            )
 
     if provision_failures > 0:
-        reasons.append(f"{provision_failures}/{provisions_total} worlds failed to provision")
+        reasons.append(
+            f"{provision_failures}/{provisions_total} worlds failed to provision"
+        )
     if first_token_p95 is not None and first_token_p95 > _FIRST_TOKEN_P95_DEGRADED_S:
-        reasons.append(f"first-token p95 {first_token_p95:.1f}s > {_FIRST_TOKEN_P95_DEGRADED_S:.1f}s")
+        reasons.append(
+            f"first-token p95 {first_token_p95:.1f}s > {_FIRST_TOKEN_P95_DEGRADED_S:.1f}s"
+        )
     if total_turn_p95 is not None and total_turn_p95 > _TOTAL_TURN_P95_DEGRADED_S:
-        reasons.append(f"total-turn p95 {total_turn_p95:.1f}s > {_TOTAL_TURN_P95_DEGRADED_S:.1f}s")
+        reasons.append(
+            f"total-turn p95 {total_turn_p95:.1f}s > {_TOTAL_TURN_P95_DEGRADED_S:.1f}s"
+        )
 
     if not reasons:
         return 0, "✅ healthy"
@@ -411,8 +423,8 @@ def _safety_gate(args: argparse.Namespace) -> int | None:
         "would land on the checked-out branch (typically master) and pollute "
         "the code repo. Either:\n"
         "  (a) export SENTINEL_WORLDS_ROOT=~/sentinel-worlds and restart the "
-        "stack (see docs/WORKSPACE.md § \"Local dev: keep gameplay out of the "
-        "code repo\"), OR\n"
+        'stack (see docs/WORKSPACE.md § "Local dev: keep gameplay out of the '
+        'code repo"), OR\n'
         "  (b) pass --allow-shared-tree to acknowledge the pollution and "
         "proceed anyway.",
         file=sys.stderr,
@@ -441,20 +453,26 @@ async def _run(args: argparse.Namespace) -> int:
         )
 
         if not args.no_cleanup:
-            await asyncio.gather(
-                *(_teardown_world(client, w) for w in world_results)
-            )
+            await asyncio.gather(*(_teardown_world(client, w) for w in world_results))
 
     wall_clock = time.monotonic() - started_overall
 
     # ── Aggregate ───────────────────────────────────────────────────────
-    provision_times = [w.provision_s for w in world_results if w.provision_error is None]
+    provision_times = [
+        w.provision_s for w in world_results if w.provision_error is None
+    ]
     provision_failures = sum(1 for w in world_results if w.provision_error)
 
     all_turns: list[TurnResult] = [t for w in world_results for t in w.turns]
     turn_failures = sum(1 for t in all_turns if t.error)
-    first_token_times = [t.first_token_s for t in all_turns if t.first_token_s is not None and not t.error]
-    total_turn_times = [t.total_s for t in all_turns if t.total_s is not None and not t.error]
+    first_token_times = [
+        t.first_token_s
+        for t in all_turns
+        if t.first_token_s is not None and not t.error
+    ]
+    total_turn_times = [
+        t.total_s for t in all_turns if t.total_s is not None and not t.error
+    ]
 
     # ── Print report ────────────────────────────────────────────────────
     print()
