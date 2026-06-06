@@ -71,9 +71,18 @@ class _SlotReleasingIterator:
       double-release defense is the second line; this is the first.
     """
 
-    def __init__(self, inner_iterable, limiter: "StreamSlotLimiter") -> None:
+    def __init__(
+        self,
+        inner_iterable,
+        limiter: "StreamSlotLimiter",
+        on_release=None,
+    ) -> None:
         self._iter = iter(inner_iterable)
         self._limiter = limiter
+        # Optional callback for observability (e.g. admin_metrics.stream_released).
+        # Invoked exactly once, in the same release-once block. Failures are
+        # swallowed — a metrics bug must not affect the slot lifecycle.
+        self._on_release = on_release
         self._released = False
 
     def __iter__(self):
@@ -113,6 +122,12 @@ class _SlotReleasingIterator:
         if not self._released:
             self._released = True
             self._limiter.release()
+            if self._on_release is not None:
+                try:
+                    self._on_release()
+                except Exception:
+                    # Observability bug must not affect slot lifecycle.
+                    pass
 
 
 def _sse_event(payload: dict) -> str:
@@ -192,12 +207,18 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
     # GEN_CREATED edge case where a generator's `finally` doesn't run if it's
     # never iterated).
     stream_limiter: StreamSlotLimiter = request.app.state.stream_limiter
+    admin_metrics = request.app.state.admin_metrics
     if not stream_limiter.try_acquire():
+        admin_metrics.capacity_rejected()
         raise HTTPException(
             status_code=503,
             detail="sentinel is at concurrency capacity; retry shortly",
             headers={"Retry-After": "5"},
         )
+    # Counter side of the slot acquire: bumps streams_served + active_streams.
+    # Paired with admin_metrics.stream_released() inside _SlotReleasingIterator
+    # so it tracks the same lifecycle as the semaphore permit.
+    admin_metrics.stream_acquired()
 
     try:
         # ADR 0003 Slice B — per-world turn rate-limit + the global daily LLM-call
@@ -212,8 +233,17 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
             detail="too many turns; slow down",
         )
         enforce_llm_ceiling(limiter, settings.llm_daily_ceiling)
+    except HTTPException as exc:
+        # 429 is the only HTTPException these enforce calls raise. Count it
+        # before re-raising so the dashboard sees rate-limit pressure.
+        if exc.status_code == 429:
+            admin_metrics.rate_limited()
+        stream_limiter.release()
+        admin_metrics.stream_released()
+        raise
     except Exception:
         stream_limiter.release()
+        admin_metrics.stream_released()
         raise
 
     # Build the world context the DM will see for this turn.
@@ -357,7 +387,11 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
     # `release_once()` covers normal completion, mid-stream exception, client
     # disconnect, AND the never-started case.
     return StreamingResponse(
-        _SlotReleasingIterator(generator(), stream_limiter),
+        _SlotReleasingIterator(
+            generator(),
+            stream_limiter,
+            on_release=admin_metrics.stream_released,
+        ),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

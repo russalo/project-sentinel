@@ -26,11 +26,12 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from .admin_metrics import AdminMetrics
 from .concurrency import StreamSlotLimiter
 from .config import Settings
 from .mcp_agreement import verify_world_mode_agreement
 from .ratelimit import RateLimiter
-from .routes import health, session, stream, training, world
+from .routes import admin, health, session, stream, training, world
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +87,12 @@ def create_app() -> FastAPI:
     # matches the per-process semaphore semantics). Disabled when
     # max_concurrent_streams == 0 (the default; arm at cutover).
     app.state.stream_limiter = StreamSlotLimiter(settings.max_concurrent_streams)
+    # Operator metrics for the closed-alpha status dashboard (`/_status` + the
+    # `/api/admin/status` JSON endpoint). Counters live in-process; reset on
+    # restart — acceptable for closed-alpha scale, see backend/admin_metrics.py.
+    # The endpoints themselves MUST stay tailnet/loopback-only — the Caddy
+    # invariant excludes /api/admin/* and /_status from the public edge.
+    app.state.admin_metrics = AdminMetrics()
     _log_access_posture(settings)
 
     app.add_middleware(
@@ -105,6 +112,7 @@ def create_app() -> FastAPI:
     app.include_router(stream.router)
     app.include_router(training.router)
     app.include_router(world.router)
+    app.include_router(admin.router)
 
     return app
 

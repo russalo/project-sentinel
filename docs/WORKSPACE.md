@@ -297,6 +297,21 @@ the env, bind, and rate-limit posture — *before* you restart anything.
 6. Restart the backend (`systemctl restart sentinel-backend`); its startup
    agreement check re-confirms per-world mode, then it serves.
 
+### Closed-alpha operator dashboard
+
+While the alpha runs, watch live counters at **`http://127.0.0.1:8001/_status`**
+(or via tailnet against origin-core's bind). Vanilla-HTML page polling
+`/api/admin/status` every 5s — surfaces active streams + cap, 503 capacity
+rejects, 429 rate-limit hits, MCP health, settings posture. **Tailnet/loopback
+only** — Caddy excludes `/api/admin*` and `/_status` from the public edge by
+the same invariant that excludes `/api/sessions*` (operator data; never
+reaches an invited tester). `tests/test_caddy_invariant.py` guards this.
+
+For terminal-only ops:
+```
+curl -s http://127.0.0.1:8001/api/admin/status | jq .
+```
+
 Manual spot-check (what `cutover-check` automates): each server's `/health`
 must show `"worlds_root": true`:
 
