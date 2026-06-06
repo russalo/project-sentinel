@@ -26,6 +26,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from .concurrency import StreamSlotLimiter
 from .config import Settings
 from .mcp_agreement import verify_world_mode_agreement
 from .ratelimit import RateLimiter
@@ -43,11 +44,13 @@ def _log_access_posture(settings: Settings) -> None:
     logger.info(
         "ADR 0003 access layer — world-token enforcement: %s; "
         "rate limits (per-IP session-create/hr=%d, per-world stream/min=%d, "
-        "global LLM/day=%d; 0=disabled)",
+        "global LLM/day=%d; 0=disabled); "
+        "max-concurrent /api/stream=%d (0=disabled, hard-reject 503 at cap)",
         "ON" if settings.session_token_secret else "OFF (no secret configured)",
         settings.rl_session_create_per_hour,
         settings.rl_stream_per_minute,
         settings.llm_daily_ceiling,
+        settings.max_concurrent_streams,
     )
 
 
@@ -76,6 +79,13 @@ def create_app() -> FastAPI:
     # One process-wide in-memory rate limiter (ADR 0003 Slice B). Stored on
     # app.state so every request shares the same counters.
     app.state.rate_limiter = RateLimiter()
+    # One process-wide stream-slot limiter (ADR 0003 access dim #3 —
+    # max concurrent /api/stream requests). Same single-instance-per-process
+    # pattern as the rate limiter; per-worker capacity if/when uvicorn ever
+    # runs with --workers N (each worker keeps independent count — deliberate,
+    # matches the per-process semaphore semantics). Disabled when
+    # max_concurrent_streams == 0 (the default; arm at cutover).
+    app.state.stream_limiter = StreamSlotLimiter(settings.max_concurrent_streams)
     _log_access_posture(settings)
 
     app.add_middleware(

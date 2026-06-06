@@ -98,6 +98,12 @@ SENTINEL_SESSION_TOKEN_SECRET=
 SENTINEL_RL_SESSION_CREATE_PER_HOUR=0
 SENTINEL_RL_STREAM_PER_MINUTE=0
 SENTINEL_LLM_DAILY_CEILING=0
+# Max concurrent in-flight /api/stream requests (ADR 0003 access dim #3 —
+# the missing third dimension alongside rate + spend, added 2026-06-06).
+# 0 = disabled; at cap, /api/stream returns 503 + Retry-After: 5 (hard reject;
+# no queueing). Closed-alpha planning target: set to 10. See
+# backend/concurrency.py.
+SENTINEL_MAX_CONCURRENT_STREAMS=0
 # Trusted reverse-proxy hops in front of the backend. 0 (default) = no proxy:
 # the per-IP rate-limit key uses the socket peer and IGNORES X-Forwarded-For (a
 # direct caller can spoof it). Behind the Caddy edge set 1 so the limiter keys on

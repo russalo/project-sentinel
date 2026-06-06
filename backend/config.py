@@ -93,6 +93,13 @@ class Settings:
     rl_session_create_per_hour: int = 0
     rl_stream_per_minute: int = 0
     llm_daily_ceiling: int = 0
+    # Max concurrent in-flight `/api/stream` requests (the third dimension of
+    # the access layer alongside rate + spend). 0 = disabled. At cap, the
+    # stream route returns HTTP 503 + Retry-After: 5 (hard reject; queueing
+    # is filed in BACKLOG as a future-on-evidence enhancement). Closed-alpha
+    # planning target = 10; see backend/concurrency.py and
+    # docs/WORKSPACE.md § "Cutover checklist".
+    max_concurrent_streams: int = 0
     # Number of trusted reverse-proxy hops in front of the app. 0 (default) = no
     # proxy: use the socket peer and IGNORE X-Forwarded-For (a direct caller can
     # spoof it). Behind the Caddy edge set 1 → the per-IP rate-limit key uses the
@@ -160,5 +167,6 @@ class Settings:
             ),
             rl_stream_per_minute=_int_env("SENTINEL_RL_STREAM_PER_MINUTE", "0"),
             llm_daily_ceiling=_int_env("SENTINEL_LLM_DAILY_CEILING", "0"),
+            max_concurrent_streams=_int_env("SENTINEL_MAX_CONCURRENT_STREAMS", "0"),
             trusted_proxy_hops=_int_env("SENTINEL_TRUSTED_PROXY_HOPS", "0"),
         )
