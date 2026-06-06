@@ -344,7 +344,7 @@ in `GEMINI.md`.
   repo, and local play no longer touches the checked-out branch.)
 - **Tailnet Claude owns the public-facing edge.** The lane split:
   *sentinel-side (mine):* the app, the app-side cutover (env flip arming
-  `SENTINEL_WORLDS_ROOT` / `SESSION_TOKEN_SECRET` / `RL_*` / `LLM_DAILY_CEILING`),
+  `SENTINEL_WORLDS_ROOT` / `SENTINEL_SESSION_TOKEN_SECRET` / `SENTINEL_RL_*` / `SENTINEL_LLM_DAILY_CEILING`),
   the structural edge artifacts (`infrastructure/caddy/Caddyfile.example` +
   `infrastructure/systemd/*.service` templates), and the **hard invariant
   Caddy proxies only `:8001`, never `:8010`/`:8012`** (the MCP write layer
