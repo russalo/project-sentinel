@@ -228,7 +228,11 @@ async def _drive_one_turn(
                     if payload_str and payload_str != "[DONE]":
                         try:
                             evt = json.loads(payload_str)
-                            if evt.get("type") == "error":
+                            # json.loads can return non-dict (list, str, None) for
+                            # well-formed-but-unexpected SSE payloads; guard
+                            # before .get() or we crash the async task with
+                            # AttributeError instead of recording the turn.
+                            if isinstance(evt, dict) and evt.get("type") == "error":
                                 result.error = (
                                     f"stream error event: {evt.get('content', '')[:200]}"
                                 )
@@ -366,15 +370,40 @@ def _verdict(
     return 1, "⚠ degraded — " + "; ".join(reasons)
 
 
-def _safety_gate(args: argparse.Namespace) -> int | None:
-    """Refuse to run if WORLDS_ROOT unset and --allow-shared-tree not passed.
+_LOCAL_HOSTNAMES = frozenset({"127.0.0.1", "localhost", "::1", "0.0.0.0"})
 
-    Returns an exit code on refusal, or None to proceed. We refuse because
-    each turn produces a git commit; in shared-tree mode those commits land
-    on the checked-out branch (per docs/WORKSPACE.md). Polluting master
-    silently from a load test is exactly the failure mode we just fixed
-    docs for.
+
+def _is_local_target(base_url: str) -> bool:
+    """True iff base_url points at this machine (gate is local-scoped)."""
+    from urllib.parse import urlparse
+
+    host = (urlparse(base_url).hostname or "").lower()
+    return host in _LOCAL_HOSTNAMES
+
+
+def _safety_gate(args: argparse.Namespace) -> int | None:
+    """Refuse a *local* run when WORLDS_ROOT unset and --allow-shared-tree not passed.
+
+    Returns an exit code on refusal, or None to proceed. The gate's purpose
+    is preventing **this machine's** checked-out branch from being polluted
+    with per-turn git-sync commits — see docs/WORKSPACE.md § "Local dev:
+    keep gameplay out of the code repo." It's irrelevant when --base-url
+    points at a remote stack (the commits land on whatever branch is checked
+    out *there*, which is the remote operator's concern, not ours), so for
+    remote runs we skip the gate but warn that the remote stack's worlds-root
+    posture is on the operator to verify (the only way to *prove* it from
+    here would be a new health-endpoint contract; that's overscope for
+    this script).
     """
+    if not _is_local_target(args.base_url):
+        print(
+            f"NOTE: --base-url {args.base_url} is remote; the local "
+            "SENTINEL_WORLDS_ROOT safety check is skipped. Verify the remote "
+            "stack is configured for per-world routing — otherwise per-turn "
+            "commits will pollute the remote box's checked-out branch.",
+            file=sys.stderr,
+        )
+        return None
     if os.environ.get("SENTINEL_WORLDS_ROOT") or args.allow_shared_tree:
         return None
     print(
