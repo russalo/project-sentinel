@@ -100,6 +100,74 @@ def test_admin_status_not_exposed_on_edge(caddyfile):
     assert "reverse_proxy" not in status_block.group(1)
 
 
+def test_alpha_path_prefix_wraps_app_handles(directives):
+    # Closed alpha lives at sentinel.russalo.com/alpha/ — the SPA, its assets,
+    # and the API all sit under that prefix. The Caddy template MUST use
+    # `handle_path /alpha/*` (not bare `handle`) so the prefix is stripped at
+    # the edge before the inner handles match — that's what keeps the backend
+    # at /api/ and the file_server at /assets/ unchanged. A regression to
+    # plain `handle` would mean the backend would see /alpha/api/..., 404 on
+    # everything, and the SPA would stop loading.
+    assert "handle_path /alpha/*" in directives, (
+        "missing `handle_path /alpha/*` — the /alpha prefix must be stripped at "
+        "the edge so backend/file_server see un-prefixed paths"
+    )
+
+
+def test_alpha_hostname_is_apex_not_dev_subdomain(caddyfile):
+    # The closed alpha is published on the apex `sentinel.russalo.com`, NOT
+    # the tailnet-dev `sentinel.dev.russalo.com`. Catch an accidental hostname
+    # regression that would either leak the alpha onto the tailnet hostname
+    # or break TLS provisioning on the apex.
+    assert "sentinel.russalo.com" in caddyfile
+    # First non-comment line that opens a site block must be the apex.
+    site_lines = [
+        ln.strip()
+        for ln in caddyfile.splitlines()
+        if ln.strip() and not ln.strip().startswith("#")
+    ]
+    assert site_lines, "Caddyfile has no directive lines"
+    assert site_lines[0].startswith("sentinel.russalo.com"), (
+        f"first site block is not sentinel.russalo.com — got: {site_lines[0]!r}"
+    )
+
+
+def test_hostname_root_returns_404(directives):
+    # The hostname root (sentinel.russalo.com/) is reserved for a future
+    # landing page — for now sentinel only owns /alpha/*. A bare `respond 404`
+    # at the site level (OUTSIDE the handle_path block) is what makes every
+    # non-/alpha path 404. Without it, requests to the root would fall through
+    # to nothing and Caddy would return its default empty response — either
+    # confusing or accidentally exposing.
+    # The `respond 404` MUST appear at site-level scope, not nested inside
+    # handle_path /alpha/* (where it'd 404 alpha requests).
+    # Find the closing brace of the handle_path block and assert `respond 404`
+    # follows it within the site block.
+    handle_path_match = re.search(
+        r"handle_path\s+/alpha/\*\s*\{", directives, flags=re.DOTALL
+    )
+    assert handle_path_match is not None, (
+        "expected handle_path block — test_alpha_path_prefix_wraps_app_handles "
+        "covers absence"
+    )
+    # Walk braces to find the matching closing brace.
+    start = handle_path_match.end()
+    depth = 1
+    i = start
+    while i < len(directives) and depth > 0:
+        if directives[i] == "{":
+            depth += 1
+        elif directives[i] == "}":
+            depth -= 1
+        i += 1
+    assert depth == 0, "handle_path /alpha/* block is not closed in directives"
+    after_alpha_block = directives[i:]
+    assert "respond 404" in after_alpha_block, (
+        "missing site-level `respond 404` after the handle_path /alpha/* block — "
+        "non-/alpha paths must 404, not fall through to Caddy's default"
+    )
+
+
 def test_static_cache_headers_prevent_stale_index(caddyfile):
     # stale-cache-after-redeploy guard: hashed /assets/* cache hard (immutable);
     # everything else (index.html via the SPA fallback) must not cache — a stale

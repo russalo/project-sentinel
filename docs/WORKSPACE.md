@@ -210,6 +210,35 @@ same origin (Caddy proxies `/api/*` to the backend) rather than the visitor's
 own `localhost`. A local `just dev-frontend` ignores this — it uses the
 `http://localhost:8001/api` fallback in `src/api/client.js`.
 
+### Building the closed alpha site
+
+The public closed alpha lives at `sentinel.russalo.com/alpha/` (decided
+2026-06-06). Unlike the tailnet dev site (served at the hostname root), the
+alpha mounts under the `/alpha/` path prefix — the hostname root is reserved
+for a future landing page and returns 404 today.
+
+```bash
+pnpm --filter @sentinel/ui build:alpha
+```
+
+`build:alpha` is a script alias for `vite build --mode alpha`, which loads
+`apps/sentinel-ui/.env.alpha` (`VITE_API_URL=/alpha/api`) and triggers the
+conditional `base: '/alpha/'` in `vite.config.js`. The output `dist/`:
+
+- emits asset URLs prefixed `/alpha/...`
+- wires Wouter's Router base to `/alpha` (read from `import.meta.env.BASE_URL`
+  in `App.jsx` — single source of truth, no parallel constant to drift)
+- targets the same-origin relative API path `/alpha/api/...`
+
+Caddy strips the `/alpha` prefix at the edge (`handle_path /alpha/*`) before
+reverse-proxy, so the backend stays mounted at `/api/...` unchanged and the
+file_server reads `dist/assets/...` unchanged. The two builds — `pnpm build`
+for the tailnet dev site (no prefix) and `pnpm build:alpha` for the alpha
+(with prefix) — produce different `dist/` outputs; switching deployments
+requires the matching build.
+
+The default `pnpm build` flow for the tailnet dev site is unchanged.
+
 See `CLAUDE.md` § "Common Commands" for the full reference.
 
 ## Production deployment (origin-core) — ADR 0003 Slice C

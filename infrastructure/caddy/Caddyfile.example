@@ -1,6 +1,6 @@
 # Sentinel — Caddy site config (ADR 0003 Slice C edge gate). EXAMPLE / TEMPLATE.
 #
-# This is the public edge for the closed beta: TLS, a single shared invite gate
+# This is the public edge for the closed alpha: TLS, a single shared invite gate
 # (basic_auth), reverse-proxy to the backend, and static serving of the SPA.
 # Copy to the live Caddyfile on origin-core and supply the real bcrypt hash via
 # the environment; DO NOT commit the real hash.
@@ -9,80 +9,109 @@
 #   1. caddy hash-password            # prompts for the shared invite password
 #   2. put the bcrypt hash in $SENTINEL_INVITE_HASH (env / chezmoi-managed,
 #      NEVER committed) — e.g. via the caddy unit's EnvironmentFile.
-#   3. caddy reload --config /etc/caddy/Caddyfile
+#   3. pnpm --filter @sentinel/ui build:alpha   # produces dist/ with /alpha/-prefixed assets
+#   4. caddy reload --config /etc/caddy/Caddyfile
+#
+# URL SHAPE: the alpha lives at sentinel.russalo.com/alpha/ — the SPA, its
+# assets, and the API all sit under that prefix. The hostname root
+# (sentinel.russalo.com/) is reserved for a future landing page and returns
+# 404 today. `handle_path /alpha/*` strips the prefix at the edge BEFORE
+# evaluating the inner handle blocks, so:
+#   - backend reverse_proxy sees /api/... (unchanged from earlier versions)
+#   - file_server sees /assets/... (matches the dist/ layout)
+#   - the SPA build (Vite `base: '/alpha/'`, `pnpm build:alpha`) emits asset
+#     URLs prefixed `/alpha/`, which the browser re-requests and Caddy strips
+#     back on the next hop — round-trip works.
 #
 # INVARIANT (ADR 0003 §3): the MCP servers (fs-manager :8010, git-sync :8012)
 # are the unauthenticated write layer and MUST NEVER be proxied here. This file
 # proxies ONLY the backend (:8001). Adding a route to :8010/:8012 is a security
 # regression (tests/test_caddy_invariant.py guards against it).
 
-sentinel.dev.russalo.com {
+sentinel.russalo.com {
 	# Automatic Let's Encrypt TLS (Caddy default).
 
-	# The invite gate: a single shared credential gates everything EXCEPT
-	# /healthz (which monitoring must reach un-gated). Scoping basic_auth with
-	# the `@gated` matcher is what exempts /healthz — a bare site-level
-	# basic_auth would gate it too. Rotating the hash revokes every tester.
-	# Username is fixed ("beta"); the bcrypt hash comes from the environment so
-	# it never lands in the repo.
-	@gated not path /healthz
-	basic_auth @gated {
-		beta {$SENTINEL_INVITE_HASH}
-	}
+	# Everything under /alpha/* is the closed-alpha SPA + its API. `handle_path`
+	# (not `handle`) strips the matched `/alpha` prefix before evaluating inner
+	# directives — the backend and file_server see the un-prefixed path. The
+	# invite gate, /healthz exemption, sessions/admin exclusions, /api/*
+	# reverse_proxy, and static-asset cache headers all live INSIDE this block.
+	handle_path /alpha/* {
+		# The invite gate: a single shared credential gates everything EXCEPT
+		# /healthz (which monitoring must reach un-gated). Scoping basic_auth
+		# with the `@gated` matcher is what exempts /healthz — a bare
+		# site-level basic_auth would gate it too. Rotating the hash revokes
+		# every tester. Username is fixed ("beta"); the bcrypt hash comes
+		# from the environment so it never lands in the repo.
+		@gated not path /healthz
+		basic_auth @gated {
+			beta {$SENTINEL_INVITE_HASH}
+		}
 
-	# Open health check for uptime monitoring (un-gated by the matcher above).
-	handle /healthz {
-		reverse_proxy 127.0.0.1:8001
-	}
+		# Open health check for uptime monitoring (un-gated by the matcher
+		# above). External monitor hits sentinel.russalo.com/alpha/healthz.
+		handle /healthz {
+			reverse_proxy 127.0.0.1:8001
+		}
 
-	# /api/sessions* (the cross-world training / "/data" browser) is NOT gated by
-	# the per-world token and reads EVERY world's transcripts — it's an operator /
-	# dev tool, kept tailnet-only. Do NOT expose it on the public edge: return 404
-	# so an invited tester behind the gate can't enumerate or read other worlds'
-	# sessions (red-team #1, 2026-06-04). The backend still serves it on the
-	# tailnet. (handle blocks are matched most-specific-first, so this wins over
-	# the /api/* block below regardless of order.)
-	handle /api/sessions* {
-		respond 404
-	}
+		# /api/sessions* (the cross-world training / "/data" browser) is NOT
+		# gated by the per-world token and reads EVERY world's transcripts —
+		# it's an operator / dev tool, kept tailnet-only. Do NOT expose it on
+		# the public edge: return 404 so an invited tester behind the gate
+		# can't enumerate or read other worlds' sessions (red-team #1,
+		# 2026-06-04). The backend still serves it on the tailnet. (handle
+		# blocks are matched most-specific-first, so this wins over the
+		# /api/* block below regardless of order.)
+		handle /api/sessions* {
+			respond 404
+		}
 
-	# /api/admin/* (operator status dashboard JSON) + /_status (HTML dashboard)
-	# are tailnet/loopback-only by the same principle as /api/sessions*: they
-	# expose process-internal metrics (active streams, 503/429 counters, MCP
-	# health) that should never reach an invited tester. Tailnet membership IS
-	# the access control — return 404 on the public edge so the existence isn't
-	# even leaked.
-	handle /api/admin* {
-		respond 404
-	}
-	handle /_status {
-		respond 404
-	}
+		# /api/admin/* (operator status dashboard JSON) + /_status (HTML
+		# dashboard) are tailnet/loopback-only by the same principle as
+		# /api/sessions*: they expose process-internal metrics (active
+		# streams, 503/429 counters, MCP health) that should never reach an
+		# invited tester. Tailnet membership IS the access control — return
+		# 404 on the public edge so the existence isn't even leaked.
+		handle /api/admin* {
+			respond 404
+		}
+		handle /_status {
+			respond 404
+		}
 
-	# Backend API (gated): per-turn SSE stream, session/world routes.
-	# flush_interval -1 disables response buffering so SSE tokens stream live.
-	handle /api/* {
-		reverse_proxy 127.0.0.1:8001 {
-			flush_interval -1
+		# Backend API (gated): per-turn SSE stream, session/world routes.
+		# flush_interval -1 disables response buffering so SSE tokens stream
+		# live.
+		handle /api/* {
+			reverse_proxy 127.0.0.1:8001 {
+				flush_interval -1
+			}
+		}
+
+		# Everything else (gated): the built SPA. <REPO_ROOT> is the absolute
+		# path to the checkout on origin-core (e.g. /srv/projects/project-sentinel).
+		# Build with `pnpm --filter @sentinel/ui build:alpha` to emit
+		# /alpha/-prefixed asset URLs (Vite `base: '/alpha/'`).
+		handle {
+			root * <REPO_ROOT>/apps/sentinel-ui/dist
+			# Cache policy (stale-cache-after-redeploy guard): Vite emits
+			# content-hashed bundles under /assets/ — immutable, cache hard.
+			# Everything else resolves to index.html via the SPA fallback;
+			# index.html points at the CURRENT hashed bundles, so a stale
+			# cached copy after a redeploy would 404 on purged bundles →
+			# blank page. Never cache it.
+			@assets path /assets/*
+			header @assets Cache-Control "public, max-age=31536000, immutable"
+			@notassets not path /assets/*
+			header @notassets Cache-Control "no-cache"
+			try_files {path} /index.html
+			file_server
 		}
 	}
 
-	# Everything else (gated): the built SPA. <REPO_ROOT> is the absolute path
-	# to the checkout on origin-core (e.g. /srv/projects/project-sentinel).
-	handle {
-		root * <REPO_ROOT>/apps/sentinel-ui/dist
-		# Cache policy (stale-cache-after-redeploy guard): Vite emits
-		# content-hashed bundles under /assets/ — immutable, cache hard. Everything
-		# else resolves to index.html via the SPA fallback; index.html points at
-		# the CURRENT hashed bundles, so a stale cached copy after a redeploy would
-		# 404 on purged bundles → blank page. Never cache it.
-		@assets path /assets/*
-		header @assets Cache-Control "public, max-age=31536000, immutable"
-		@notassets not path /assets/*
-		header @notassets Cache-Control "no-cache"
-		try_files {path} /index.html
-		file_server
-	}
+	# Hostname root and any other path is reserved for future content (landing
+	# page, etc.) — for now it's 404. Sentinel only owns /alpha/*.
+	respond 404
 
 	# NOTE: rate-limiting is NOT here — `rate_limit` is not a stock Caddy v2
 	# directive (it needs the third-party caddy-ratelimit plugin + an xcaddy
