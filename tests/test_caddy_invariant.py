@@ -82,6 +82,24 @@ def test_sessions_browser_not_exposed_on_edge(caddyfile):
     assert "reverse_proxy" not in body
 
 
+def test_admin_status_not_exposed_on_edge(caddyfile):
+    # Operator status dashboard (added 2026-06-06): `/api/admin/*` JSON +
+    # `/_status` HTML must be tailnet/loopback-only — they expose process-
+    # internal metrics (active streams, 503/429 counters, MCP health, settings
+    # posture) that should never reach an invited tester. Same exclusion shape
+    # as /api/sessions*: explicit `handle` blocks returning 404, never
+    # reverse-proxying.
+    api_block = re.search(r"handle\s+/api/admin\*\s*\{([^}]*)\}", caddyfile)
+    assert api_block is not None, "missing `handle /api/admin*` exclusion block"
+    assert "respond" in api_block.group(1)
+    assert "reverse_proxy" not in api_block.group(1)
+
+    status_block = re.search(r"handle\s+/_status\s*\{([^}]*)\}", caddyfile)
+    assert status_block is not None, "missing `handle /_status` exclusion block"
+    assert "respond" in status_block.group(1)
+    assert "reverse_proxy" not in status_block.group(1)
+
+
 def test_static_cache_headers_prevent_stale_index(caddyfile):
     # stale-cache-after-redeploy guard: hashed /assets/* cache hard (immutable);
     # everything else (index.html via the SPA fallback) must not cache — a stale

@@ -78,7 +78,7 @@ def app(
     """
     from fastapi import FastAPI
 
-    from backend.routes import health, session, stream, training, world
+    from backend.routes import admin, health, session, stream, training, world
 
     import engine
     import engine.agents.dm as dm_module
@@ -149,6 +149,7 @@ def app(
     monkeypatch.setattr(engine, "teardown_world", fake_teardown_world)
 
     # Build the app with the test settings already loaded.
+    from backend.admin_metrics import AdminMetrics
     from backend.concurrency import StreamSlotLimiter
     from backend.ratelimit import RateLimiter
 
@@ -162,11 +163,14 @@ def app(
     # test_settings.max_concurrent_streams defaults to 0 → disabled, so this
     # never rejects unless a test bumps the setting.
     app.state.stream_limiter = StreamSlotLimiter(test_settings.max_concurrent_streams)
+    # Mirror create_app for the admin status dashboard counters.
+    app.state.admin_metrics = AdminMetrics()
     app.include_router(health.router)
     app.include_router(session.router)
     app.include_router(stream.router)
     app.include_router(training.router)
     app.include_router(world.router)
+    app.include_router(admin.router)
     return app
 
 

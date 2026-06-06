@@ -66,15 +66,23 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
     # ADR 0003 Slice B — closed-beta backstop. Rate-limit world creation per IP
     # and gate on the global daily LLM-call ceiling BEFORE the (paid) intro
     # call. Both no-op when their configured value is <= 0 (the default).
+    # 429s here are counted on admin_metrics so the dashboard sees pressure
+    # across both /api/session/new and /api/stream entry points.
     limiter = request.app.state.rate_limiter
-    enforce(
-        limiter,
-        f"session_create:{client_ip(request, settings.trusted_proxy_hops)}",
-        settings.rl_session_create_per_hour,
-        60 * 60,
-        detail="too many world creations; try again later",
-    )
-    enforce_llm_ceiling(limiter, settings.llm_daily_ceiling)
+    admin_metrics = request.app.state.admin_metrics
+    try:
+        enforce(
+            limiter,
+            f"session_create:{client_ip(request, settings.trusted_proxy_hops)}",
+            settings.rl_session_create_per_hour,
+            60 * 60,
+            detail="too many world creations; try again later",
+        )
+        enforce_llm_ceiling(limiter, settings.llm_daily_ceiling)
+    except HTTPException as exc:
+        if exc.status_code == 429:
+            admin_metrics.rate_limited()
+        raise
 
     session_id = str(uuid.uuid4())
     # ADR 0002: every session belongs to a world. Minted here and threaded into

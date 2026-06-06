@@ -46,6 +46,19 @@ sentinel.dev.russalo.com {
 		respond 404
 	}
 
+	# /api/admin/* (operator status dashboard JSON) + /_status (HTML dashboard)
+	# are tailnet/loopback-only by the same principle as /api/sessions*: they
+	# expose process-internal metrics (active streams, 503/429 counters, MCP
+	# health) that should never reach an invited tester. Tailnet membership IS
+	# the access control — return 404 on the public edge so the existence isn't
+	# even leaked.
+	handle /api/admin* {
+		respond 404
+	}
+	handle /_status {
+		respond 404
+	}
+
 	# Backend API (gated): per-turn SSE stream, session/world routes.
 	# flush_interval -1 disables response buffering so SSE tokens stream live.
 	handle /api/* {
