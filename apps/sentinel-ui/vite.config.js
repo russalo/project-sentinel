@@ -7,7 +7,22 @@ import react from '@vitejs/plugin-react'
 // by `vitest run` / `vitest` and applies on top of the Vite plugins
 // already configured for dev/build, so component tests share the
 // same React + JSX transform the production app uses.
-export default defineConfig({
+//
+// Mode-aware base path:
+//   - default `production` (`pnpm build`) → base '/' → tailnet dev site at
+//     sentinel.dev.russalo.com/
+//   - `alpha` mode (`pnpm build:alpha` → `pnpm build --mode alpha`) → base
+//     '/alpha/' → public closed alpha at sentinel.russalo.com/alpha/
+//
+// In alpha mode, Vite emits asset URLs prefixed `/alpha/`; Caddy strips the
+// `/alpha` prefix at the edge (handle_path) before reverse_proxy, so the
+// backend stays mounted at /api/ unchanged and the file_server sees
+// /assets/... unchanged. Wouter Router uses base="/alpha" in App.jsx when
+// import.meta.env.BASE_URL is '/alpha/'; the two must stay in sync, which
+// the App.jsx-side wiring (reading import.meta.env.BASE_URL) guarantees.
+// `pnpm dev` is unaffected — Vite serves at / locally.
+export default defineConfig(({ mode }) => ({
+  base: mode === 'alpha' ? '/alpha/' : '/',
   plugins: [react()],
   // Explicit JSX automatic runtime. Production source files don't
   // import React (the @vitejs/plugin-react auto-runtime injects the
@@ -37,4 +52,4 @@ export default defineConfig({
     include: ['src/**/*.{test,spec}.{js,jsx}'],
     exclude: ['node_modules', 'dist', 'build'],
   },
-})
+}))

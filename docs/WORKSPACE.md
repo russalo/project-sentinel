@@ -210,6 +210,59 @@ same origin (Caddy proxies `/api/*` to the backend) rather than the visitor's
 own `localhost`. A local `just dev-frontend` ignores this — it uses the
 `http://localhost:8001/api` fallback in `src/api/client.js`.
 
+### Building the closed alpha site
+
+The public closed alpha lives at `sentinel.russalo.com/alpha/` (decided
+2026-06-06). Unlike the tailnet dev site (served at the hostname root), the
+alpha mounts under the `/alpha/` path prefix — the hostname root is reserved
+for a future landing page and returns 404 today.
+
+```bash
+pnpm --filter @sentinel/ui build:alpha
+```
+
+`build:alpha` is a script alias for `vite build --mode alpha`, which loads
+`apps/sentinel-ui/.env.alpha` (`VITE_API_URL=/alpha/api`) and triggers the
+conditional `base: '/alpha/'` in `vite.config.js`. The output `dist/`:
+
+- emits asset URLs prefixed `/alpha/...`
+- wires Wouter's Router base to `/alpha` (read from `import.meta.env.BASE_URL`
+  in `App.jsx` — single source of truth, no parallel constant to drift)
+- targets the same-origin relative API path `/alpha/api/...`
+
+The closed alpha is deployed **gate-fronted, not direct-to-origin-core**
+(decided 2026-06-06, same shape as `blog.russalo.com`). DNS for
+`sentinel.russalo.com` resolves to a separate **gate** machine (tailnet
+Claude's lane) that owns DNS, TLS provisioning, and TLS termination. Gate
+reverse-proxies cleartext HTTP over tailnet to origin-core's Caddy, which
+runs the committed template (`infrastructure/caddy/Caddyfile.example`).
+Origin-core's Caddy is multi-tenant (serves blog + Blueprint + sentinel on
+a shared wildcard `:80` listener); listener isolation between public and
+tailnet is enforced at the UFW firewall layer, NOT by `bind` in the Caddy
+site block — adding `bind` to one site-block would shadow the wildcard
+listener for the others. Inside the site block, our template owns the
+sentinel-specific shape: `basic_auth` invite gate, `handle_path /alpha/*`,
+the SPA fallback, and the static-asset cache headers. `handle_errors`
+(operational, deploy-only) is hoisted to site-block scope in the deployed
+Caddyfile (Caddy 2.x rejects nesting inside `handle_path`) — non-alpha
+paths already 404, so the friendly error page only fires for the alpha
+block. The template's leading comment documents these deployed-Caddyfile
+gotchas surfaced during the 2026-06-07 cutover.
+
+Caddy strips the `/alpha` prefix at origin-core (`handle_path /alpha/*`)
+before reverse-proxy, so the backend stays mounted at `/api/...` unchanged
+and the file_server reads `dist/assets/...` unchanged. The two builds —
+`pnpm build` for the tailnet dev site (no prefix) and `pnpm build:alpha`
+for the alpha (with prefix) — produce different `dist/` outputs; switching
+deployments requires the matching build.
+
+**Operational note for the backend env:** with gate fronting, set
+`SENTINEL_TRUSTED_PROXY_HOPS=1` in `infrastructure/.env` so the per-IP
+rate-limiter counts the real client IP (one hop in: gate). Without it, gate
+gets one shared bucket for every alpha tester.
+
+The default `pnpm build` flow for the tailnet dev site is unchanged.
+
 See `CLAUDE.md` § "Common Commands" for the full reference.
 
 ## Production deployment (origin-core) — ADR 0003 Slice C

@@ -100,6 +100,120 @@ def test_admin_status_not_exposed_on_edge(caddyfile):
     assert "reverse_proxy" not in status_block.group(1)
 
 
+def test_bare_alpha_prefix_redirects_to_trailing_slash(caddyfile):
+    # `handle_path /alpha/*` matches `/alpha/` and `/alpha/...` but NOT bare
+    # `/alpha` (no trailing slash) — a tester typing sentinel.russalo.com/alpha
+    # into the URL bar would otherwise fall through to the site-level
+    # `respond 404`. An explicit `handle /alpha` block returns a 301 redirect
+    # to `/alpha/`. (codex P2 on PR #108, 2026-06-07.)
+    pattern = re.compile(
+        r"handle\s+/alpha\s*\{[^}]*redir\s+/alpha/\s+301[^}]*\}",
+        re.DOTALL,
+    )
+    assert pattern.search(caddyfile) is not None, (
+        "missing `handle /alpha { redir /alpha/ 301 }` — bare /alpha "
+        "would 404 instead of redirecting to /alpha/"
+    )
+
+
+def test_alpha_path_prefix_wraps_app_handles(directives):
+    # Closed alpha lives at sentinel.russalo.com/alpha/ — the SPA, its assets,
+    # and the API all sit under that prefix. The Caddy template MUST use
+    # `handle_path /alpha/*` (not bare `handle`) so the prefix is stripped at
+    # the edge before the inner handles match — that's what keeps the backend
+    # at /api/ and the file_server at /assets/ unchanged. A regression to
+    # plain `handle` would mean the backend would see /alpha/api/..., 404 on
+    # everything, and the SPA would stop loading.
+    assert "handle_path /alpha/*" in directives, (
+        "missing `handle_path /alpha/*` — the /alpha prefix must be stripped at "
+        "the edge so backend/file_server see un-prefixed paths"
+    )
+
+
+def test_alpha_hostname_is_apex_not_dev_subdomain(caddyfile):
+    # The closed alpha is published on the apex `sentinel.russalo.com`, NOT
+    # the tailnet-dev `sentinel.dev.russalo.com`. Catch an accidental hostname
+    # regression that would either leak the alpha onto the tailnet hostname
+    # or break the public hostname.
+    assert "sentinel.russalo.com" in caddyfile
+    # First non-comment line that opens a site block must be the apex, with
+    # the explicit http:// scheme (see test_origin_core_does_not_provision_tls
+    # for the scheme rationale).
+    site_lines = [
+        ln.strip()
+        for ln in caddyfile.splitlines()
+        if ln.strip() and not ln.strip().startswith("#")
+    ]
+    assert site_lines, "Caddyfile has no directive lines"
+    assert site_lines[0].startswith("http://sentinel.russalo.com"), (
+        f"first site block is not http://sentinel.russalo.com — got: {site_lines[0]!r}"
+    )
+
+
+def test_origin_core_does_not_provision_tls(caddyfile):
+    # Gate-fronted topology (decided 2026-06-06): gate is the public edge and
+    # terminates TLS; origin-core's Caddy serves cleartext HTTP over tailnet.
+    # The `http://` scheme on the site address tells Caddy to NOT auto-provision
+    # a cert — without it, origin-core would try to issue Let's Encrypt for
+    # sentinel.russalo.com on every reload (and fail, because origin-core isn't
+    # the DNS target). A regression to bare `sentinel.russalo.com {` or to
+    # `https://` would re-enable that broken cert-issuance attempt.
+    assert "http://sentinel.russalo.com" in caddyfile
+    # And no implicit (scheme-less) site block, which would also auto-https.
+    # Check the first directive-line opens with the explicit scheme.
+    site_lines = [
+        ln.strip()
+        for ln in caddyfile.splitlines()
+        if ln.strip() and not ln.strip().startswith("#")
+    ]
+    assert site_lines[0].startswith("http://"), (
+        f"first site block must use explicit http:// scheme (TLS terminates "
+        f"at gate, not origin-core) — got: {site_lines[0]!r}"
+    )
+    # No `https://sentinel.russalo.com` anywhere — that would re-enable TLS
+    # provisioning at origin-core.
+    assert "https://sentinel.russalo.com" not in caddyfile, (
+        "https:// scheme on origin-core's Caddy re-enables auto-cert-provisioning "
+        "for a hostname origin-core doesn't own (DNS points at gate). Use http://."
+    )
+
+
+def test_hostname_root_returns_404(directives):
+    # The hostname root (sentinel.russalo.com/) is reserved for a future
+    # landing page — for now sentinel only owns /alpha/*. A bare `respond 404`
+    # at the site level (OUTSIDE the handle_path block) is what makes every
+    # non-/alpha path 404. Without it, requests to the root would fall through
+    # to nothing and Caddy would return its default empty response — either
+    # confusing or accidentally exposing.
+    # The `respond 404` MUST appear at site-level scope, not nested inside
+    # handle_path /alpha/* (where it'd 404 alpha requests).
+    # Find the closing brace of the handle_path block and assert `respond 404`
+    # follows it within the site block.
+    handle_path_match = re.search(
+        r"handle_path\s+/alpha/\*\s*\{", directives, flags=re.DOTALL
+    )
+    assert handle_path_match is not None, (
+        "expected handle_path block — test_alpha_path_prefix_wraps_app_handles "
+        "covers absence"
+    )
+    # Walk braces to find the matching closing brace.
+    start = handle_path_match.end()
+    depth = 1
+    i = start
+    while i < len(directives) and depth > 0:
+        if directives[i] == "{":
+            depth += 1
+        elif directives[i] == "}":
+            depth -= 1
+        i += 1
+    assert depth == 0, "handle_path /alpha/* block is not closed in directives"
+    after_alpha_block = directives[i:]
+    assert "respond 404" in after_alpha_block, (
+        "missing site-level `respond 404` after the handle_path /alpha/* block — "
+        "non-/alpha paths must 404, not fall through to Caddy's default"
+    )
+
+
 def test_static_cache_headers_prevent_stale_index(caddyfile):
     # stale-cache-after-redeploy guard: hashed /assets/* cache hard (immutable);
     # everything else (index.html via the SPA fallback) must not cache — a stale
