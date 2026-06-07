@@ -42,6 +42,21 @@
         "items": []
       },
       "created_at": ""
+    },
+    {
+      "id": 4,
+      "session_id": "5514960f-ff1c-4dec-922d-0e2842a250d4",
+      "turn_number": 3,
+      "player_action": "Russalo, I seek entry to the breach",
+      "narrative": "Warden Meral Hult's pale eyes narrow ever so slightly, a fleeting ripple across her otherwise stoic face. She nods slowly, a gesture less of approval and more of weary acknowledgement. \"Indeed,\" she murmurs, her gaze sweeping over the vitrified landscape beyond the rim. \"They always are, in the end. The Breach whispers promises few can long resist.\"\n\nShe turns, moving with a practiced economy of motion to the scarred counter inside the watchhouse. The heavy ledger, its leather cover worn smooth by countless hands, is indeed there. She opens it to a fresh page, running a gnarled finger down a list of names and dates, each entry a testament to another journey into the abyss. \"Here, then,\" she says, pushing a quill and a small, ink-stained pot towards you. \"Sign your name, and acknowledge the terms of passage. The Breach offers no bounty, nor does it return what it claims. Your entry is your own responsibility, your egress a matter for fate, not for these records. Consider yourself warned.\"\n\nThe quill feels heavy in your hand, a tangible link to all those who have signed before. The silence of the watchhouse is profound, broken only by the scratch of Meral's own breath. Do you sign the ledger, accepting her terms and preparing to descend into the Breach?",
+      "world_updates": {
+        "world": {},
+        "characters": [],
+        "locations": [],
+        "factions": [],
+        "items": []
+      },
+      "created_at": ""
     }
   ],
   "active": true,
