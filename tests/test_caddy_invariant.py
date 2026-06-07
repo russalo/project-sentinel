@@ -106,13 +106,24 @@ def test_bare_alpha_prefix_redirects_to_trailing_slash(caddyfile):
     # into the URL bar would otherwise fall through to the site-level
     # `respond 404`. An explicit `handle /alpha` block returns a 301 redirect
     # to `/alpha/`. (codex P2 on PR #108, 2026-06-07.)
+    #
+    # The redir target MUST be a full absolute URL — Caddy's `redir /relative/
+    # 301` shorthand parses silently wrong (treats the first arg as a matcher
+    # and the second as the to-URL, defaulting to 302). Surfaced 2026-06-07 by
+    # tailnet Claude during the deployed-Caddyfile smoke. This test guards
+    # against a regression back to the parse-ambiguous relative form.
     pattern = re.compile(
-        r"handle\s+/alpha\s*\{[^}]*redir\s+/alpha/\s+301[^}]*\}",
+        r"handle\s+/alpha\s*\{[^}]*"
+        r"redir\s+https://sentinel\.russalo\.com/alpha/\s+301"
+        r"[^}]*\}",
         re.DOTALL,
     )
     assert pattern.search(caddyfile) is not None, (
-        "missing `handle /alpha { redir /alpha/ 301 }` — bare /alpha "
-        "would 404 instead of redirecting to /alpha/"
+        "missing `handle /alpha { redir https://sentinel.russalo.com/alpha/ "
+        "301 }` — the redirect MUST use the full absolute URL, not the "
+        "shorthand `redir /alpha/ 301` (Caddy parses the shorthand wrong: "
+        "treats /alpha/ as an inner matcher and 301 as the to-URL, "
+        "defaulting status to 302)"
     )
 
 
@@ -157,7 +168,8 @@ def test_origin_core_does_not_provision_tls(caddyfile):
     # a cert — without it, origin-core would try to issue Let's Encrypt for
     # sentinel.russalo.com on every reload (and fail, because origin-core isn't
     # the DNS target). A regression to bare `sentinel.russalo.com {` or to
-    # `https://` would re-enable that broken cert-issuance attempt.
+    # `https://sentinel.russalo.com {` would re-enable that broken
+    # cert-issuance attempt.
     assert "http://sentinel.russalo.com" in caddyfile
     # And no implicit (scheme-less) site block, which would also auto-https.
     # Check the first directive-line opens with the explicit scheme.
@@ -170,11 +182,20 @@ def test_origin_core_does_not_provision_tls(caddyfile):
         f"first site block must use explicit http:// scheme (TLS terminates "
         f"at gate, not origin-core) — got: {site_lines[0]!r}"
     )
-    # No `https://sentinel.russalo.com` anywhere — that would re-enable TLS
-    # provisioning at origin-core.
-    assert "https://sentinel.russalo.com" not in caddyfile, (
-        "https:// scheme on origin-core's Caddy re-enables auto-cert-provisioning "
-        "for a hostname origin-core doesn't own (DNS points at gate). Use http://."
+    # No `https://sentinel.russalo.com {` as a SITE BLOCK OPENER — that's the
+    # specific shape that re-enables TLS provisioning at origin-core. (A
+    # `redir https://sentinel.russalo.com/alpha/ 301` as the to-URL of a
+    # redirect is fine — Caddy doesn't provision certs for redirect targets,
+    # only for site addresses. This is why we check for the site-block-opener
+    # shape, not the raw substring.)
+    assert not re.search(
+        r"^\s*https://sentinel\.russalo\.com[\s{]",
+        caddyfile,
+        re.MULTILINE,
+    ), (
+        "https:// site block on origin-core's Caddy re-enables auto-cert-"
+        "provisioning for a hostname origin-core doesn't own (DNS points at "
+        "gate). Use http:// on the site address."
     )
 
 

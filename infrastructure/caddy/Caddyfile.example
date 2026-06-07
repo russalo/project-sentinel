@@ -69,6 +69,13 @@
 #   - The `respond` directive uses POSITIONAL `<body> <status>` form. A subdir
 #     shape like `respond {placeholder} { ... }` is parser-ambiguous and Caddy
 #     errors out — use `respond "<json-body>" <status>` instead.
+#   - The `redir` directive's `to` argument MUST be a full absolute URL when
+#     paired with an explicit status code (`redir https://host/path 301`). The
+#     shorthand `redir /relative/ 301` parses silently wrong: Caddy treats the
+#     first arg as an inner matcher and the second as the to-URL, defaulting
+#     status to 302 — the redirect "works" but with the wrong code and target.
+#     Surfaced 2026-06-07 during the deployed-Caddyfile smoke for the bare
+#     `/alpha` → `/alpha/` redirect.
 
 # `http://` scheme is explicit — overrides Caddy's automatic TLS so origin-core
 # does NOT try to provision its own cert. Gate already terminated TLS on the
@@ -85,8 +92,14 @@ http://sentinel.russalo.com {
 	# them at the SPA. (codex P2 on PR #108, 2026-06-07.) Caddy's
 	# most-specific-first handle matching makes this win over the broader
 	# `handle_path /alpha/*` below for the exact-`/alpha` case.
+	#
+	# The `to` argument MUST be a full absolute URL — the shorthand
+	# `redir /alpha/ 301` parses silently wrong (Caddy treats `/alpha/` as
+	# an inner matcher and `301` as the to-URL, defaulting status to 302).
+	# Surfaced 2026-06-07 by tailnet Claude during the deployed-Caddyfile
+	# smoke; documented in the gotchas block above.
 	handle /alpha {
-		redir /alpha/ 301
+		redir https://sentinel.russalo.com/alpha/ 301
 	}
 
 	# Everything under /alpha/* is the closed-alpha SPA + its API. `handle_path`
