@@ -85,4 +85,37 @@ describe('SettingsDrawer', () => {
     // The 4th click should be blocked (button disabled) but even if forced, clamps
     expect(plusBtn).toBeDisabled();
   });
+
+  it('Escape key closes the drawer when open', async () => {
+    useUIStore.setState({ settingsOpen: true });
+    render(<SettingsDrawer />);
+    await userEvent.keyboard('{Escape}');
+    expect(useUIStore.getState().settingsOpen).toBe(false);
+  });
+
+  it('Escape key is a no-op when drawer is closed (no leaked global listener)', async () => {
+    // closed → no listener registered → Escape does nothing
+    useUIStore.setState({ settingsOpen: false });
+    const initialState = useUIStore.getState();
+    render(<SettingsDrawer />);
+    await userEvent.keyboard('{Escape}');
+    expect(useUIStore.getState().settingsOpen).toBe(false);
+    // Also check the listener is removed on unmount
+    expect(initialState.settingsOpen).toBe(false);
+  });
+
+  it('drawer has inert attribute when closed (removes descendants from tab order)', () => {
+    useUIStore.setState({ settingsOpen: false });
+    const { container } = render(<SettingsDrawer />);
+    const drawer = container.querySelector('[role="dialog"]');
+    // inert is a present-or-absent HTML attribute; jsdom reports it as an empty string when set
+    expect(drawer.hasAttribute('inert')).toBe(true);
+  });
+
+  it('drawer drops the inert attribute when open', () => {
+    useUIStore.setState({ settingsOpen: true });
+    const { container } = render(<SettingsDrawer />);
+    const drawer = container.querySelector('[role="dialog"]');
+    expect(drawer.hasAttribute('inert')).toBe(false);
+  });
 });

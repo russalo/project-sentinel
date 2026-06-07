@@ -9,6 +9,7 @@
 // (e.g., a deep-link to "/?settings" later). Today only the TopBar gear
 // triggers it.
 
+import { useEffect } from 'react';
 import { X, AArrowDown, AArrowUp } from 'lucide-react';
 import { useUIStore, FONT_SIZES } from '../../stores/uiStore';
 
@@ -24,6 +25,19 @@ export function SettingsDrawer() {
   const closeSettings = useUIStore((s) => s.closeSettings);
   const fontSize = useUIStore((s) => s.fontSize);
   const stepFontSize = useUIStore((s) => s.stepFontSize);
+
+  // Escape-to-close keyboard listener — matches the mobile drawer pattern in
+  // AppShell.jsx + makes the drawer keyboard-accessible without needing to
+  // hunt for the close button. Only registers while open (no leaked global
+  // listener when closed). (gemini medium on PR #120.)
+  useEffect(() => {
+    if (!settingsOpen) return;
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') closeSettings();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [settingsOpen, closeSettings]);
 
   const idx = FONT_SIZES.indexOf(fontSize);
   const atMin = idx === 0;
@@ -42,7 +56,12 @@ export function SettingsDrawer() {
         aria-hidden={!settingsOpen}
       />
 
-      {/* The drawer itself — slides in from the right on desktop, full-width on mobile */}
+      {/* The drawer itself — slides in from the right on desktop, full-width on
+          mobile. The `inert` attribute (when closed) removes its descendants
+          from the tab order AND hides them from screen readers — without it,
+          keyboard users tab into invisible Close + A−/A+ buttons before
+          opening Settings. Pairs with aria-hidden for assistive-tech support.
+          (gemini medium + codex P2 on PR #120.) */}
       <aside
         className={`fixed top-0 right-0 z-50 h-full w-full sm:w-96 bg-codex border-l border-border shadow-2xl transform transition-transform duration-200 flex flex-col ${
           settingsOpen ? 'translate-x-0' : 'translate-x-full'
@@ -50,6 +69,7 @@ export function SettingsDrawer() {
         role="dialog"
         aria-label="Settings"
         aria-hidden={!settingsOpen}
+        inert={!settingsOpen}
       >
         <header className="flex items-center justify-between px-4 py-3 border-b border-border">
           <h2 className="font-cinzel text-lg text-amber">Settings</h2>
