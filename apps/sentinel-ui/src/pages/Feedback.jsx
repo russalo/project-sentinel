@@ -102,9 +102,14 @@ export default function Feedback() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      const data = await res.json().catch(() => ({}));
+      // Defensively normalize the response — a non-object body (null, array,
+      // string) would TypeError on data.id otherwise. Bad payloads collapse
+      // to {} and we surface a clean error via the HTTP status. (gemini
+      // medium on PR #116.)
+      const raw = await res.json().catch(() => ({}));
+      const data = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
       if (!res.ok) {
-        const detail = data?.detail?.detail || data?.detail || `HTTP ${res.status}`;
+        const detail = data.detail?.detail || data.detail || `HTTP ${res.status}`;
         throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
       }
       setSubmittedId(data.id || 'unknown');
