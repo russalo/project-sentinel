@@ -547,3 +547,36 @@ turn-finalization code path and share the same visual primitives.
 
 - [ ] **Inject bundle hash into the SPA via `VITE_BUNDLE_HASH` at build time.** Currently `apps/sentinel-ui/src/pages/Feedback.jsx` reads `import.meta.env.VITE_BUNDLE_HASH` for the on-disk `bundleHash` field in feedback submissions, defaulting to `'dev'` when unset. Today the env isn't injected, so every submission carries `bundleHash: "dev"` — losing the "which bundle did the tester have loaded?" provenance that's useful for triage. **Fix:** `vite.config.js` reads the asset chunk filename at build time (or a `git rev-parse --short HEAD` fallback) and emits `define: { 'import.meta.env.VITE_BUNDLE_HASH': JSON.stringify(hash) }`. Two-line config change + verify the build emits a non-`'dev'` value. Low priority — feedback works without it; just nicer-to-have triage signal.
       _Discovered: 2026-06-07 | Context: Russell's first form submission landed with `bundleHash: "dev"` — confirmed the fallback works but flagged the missing build-time injection._
+
+- [ ] **Per-tester basic_auth + auto-reauth flow for world-token recovery.** 🎯 **TARGETED FOR MONDAY 2026-06-08 PATCH WINDOW.** Russell 2026-06-07: "we need a solution that doesn't require me sending something to the player, ideally not require the player to do more than click." We've hit the "tester's localStorage cleared → world-token lost → 401 → operator has to manually mint" pattern twice in 24 hours (Johnny + Russell himself). Per-world token enforcement (ADR 0003 dim #2) is doing its job cross-tenant — but the recovery story is broken because the shared `beta:hash` basic_auth identity carries no per-user signal the backend can re-issue against.
+
+      **Approach (Russell, 2026-06-07):** option (B) from the inline proposal — per-tester basic_auth credentials at the edge + auto-reauth endpoint that re-mints on first 401 of an owned world. Tester clicks URL → SPA hits world endpoint → 401 → SPA auto-hits `/api/world/<id>/reauth` carrying the browser's already-cached basic_auth credentials → backend confirms the basic_auth user IS the creator of this world → returns a fresh token → SPA stores + retries hydration. **Zero operator involvement, one (transparent) click for the tester.**
+
+      **Backend changes:**
+      - `backend/auth/world_token.py`: extend `mint()` to optionally accept `username`. HMAC over `f"{world_id}.{username or ''}.{expiry}"`. Empty username produces the existing HMAC shape, so legacy unbound tokens still verify (one-deploy transition).
+      - `backend/auth/access.py`: add `extract_basic_auth_user(request)` — reads `Authorization: Basic`, b64-decodes, returns the username portion (or None on missing/malformed).
+      - `backend/routes/session.py` (POST /api/session/new): capture `creator_username` from the request's Authorization header. Store on the session JSON's top-level (or under `metadata.creator_username`). Mint the initial token bound to that username.
+      - `backend/routes/world.py`: new endpoint `POST /api/world/{world_id}/reauth`. Reads basic_auth user from request, reads the world's session JSON to find `creator_username`. If match → mint new token bound to (world_id, username), return `{token}`. If mismatch → 403. If session has no `creator_username` (legacy world created before this PR) → TOFU: claim it for the first authenticated user that asks, write the claim back to the session JSON. Atomic write via fs-manager so concurrent reauths on the same legacy world don't double-claim.
+      - Tests: mint with/without username, verify-against-wrong-username rejects, reauth endpoint enforces owner match, TOFU on legacy worlds.
+
+      **SPA changes:**
+      - `apps/sentinel-ui/src/api/worldToken.js`: add `reauth(worldId)` that POSTs to `/api/world/<id>/reauth` (no body — basic_auth header is sufficient), stores returned token in localStorage under the existing key, returns it.
+      - `apps/sentinel-ui/src/hooks/useWorldHydration.js`: wrap the initial `apiClient.get('/world/...')` in a try-catch. On HTTP 401 specifically, call `reauth(worldId)` once → retry the hydration with the fresh token. On 401 again after reauth (forbidden, not just expired), surface the normal "[Could not load world]" message — that's a real ownership mismatch, not a recoverable token problem.
+      - Tests: mock 401-then-200 flow, mock 401-then-403 flow.
+
+      **Caddy / edge — tailnet Claude's lane (relay to them):**
+      - Move deployed Caddyfile from single shared `basic_auth { beta {$SENTINEL_INVITE_HASH} }` to per-tester multi-line entries. Options: (i) one env var per tester (`$SENTINEL_INVITE_RUSSELL_HASH`, `$SENTINEL_INVITE_JOHNNY_HASH`, ...) — explicit, easy to read; or (ii) a single `$SENTINEL_INVITE_BLOCK` env var holding the whole `basic_auth { ... }` body — more flexible, ugly. Lean (i) for the cohort size today. Operator (tailnet Claude) generates a bcrypt hash per tester via `caddy hash-password` and adds the env-var assignment. Removing a tester = unsetting + reloading caddy.
+
+      **Migration / TOFU semantics:**
+      - Worlds created BEFORE this PR have no `creator_username`. First reauth attempt for such a world records the requesting user as the creator. Acceptable for the closed cohort (≤10 trusted testers); risky for public-alpha (any-tester-can-claim-any-orphan). Defensible mitigation: log every TOFU claim with timestamp + user + world_id to the feedback dir or a dedicated audit file so the operator can review.
+      - Tokens minted before this PR (HMAC over world_id only) keep working until they expire (7 days). New worlds created post-deploy get the new (world_id, username) binding. Mixed regime for a week max, then everyone's on the new shape.
+
+      **Operator action at cutover:**
+      - Generate per-tester bcrypt hashes (one per invitee).
+      - Update deployed Caddyfile's `basic_auth` block with the per-user entries.
+      - `sudo systemctl reload caddy` (graceful, no downtime).
+      - Backend restart to pick up the new code (~30 sec, same envelope as prior cutover restarts).
+      - Smoke: tester whose localStorage is cleared visits world URL → expect successful auto-reauth in the SPA console + a fresh token in localStorage.
+
+      **Deploy window:** Monday 2026-06-08, 05:00–08:00 PST — same window as the font-size feature. Single combined backend restart for both.
+      _Discovered: 2026-06-07 | Context: Hit the "manual token mint" pattern twice in one day (Johnny + Russell). Russell explicitly asked for a no-operator-involvement solution; (B) is the durable answer that also unlocks per-tester attribution + auditability for future work._
