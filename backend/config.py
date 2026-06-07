@@ -106,6 +106,16 @@ class Settings:
     # hop Caddy appends (the real client as Caddy saw it), not the
     # client-controlled leftmost XFF entry. See ``ratelimit.client_ip``.
     trusted_proxy_hops: int = 0
+    # In-product feedback form (POST /api/feedback). Disabled when
+    # `feedback_root` is None — the route returns 503 and no disk writes
+    # happen. Set to a writable directory path to enable. Default at deploy
+    # time is `/srv/projects/project-sentinel/feedback/` (top-level repo dir,
+    # gitignored), but the path is configurable to support other deploy
+    # layouts. `rl_feedback_per_hour` rate-limits submissions per-IP — 0 means
+    # no limit (don't ship that to prod; 10/hour is the agreed default in the
+    # spec).
+    feedback_root: Path | None = None
+    rl_feedback_per_hour: int = 0
 
     @classmethod
     def load(cls) -> "Settings":
@@ -169,4 +179,10 @@ class Settings:
             llm_daily_ceiling=_int_env("SENTINEL_LLM_DAILY_CEILING", "0"),
             max_concurrent_streams=_int_env("SENTINEL_MAX_CONCURRENT_STREAMS", "0"),
             trusted_proxy_hops=_int_env("SENTINEL_TRUSTED_PROXY_HOPS", "0"),
+            feedback_root=(
+                Path(_env("SENTINEL_FEEDBACK_ROOT"))
+                if _env("SENTINEL_FEEDBACK_ROOT")
+                else None
+            ),
+            rl_feedback_per_hour=_int_env("SENTINEL_RL_FEEDBACK_PER_HOUR", "0"),
         )

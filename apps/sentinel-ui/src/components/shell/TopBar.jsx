@@ -3,7 +3,7 @@ import { usePersonaStore } from '../../stores/personaStore';
 import { usePlayerStore } from '../../stores/playerStore';
 import { useUIStore } from '../../stores/uiStore';
 import { Link } from 'wouter';
-import { Menu, Share2, Users, BookOpen, Database } from 'lucide-react';
+import { Menu, Share2, Users, BookOpen, Database, MessageSquare } from 'lucide-react';
 import { PersonaSheet } from '../persona/PersonaSheet';
 import { SeedShareModal } from '../seed/SeedShareModal';
 import { StatusIndicator } from './StatusIndicator';
@@ -61,6 +61,19 @@ export function TopBar({ seedString = 'ABC-DEF-GHI-JKL' }) {
 
           {/* Connection status */}
           <StatusIndicator />
+
+          {/* Feedback form — tester reports go to <SENTINEL_FEEDBACK_ROOT>
+              via POST /api/feedback. Available to all alpha testers (basic_auth
+              gate already enforces who reaches this surface). See
+              docs/ALPHA_FEEDBACK.md for the triage pipeline. */}
+          <Link
+            href="/feedback"
+            className="text-dust hover:text-amber transition-colors"
+            aria-label="Send feedback"
+            title="Send feedback"
+          >
+            <MessageSquare size={18} />
+          </Link>
 
           {/* Training-data browser */}
           <Link

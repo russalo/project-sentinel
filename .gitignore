@@ -87,3 +87,9 @@ chatlogs/
 # notes kept out of the public repo — mirrors the sibling scanner project's
 # gitignored scratch/review/. Never committed.
 scratch/
+
+# In-product feedback submissions (POST /api/feedback writes JSON files here).
+# Same gameplay-pollution lesson as data/ — operational runtime data must not
+# land in the code repo. Triaged into docs/ALPHA_FEEDBACK.md by hand;
+# untriaged on-disk records stay here for the operator to read.
+/feedback/

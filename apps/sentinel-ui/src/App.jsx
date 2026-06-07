@@ -3,6 +3,7 @@ import { AppShell } from './components/shell/AppShell';
 import WorldCreation from './pages/WorldCreation';
 import WorldList from './pages/WorldList';
 import DataBrowser from './pages/DataBrowser';
+import Feedback from './pages/Feedback';
 import './index.css';
 
 // Router base mirrors the Vite build's base. import.meta.env.BASE_URL is set
@@ -19,6 +20,10 @@ export default function App() {
     <Router base={routerBase}>
       <Route path="/create" component={WorldCreation} />
       <Route path="/data" component={DataBrowser} />
+      {/* Feedback form — basic_auth gated at the edge; no per-world token
+          required so testers can report inability to enter a session. See
+          docs/ALPHA_FEEDBACK.md for the operational triage flow. */}
+      <Route path="/feedback" component={Feedback} />
       {/* The game lives at a world's own URL (ADR 0002 Slice 4) so it's
           shareable and survives a refresh — AppShell hydrates from the
           worldId param. */}
