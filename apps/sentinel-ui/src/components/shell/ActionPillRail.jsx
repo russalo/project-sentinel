@@ -68,36 +68,54 @@ export function ActionPillRail() {
       !alwaysAvailableLabels.has(a.label.toLowerCase()),
   );
 
+  // Two stacked rows: DM-sourced pills on top (per-turn, tone-colored,
+  // collapsed when there are none), always-available pills below (static
+  // baseline — same set every turn, neutral styling so they read as a
+  // permanent extension of the command bar rather than as DM output).
+  // Russell's UX feedback 2026-06-07: the previous single-row mix made the
+  // turn-specific DM pills hard to scan from the always-available defaults.
+  const PILL_CLASSES = 'px-2.5 py-1 rounded-full border text-xs font-crimson transition-colors focus:outline-none focus:ring-1 focus:ring-amber';
+
   return (
-    <div
-      className="flex flex-wrap gap-1.5 px-3 lg:px-6 pt-2 pb-1"
-      role="group"
-      aria-label="Suggested actions"
-    >
-      {dmPills.map((action, i) => (
-        <button
-          key={`dm-${i}-${action.label}`}
-          type="button"
-          onClick={() => setInput(action.label)}
-          className={`px-2.5 py-1 rounded-full border text-xs font-crimson transition-colors focus:outline-none focus:ring-1 focus:ring-amber ${classFor(action.tone)}`}
-          aria-label={`Suggested action: ${action.label}`}
-          title={action.label}
+    <div className="px-3 lg:px-6 pt-2 pb-1">
+      {dmPills.length > 0 && (
+        <div
+          className="flex flex-wrap gap-1.5 mb-1.5"
+          role="group"
+          aria-label="DM-suggested actions"
         >
-          {action.label}
-        </button>
-      ))}
-      {ALWAYS_AVAILABLE.map((action) => (
-        <button
-          key={`always-${action.label}`}
-          type="button"
-          onClick={() => setInput(action.label)}
-          className={`px-2.5 py-1 rounded-full border text-xs font-crimson transition-colors focus:outline-none focus:ring-1 focus:ring-amber ${classFor(action.tone)}`}
-          aria-label={`Always-available action: ${action.label}`}
-          title={action.label}
-        >
-          {action.label}
-        </button>
-      ))}
+          {dmPills.map((action, i) => (
+            <button
+              key={`dm-${i}-${action.label}`}
+              type="button"
+              onClick={() => setInput(action.label)}
+              className={`${PILL_CLASSES} ${classFor(action.tone)}`}
+              aria-label={`Suggested action: ${action.label}`}
+              title={action.label}
+            >
+              {action.label}
+            </button>
+          ))}
+        </div>
+      )}
+      <div
+        className="flex flex-wrap gap-1.5"
+        role="group"
+        aria-label="Always-available actions"
+      >
+        {ALWAYS_AVAILABLE.map((action) => (
+          <button
+            key={`always-${action.label}`}
+            type="button"
+            onClick={() => setInput(action.label)}
+            className={`${PILL_CLASSES} ${classFor(action.tone)}`}
+            aria-label={`Always-available action: ${action.label}`}
+            title={action.label}
+          >
+            {action.label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
