@@ -1,0 +1,88 @@
+import { describe, it, expect, beforeEach } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { SettingsDrawer } from './SettingsDrawer';
+import { useUIStore, FONT_SIZE_DEFAULT } from '../../stores/uiStore';
+
+beforeEach(() => {
+  useUIStore.setState({ settingsOpen: false, fontSize: FONT_SIZE_DEFAULT });
+  localStorage.removeItem('sentinel.uiPrefs');
+});
+
+describe('SettingsDrawer', () => {
+  it('always mounted but hidden when settingsOpen is false', () => {
+    const { container } = render(<SettingsDrawer />);
+    const drawer = container.querySelector('[role="dialog"]');
+    expect(drawer).not.toBeNull();
+    expect(drawer.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it('exposed (aria-hidden=false) when settingsOpen is true', () => {
+    useUIStore.setState({ settingsOpen: true });
+    const { container } = render(<SettingsDrawer />);
+    const drawer = container.querySelector('[role="dialog"]');
+    expect(drawer.getAttribute('aria-hidden')).toBe('false');
+  });
+
+  it('shows the current font-size label', () => {
+    useUIStore.setState({ settingsOpen: true, fontSize: 'large' });
+    render(<SettingsDrawer />);
+    expect(screen.getByText('Large')).toBeInTheDocument();
+  });
+
+  it('A+ button advances the font size', async () => {
+    useUIStore.setState({ settingsOpen: true, fontSize: 'normal' });
+    render(<SettingsDrawer />);
+    await userEvent.click(screen.getByRole('button', { name: 'Increase font size' }));
+    expect(useUIStore.getState().fontSize).toBe('large');
+  });
+
+  it('A− button reverses the font size', async () => {
+    useUIStore.setState({ settingsOpen: true, fontSize: 'large' });
+    render(<SettingsDrawer />);
+    await userEvent.click(screen.getByRole('button', { name: 'Decrease font size' }));
+    expect(useUIStore.getState().fontSize).toBe('normal');
+  });
+
+  it('A− is disabled at min (small)', () => {
+    useUIStore.setState({ settingsOpen: true, fontSize: 'small' });
+    render(<SettingsDrawer />);
+    const minusBtn = screen.getByRole('button', { name: 'Decrease font size' });
+    expect(minusBtn).toBeDisabled();
+  });
+
+  it('A+ is disabled at max (xlarge)', () => {
+    useUIStore.setState({ settingsOpen: true, fontSize: 'xlarge' });
+    render(<SettingsDrawer />);
+    const plusBtn = screen.getByRole('button', { name: 'Increase font size' });
+    expect(plusBtn).toBeDisabled();
+  });
+
+  it('close button calls closeSettings', async () => {
+    useUIStore.setState({ settingsOpen: true });
+    render(<SettingsDrawer />);
+    await userEvent.click(screen.getByRole('button', { name: 'Close settings' }));
+    expect(useUIStore.getState().settingsOpen).toBe(false);
+  });
+
+  it('font-size changes persist via the uiStore middleware', async () => {
+    useUIStore.setState({ settingsOpen: true, fontSize: 'normal' });
+    render(<SettingsDrawer />);
+    await userEvent.click(screen.getByRole('button', { name: 'Increase font size' }));
+    // Persist middleware writes synchronously in jsdom
+    const persisted = JSON.parse(localStorage.getItem('sentinel.uiPrefs'));
+    expect(persisted.state.fontSize).toBe('large');
+  });
+
+  it('clicking A+ multiple times steps through sizes and caps at xlarge', async () => {
+    useUIStore.setState({ settingsOpen: true, fontSize: 'small' });
+    render(<SettingsDrawer />);
+    const plusBtn = screen.getByRole('button', { name: 'Increase font size' });
+    await userEvent.click(plusBtn);  // → normal
+    await userEvent.click(plusBtn);  // → large
+    await userEvent.click(plusBtn);  // → xlarge
+    expect(useUIStore.getState().fontSize).toBe('xlarge');
+    // The 4th click should be blocked (button disabled) but even if forced, clamps
+    expect(plusBtn).toBeDisabled();
+  });
+});

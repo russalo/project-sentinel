@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useChatStore } from '../../stores/chatStore';
+import { useUIStore, FONT_SIZE_CLASS } from '../../stores/uiStore';
 import { DeltaMessage } from './DeltaMessage';
 import { NarrativeText } from './NarrativeText';
 
@@ -15,6 +16,13 @@ export function NarrativeScroll() {
   const activeView = useChatStore((state) => state.activeView);
   const setActiveView = useChatStore((state) => state.setActiveView);
   const unreadSystemLog = useChatStore((state) => state.unreadSystemLog);
+  // Player-adjustable font size for the DM narrative — scaled via Tailwind
+  // text-* class on the wrapper. Applies to DM messages + the live stream
+  // buffer only; NOT to player echoes, system events, deltas, or pills
+  // (those stay at chrome scale for legibility + hit-target reasons).
+  // Persisted in localStorage via useUIStore's persist middleware.
+  const fontSize = useUIStore((state) => state.fontSize);
+  const fontSizeClass = FONT_SIZE_CLASS[fontSize] || FONT_SIZE_CLASS.normal;
   const scrollRef = useRef(null);
   const scrollLogRef = useRef(null);
 
@@ -77,7 +85,7 @@ export function NarrativeScroll() {
         {messages.map((msg) => (
           <div key={msg.id} className="animate-fade-in">
             {msg.type === 'dm' && (
-              <div className="text-ink font-crimson leading-relaxed prose-narrative">
+              <div className={`text-ink font-crimson leading-relaxed prose-narrative ${fontSizeClass}`}>
                 <NarrativeText>{msg.content}</NarrativeText>
               </div>
             )}
@@ -96,7 +104,7 @@ export function NarrativeScroll() {
         ))}
 
         {streamBuffer && (
-          <div className="text-ink font-crimson leading-relaxed prose-narrative animate-fade-in">
+          <div className={`text-ink font-crimson leading-relaxed prose-narrative animate-fade-in ${fontSizeClass}`}>
             <NarrativeText>{streamBuffer}</NarrativeText>
             <span className="cursor"></span>
           </div>

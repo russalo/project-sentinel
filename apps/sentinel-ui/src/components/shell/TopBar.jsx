@@ -3,7 +3,7 @@ import { usePersonaStore } from '../../stores/personaStore';
 import { usePlayerStore } from '../../stores/playerStore';
 import { useUIStore } from '../../stores/uiStore';
 import { Link } from 'wouter';
-import { Menu, Share2, Users, BookOpen, Database, MessageSquare } from 'lucide-react';
+import { Menu, Share2, Users, BookOpen, Database, MessageSquare, Settings as SettingsIcon } from 'lucide-react';
 import { PersonaSheet } from '../persona/PersonaSheet';
 import { SeedShareModal } from '../seed/SeedShareModal';
 import { StatusIndicator } from './StatusIndicator';
@@ -14,7 +14,7 @@ import { StatusIndicator } from './StatusIndicator';
 export function TopBar({ seedString = 'ABC-DEF-GHI-JKL' }) {
   const { personaName, mood, isLocked, availableMoods } = usePersonaStore();
   const worldName = usePlayerStore((s) => s.worldName) || 'The Shattered Expanse';
-  const { focusMode, openMobilePanel } = useUIStore();
+  const { focusMode, openMobilePanel, openSettings } = useUIStore();
   const [personaSheetOpen, setPersonaSheetOpen] = useState(false);
   const [seedModalOpen, setSeedModalOpen] = useState(false);
 
@@ -74,6 +74,19 @@ export function TopBar({ seedString = 'ABC-DEF-GHI-JKL' }) {
           >
             <MessageSquare size={18} />
           </Link>
+
+          {/* Settings drawer — player-adjustable prefs (font size today; theme /
+              density / audio later as testers ask). Opens via uiStore; the
+              drawer itself is rendered in AppShell so it overlays the whole
+              page rather than just the TopBar's bounding box. */}
+          <button
+            onClick={openSettings}
+            className="text-dust hover:text-amber transition-colors"
+            aria-label="Settings"
+            title="Settings"
+          >
+            <SettingsIcon size={18} />
+          </button>
 
           {/* Training-data browser */}
           <Link
