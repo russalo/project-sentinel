@@ -4,7 +4,17 @@ import { DeltaMessage } from './DeltaMessage';
 import { NarrativeText } from './NarrativeText';
 
 export function NarrativeScroll() {
-  const { messages, streamBuffer, systemLog, activeView, setActiveView, unreadSystemLog } = useChatStore();
+  // Fine-grained selectors instead of full-store destructuring so the scroll
+  // does NOT re-render on every command-bar keystroke (which writes to the
+  // `input` slice). Without these selectors, every character typed in
+  // CommandBar would trigger a full re-render of the message scroll. (gemini
+  // HIGH on PR #112.)
+  const messages = useChatStore((state) => state.messages);
+  const streamBuffer = useChatStore((state) => state.streamBuffer);
+  const systemLog = useChatStore((state) => state.systemLog);
+  const activeView = useChatStore((state) => state.activeView);
+  const setActiveView = useChatStore((state) => state.setActiveView);
+  const unreadSystemLog = useChatStore((state) => state.unreadSystemLog);
   const scrollRef = useRef(null);
   const scrollLogRef = useRef(null);
 

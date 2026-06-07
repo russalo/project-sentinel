@@ -51,11 +51,21 @@ export function ActionPillRail() {
   // Deduplicate DM suggestions against always-available labels (case-insensitive)
   // — if the DM suggests "Look around" we render it ONCE, as the always-available
   // pill (so the visual placement is stable across turns).
+  //
+  // Defensively validate each entry is `{label: string, …}` BEFORE calling
+  // .toLowerCase() — the LLM occasionally emits malformed shapes (label as
+  // number, null, or a nested object) and we shouldn't TypeError-crash the
+  // pill rail and take the whole turn UI down with it. (gemini HIGH on PR #112.)
   const alwaysAvailableLabels = new Set(
     ALWAYS_AVAILABLE.map((a) => a.label.toLowerCase()),
   );
   const dmPills = (suggestedActions || []).filter(
-    (a) => a && a.label && !alwaysAvailableLabels.has(a.label.toLowerCase()),
+    (a) =>
+      a &&
+      typeof a === 'object' &&
+      typeof a.label === 'string' &&
+      a.label.length > 0 &&
+      !alwaysAvailableLabels.has(a.label.toLowerCase()),
   );
 
   return (

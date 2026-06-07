@@ -302,7 +302,14 @@ def _build_updates(hint: dict, errors: list[str]) -> list[dict]:
     # file ops here — the backend passes the field through verbatim in the
     # `world_update` SSE event the frontend listens for — so it belongs in the
     # known set rather than triggering this warning.
-    known = {"world", "characters", "locations", "factions", "items", "suggestedActions"}
+    known = {
+        "world",
+        "characters",
+        "locations",
+        "factions",
+        "items",
+        "suggestedActions",
+    }
     for unknown in set(hint.keys()) - known:
         errors.append(f"unknown top-level key in world_update block: {unknown!r}")
 

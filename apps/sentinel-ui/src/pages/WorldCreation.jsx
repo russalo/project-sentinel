@@ -197,6 +197,13 @@ export default function WorldCreation() {
         // the entities exist on disk under data/state/core/ and in
         // the session response. Mirrors the per-turn applyUpdate
         // call in useDMStream.js for the streaming path.
+        // Clear any DM-emitted action pills carried over from a prior world
+        // BEFORE deciding whether to seed new ones. The WorldCreation flow is
+        // the fast path — it doesn't go through useWorldHydration (which has
+        // its own clearSuggestedActions), so creating a new world right after
+        // playing another would otherwise leave the prior world's pills
+        // dangling next to the fresh intro narrative. (codex P2 on PR #112.)
+        useChatStore.getState().clearSuggestedActions();
         if (opening.worldUpdates) {
           useWorldStore.getState().applyUpdate(opening.worldUpdates);
           // Surface the intro's DM-emitted action pills (if any). Mirrors
