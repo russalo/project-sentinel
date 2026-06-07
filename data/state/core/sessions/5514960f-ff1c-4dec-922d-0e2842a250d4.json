@@ -57,6 +57,46 @@
         "items": []
       },
       "created_at": ""
+    },
+    {
+      "id": 5,
+      "session_id": "5514960f-ff1c-4dec-922d-0e2842a250d4",
+      "turn_number": 4,
+      "player_action": "Sign the ledger",
+      "narrative": "You take the quill, its shaft cool and smooth beneath your fingers, and dip it into the heavy, dark ink. The metallic tang of the ink fills your nostrils briefly as you press the tip to the parchment. In a moment of focused intent, you inscribe the name \"Russalo\" onto the ledger's next available line. The ink bleeds slightly into the rough paper, a stark black against the yellowed page, joining countless others who have ventured into the unknown.\n\nWarden Meral Hult watches your every stroke. Once you've finished, she gives a curt nod, a flicker of something unreadable in her pale eyes. She doesn't close the ledger immediately, but rather gestures past you, towards the vast, silent chasm. \"So it is done,\" she states, her voice devoid of judgment, simply acknowledging a fact. \"The path is open. May the stillness of the deep not claim your spirit before your return.\"\n\nShe turns and walks back towards the doorframe, resuming her sentinel's stance, leaving you at the scarred counter with the open ledger, the signed page a fresh testament to your resolve. Beyond the watchhouse, the raw, vitrified landscape churns into the gaping maw of the Breach, a silent invitation to the heart of the world's wound.\n\nDo you linger in the watchhouse, perhaps to ask Meral more questions, or do you proceed directly towards the Breach?",
+      "world_updates": {
+        "world": {
+          "tension": 7
+        },
+        "characters": [
+          {
+            "name": "Russalo",
+            "action": "upsert",
+            "role": "player"
+          },
+          {
+            "name": "Warden Meral Hult",
+            "action": "upsert",
+            "status": "alive",
+            "role": "npc",
+            "description": "A stoic, weathered warden guarding the entrance to the Breach. Her eyes are startlingly pale blue.",
+            "currentLocation": "Thornwatch forest edge"
+          }
+        ],
+        "items": [
+          {
+            "name": "Warden's Ledger",
+            "action": "upsert",
+            "type": "misc",
+            "description": "A heavy, leather-bound ledger containing the names of those who have entered the Breach. Russalo has just signed it.",
+            "rarity": "uncommon",
+            "ownedBy": null,
+            "location": "Thornwatch forest edge",
+            "magical": false
+          }
+        ]
+      },
+      "created_at": ""
     }
   ],
   "active": true,
