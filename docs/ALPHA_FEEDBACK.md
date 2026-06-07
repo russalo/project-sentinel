@@ -38,6 +38,7 @@ Cross-link: [`BACKLOG.md`](./BACKLOG.md) for triaged work entries; [`ROADMAP.md`
 - [2026-06-07, internal smoke] iOS Chrome/Safari `:hover` background on action pills stays lit after tap until the next interaction elsewhere. Cosmetic only. → BACKLOG ("iOS stuck `:hover` on action pills after tap")
 - [2026-06-07, internal smoke] SystemLog doesn't persist across browser refresh — `chatStore` is in-memory and `useWorldHydration` doesn't reconstruct system-log entries from the per-turn `world_updates` history. Refresh = empty system log until new turns happen. (Not yet a BACKLOG entry; capture for triage.)
 - [2026-06-07, internal smoke] First feedback submission landed with `bundleHash: "dev"` — `VITE_BUNDLE_HASH` not wired into the build. Loses "which bundle?" provenance for triage. → BACKLOG ("Inject bundle hash into the SPA via VITE_BUNDLE_HASH at build time")
+- [2026-06-07, Russell + Johnny] World-token recovery friction: tester's localStorage cleared (hard-refresh, "clear browsing data", private mode) → 401 on world hydration → currently requires manual token mint + paste-into-localStorage relay through Russell. Hit twice in 24 hours. → BACKLOG ("Per-tester basic_auth + auto-reauth flow for world-token recovery") — TARGETED FOR MONDAY 2026-06-08 PATCH WINDOW
 
 ## UI/UX Improvements
 
