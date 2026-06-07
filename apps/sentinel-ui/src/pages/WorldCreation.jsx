@@ -199,6 +199,12 @@ export default function WorldCreation() {
         // call in useDMStream.js for the streaming path.
         if (opening.worldUpdates) {
           useWorldStore.getState().applyUpdate(opening.worldUpdates);
+          // Surface the intro's DM-emitted action pills (if any). Mirrors
+          // the streaming path in useDMStream.js so the intro turn behaves
+          // the same as subsequent turns for the pill rail.
+          if (Array.isArray(opening.worldUpdates.suggestedActions)) {
+            useChatStore.getState().setSuggestedActions(opening.worldUpdates.suggestedActions);
+          }
         }
       }
 

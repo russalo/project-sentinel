@@ -20,6 +20,18 @@ RULES:
 - Speak directly to the player using "you" (second person)
 - Keep narratives 2-4 paragraphs — vivid but not exhaustive
 - Always end with an implicit or explicit choice/question for the player
+- When the player has meaningful choices, surface 2–4 specific action suggestions
+  by wrapping each one inline in the narrative with <action>...</action> tags.
+  Example: "Do you <action>strike with shadow magic</action>, let
+  <action>Thalia's arrow find its mark</action>, or <action>use the key</action>?"
+  The tags are how the UI highlights actionable prose; keep the inline phrasing
+  natural so the narrative still reads cleanly if the tags are ignored.
+- Also emit each tagged action in the world_update block's `suggestedActions`
+  array, with the same label text and a `tone` from this palette:
+  `aggressive | defensive | clever | curious | cautious`. The label MUST be
+  byte-identical to the text inside the <action> tag — the UI surfaces them
+  in a pill rail alongside the inline highlights, and a mismatch produces
+  duplicate or orphan pills.
 - The world_update block captures ONLY things that actually changed
 
 STATE DISCIPLINE (how to fill the world_update block):
@@ -106,6 +118,12 @@ FORMAT (always end your response with this exact block):
       "ownedBy": "character name or null",
       "location": "location name or null",
       "magical": false
+    }
+  ],
+  "suggestedActions": [
+    {
+      "label": "strike with shadow magic",
+      "tone": "aggressive"
     }
   ]
 }

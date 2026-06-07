@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useChatStore } from '../../stores/chatStore';
 import { DeltaMessage } from './DeltaMessage';
+import { NarrativeText } from './NarrativeText';
 
 export function NarrativeScroll() {
   const { messages, streamBuffer, systemLog, activeView, setActiveView, unreadSystemLog } = useChatStore();
@@ -66,7 +67,9 @@ export function NarrativeScroll() {
         {messages.map((msg) => (
           <div key={msg.id} className="animate-fade-in">
             {msg.type === 'dm' && (
-              <div className="text-ink font-crimson leading-relaxed prose-narrative">{msg.content}</div>
+              <div className="text-ink font-crimson leading-relaxed prose-narrative">
+                <NarrativeText>{msg.content}</NarrativeText>
+              </div>
             )}
             {msg.type === 'player' && (
               <div className="text-amber/80 text-sm italic">&gt; {msg.content}</div>
@@ -84,7 +87,7 @@ export function NarrativeScroll() {
 
         {streamBuffer && (
           <div className="text-ink font-crimson leading-relaxed prose-narrative animate-fade-in">
-            {streamBuffer}
+            <NarrativeText>{streamBuffer}</NarrativeText>
             <span className="cursor"></span>
           </div>
         )}

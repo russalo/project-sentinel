@@ -1,12 +1,15 @@
 import { Send } from 'lucide-react';
-import { useState } from 'react';
 import { useChatStore } from '../../stores/chatStore';
 import { usePlayerStore } from '../../stores/playerStore';
 import { useDMStream } from '../../hooks/useDMStream';
+import { ActionPillRail } from './ActionPillRail';
 
+// `input` is lifted to chatStore so the ActionPillRail and inline `<action>`
+// highlights (NarrativeText) can populate the field via setInput(label). The
+// pills NEVER auto-submit — the player still reviews / edits before sending.
+// See BACKLOG-#474 + project_canon_modules_framing memory for the spec.
 export function CommandBar() {
-  const [input, setInput] = useState('');
-  const { addMessage, isStreaming } = useChatStore();
+  const { input, setInput, addMessage, isStreaming } = useChatStore();
   const { sessionId } = usePlayerStore();
   const { sendAction } = useDMStream();
 
@@ -31,26 +34,31 @@ export function CommandBar() {
 
   return (
     <footer
-      className="bg-codex border-t border-border px-3 lg:px-6 pt-3 flex gap-2 lg:gap-3"
+      className="bg-codex border-t border-border"
       style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
     >
-      <div className="flex-1 flex gap-2">
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={sessionId ? 'What do you do?' : 'Start a new world to begin...'}
-          disabled={isStreaming || !sessionId}
-          className="flex-1 bg-void border border-border rounded px-3 py-2.5 text-base md:text-sm text-ink placeholder-dust focus:outline-none focus:border-amber transition-colors disabled:opacity-50"
-        />
-        <button
-          onClick={handleSubmit}
-          disabled={isStreaming || !sessionId}
-          className="px-4 py-2.5 bg-amber text-void rounded hover:bg-amber/90 transition-colors flex items-center gap-2 disabled:opacity-50"
-        >
-          <Send size={16} />
-        </button>
+      <ActionPillRail />
+      <div
+        className="px-3 lg:px-6 pt-1 flex gap-2 lg:gap-3"
+      >
+        <div className="flex-1 flex gap-2">
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={sessionId ? 'What do you do?' : 'Start a new world to begin...'}
+            disabled={isStreaming || !sessionId}
+            className="flex-1 bg-void border border-border rounded px-3 py-2.5 text-base md:text-sm text-ink placeholder-dust focus:outline-none focus:border-amber transition-colors disabled:opacity-50"
+          />
+          <button
+            onClick={handleSubmit}
+            disabled={isStreaming || !sessionId}
+            className="px-4 py-2.5 bg-amber text-void rounded hover:bg-amber/90 transition-colors flex items-center gap-2 disabled:opacity-50"
+          >
+            <Send size={16} />
+          </button>
+        </div>
       </div>
     </footer>
   );

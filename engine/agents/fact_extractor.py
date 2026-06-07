@@ -296,8 +296,13 @@ def _build_updates(hint: dict, errors: list[str]) -> list[dict]:
                 }
             )
 
-    # Warn on unknown top-level keys so prompt drift is visible
-    known = {"world", "characters", "locations", "factions", "items"}
+    # Warn on unknown top-level keys so prompt drift is visible. `suggestedActions`
+    # is a UI-only hint (per-turn pill suggestions for the SPA; see the DM prompt's
+    # `<action>...</action>` + `suggestedActions` bullets). It doesn't produce any
+    # file ops here — the backend passes the field through verbatim in the
+    # `world_update` SSE event the frontend listens for — so it belongs in the
+    # known set rather than triggering this warning.
+    known = {"world", "characters", "locations", "factions", "items", "suggestedActions"}
     for unknown in set(hint.keys()) - known:
         errors.append(f"unknown top-level key in world_update block: {unknown!r}")
 
