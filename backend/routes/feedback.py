@@ -126,9 +126,7 @@ async def submit_feedback(request: Request, submission: FeedbackSubmission) -> d
 
     # Per-IP rate limit. 0 = unlimited (the limiter no-ops on limit <= 0).
     ip = client_ip(request, trusted_proxy_hops=settings.trusted_proxy_hops)
-    if not limiter.allow(
-        f"feedback:{ip}", settings.rl_feedback_per_hour, 3600
-    ):
+    if not limiter.allow(f"feedback:{ip}", settings.rl_feedback_per_hour, 3600):
         raise HTTPException(
             status_code=429,
             detail={

@@ -110,7 +110,8 @@ def test_writes_into_dated_subdirectory(feedback_client, feedback_settings):
 
 
 def test_userAgent_captured_from_request_header_not_body(
-    feedback_client, feedback_settings,
+    feedback_client,
+    feedback_settings,
 ):
     # The SPA can't be trusted to pass the user-agent correctly via the body
     # (and it's redundant — the request header already has it). Verify the
@@ -136,9 +137,7 @@ def test_rejects_empty_subject(feedback_client):
 
 
 def test_rejects_oversized_subject(feedback_client):
-    resp = feedback_client.post(
-        "/api/feedback", json=_valid_payload(subject="x" * 200)
-    )
+    resp = feedback_client.post("/api/feedback", json=_valid_payload(subject="x" * 200))
     assert resp.status_code == 422
 
 
@@ -148,9 +147,7 @@ def test_rejects_empty_body(feedback_client):
 
 
 def test_rejects_oversized_body(feedback_client):
-    resp = feedback_client.post(
-        "/api/feedback", json=_valid_payload(body="x" * 5000)
-    )
+    resp = feedback_client.post("/api/feedback", json=_valid_payload(body="x" * 5000))
     assert resp.status_code == 422
 
 
@@ -181,7 +178,8 @@ def test_rejects_invalid_reproducible(feedback_client):
 def test_rate_limit_fires_at_cap(feedback_client, feedback_settings):
     # Tighten the cap on a fresh Settings (frozen → replace)
     feedback_client.app.state.settings = dataclasses.replace(
-        feedback_settings, rl_feedback_per_hour=2,
+        feedback_settings,
+        rl_feedback_per_hour=2,
     )
     # Two submissions allowed
     r1 = feedback_client.post("/api/feedback", json=_valid_payload())
@@ -197,7 +195,8 @@ def test_rate_limit_fires_at_cap(feedback_client, feedback_settings):
 
 def test_rate_limit_zero_means_unlimited(feedback_client, feedback_settings):
     feedback_client.app.state.settings = dataclasses.replace(
-        feedback_settings, rl_feedback_per_hour=0,
+        feedback_settings,
+        rl_feedback_per_hour=0,
     )
     # Many submissions all succeed
     for _ in range(20):
