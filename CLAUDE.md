@@ -220,6 +220,18 @@ in `GEMINI.md`.
 - **git-sync committing to the checked-out branch** — the `master`-pollution
   hazard during play/recording (only while `SENTINEL_WORLDS_ROOT` is unset; once
   set, per-turn commits go to each world's own repo outside the code repo).
+- **Squash-merge captures gameplay state from a feature branch** — when
+  gameplay happens *on the feature branch* during PR review (because
+  `SENTINEL_WORLDS_ROOT` is unset and per-turn writes are committing to
+  HEAD), the squash-merge picks up the gameplay's data files alongside
+  the intended code changes. Those files land permanently on master and
+  can't be reset away (PR #108 brought in 5 such orphan files; cleanup
+  needed PR #110). Two preventatives, in order of preference: (a) keep
+  `SENTINEL_WORLDS_ROOT` armed wherever you do PR development (so
+  gameplay never touches the code repo); (b) check `git log` for any
+  `[sentinel] world=… session=… turn=…` commits on the feature branch
+  *before* opening a PR — those are the early-warning signal that
+  gameplay data is about to land on master.
 - **Malformed-LLM-output intolerance** — non-`dict` `world_update`, non-`list`
   collections.
 - **Path traversal via id interpolation** — `session_id`/`world_id` as path
@@ -307,55 +319,86 @@ in `GEMINI.md`.
   OPENAI_BASE_URL DM_MODEL` first so a stale shell-exported value can't win over
   `.env`. Verify a turn (or the loaded config) after restarting — don't assume
   `--reload` caught it.
-- **This repo is tailnet-only; public-facing exposure is out of scope here.**
-  Sentinel runs behind the tailnet (`sentinel.dev.russalo.com`). The transition
-  to public-facing — DNS, TLS certs, the internet-facing edge — is managed
-  externally (system-managed Caddy + a separate infra agent), **not** by this
-  repo. Do not treat DNS/cert/edge work as repo tasks or list them as Sentinel
-  readiness gaps. The repo's contribution is the *artifacts + the invariant*:
-  the Caddy invite-gate template (`infrastructure/caddy/Caddyfile.example`), the
-  systemd unit templates (`infrastructure/systemd/`), and the hard rule that the
-  edge proxies **only** the backend `:8001` — never the MCP write layer
-  `:8010`/`:8012` (loopback/tailnet only; exposing them = unauthenticated world
-  read/write/rollback). The in-repo prerequisite is the access-layer cutover
-  (arm the `SENTINEL_*` knobs, `just cutover-check` green). Verify the armed
-  cutover safely with an **isolated stack** — armed fs-manager/git-sync/backend
-  on alt ports with a temp `SENTINEL_WORLDS_ROOT` (direct env injection;
-  `SENTINEL_SKIP_ENV_CHECK=1` if not loading `.env`) — so nothing touches the
-  running dev stack or commits to the repo.
-- **Local play/smoke sessions commit to the checked-out branch.** The
-  engine's `git-sync` writes a per-turn
-  `[sentinel] world=… session=… turn=…` commit (the `world=` prefix since
-  ADR 0002 Slice 1 threads a per-session `world_id`) to whatever branch is
-  checked out — normally `master` — on every turn. Running a playthrough locally therefore pollutes `master` and
-  diverges it from origin (this is exactly what produced the 22 stray
-  commits cleaned up on 2026-05-30). Run play/smoke sessions on a
-  throwaway branch, or reset/clean up afterward, and never push those
-  auto-commits. **Simplest durable fix for local dev:** `export
-  SENTINEL_WORLDS_ROOT=~/sentinel-worlds` (a path outside the repo) in your shell
-  and run the servers via the individual recipes (`just fs-manager` / `just
-  git-sync` / `just dev-backend`) — **not** `just start`, whose `env` prerequisite
-  regenerates `.env` and clobbers the value (and the Groq key). See
-  `docs/WORKSPACE.md` § "Local dev: keep gameplay out of the code repo".
-  The `just reset-world` and smoke-harness items in `docs/BACKLOG.md` remain the
-  broader fix. (This hazard holds while `SENTINEL_WORLDS_ROOT` is unset — the
-  default. Once it's set — whether the ADR 0002 Slice 3 cutover or the local-dev
-  recipe above — git-sync commits to each world's own repo *outside* the code
-  repo, and local play no longer touches the checked-out branch.)
-- **Tailnet Claude owns the public-facing edge.** The lane split:
-  *sentinel-side (mine):* the app, the app-side cutover (env flip arming
-  `SENTINEL_WORLDS_ROOT` / `SENTINEL_SESSION_TOKEN_SECRET` / `SENTINEL_RL_*` / `SENTINEL_LLM_DAILY_CEILING`),
-  the structural edge artifacts (`infrastructure/caddy/Caddyfile.example` +
-  `infrastructure/systemd/*.service` templates), and the **hard invariant
-  Caddy proxies only `:8001`, never `:8010`/`:8012`** (the MCP write layer
-  stays loopback; `tests/test_caddy_invariant.py` guards it). *tailnet-Claude-side:*
-  DNS, TLS certs, the live edge, cloud-key management, prod-LiteLLM build, and
-  **operational page content in the deployed Caddyfile** (maintenance HTML,
-  `handle_errors` blocks — see `project_caddy_handle_errors_lane` memory). Don't
-  list DNS/cert/public-edge work as a sentinel gap or try to fix it here. Term
-  precision: "tailnet Claude" is the project's deliberate term for this role
-  (used throughout memory + commit messages + Caddyfile.example); keep it even
-  when a review bot suggests genericizing it — the convention is repo-wide.
+- **Sentinel runs on TWO hostnames now (since 2026-06-07).** The closed
+  alpha is **live at `sentinel.russalo.com/alpha/`** (gate-fronted: DNS
+  resolves to a separate gate machine that terminates TLS and reverse-
+  proxies cleartext HTTP over tailnet to origin-core's Caddy — same shape
+  as `blog.russalo.com`). The tailnet dev site at `sentinel.dev.russalo.com`
+  stays up in parallel. **Origin-core never accepts a public connection
+  directly** — listener isolation is enforced at the UFW firewall layer,
+  NOT by `bind` in Caddy (origin-core's Caddy is multi-tenant with blog +
+  Blueprint on the same wildcard `:80` listener; see
+  `project_origin_core_caddy_is_multitenant` memory).
+  The cutover landed: `SENTINEL_WORLDS_ROOT`, `SENTINEL_SESSION_TOKEN_SECRET`,
+  `SENTINEL_RL_SESSION_CREATE_PER_HOUR=20`,
+  `SENTINEL_RL_STREAM_PER_MINUTE=30`, `SENTINEL_LLM_DAILY_CEILING=10000`,
+  `SENTINEL_MAX_CONCURRENT_STREAMS=10`, `SENTINEL_DEBUG=false`,
+  `SENTINEL_TRUSTED_PROXY_HOPS=1` all armed in `infrastructure/.env` on
+  origin-core; `just cutover-check` reports READY. Per-world routing
+  applies ONLY to the mutable world state (session JSON in
+  `data/state/core/sessions/`, session-log markdown in
+  `data/lore/core/sessions/`, fs-manager write sets for entities /
+  locations / items / world meta) — read-only shared assets
+  (`schemas/`, the core-lore codex under `data/lore/core/` *outside*
+  `sessions/`, persona presets) continue to load from the repo root
+  and are NOT relocated per-world. The repo's contribution
+  remains *artifacts + invariant*: the Caddy invite-gate template
+  (`infrastructure/caddy/Caddyfile.example`, with the gate-fronted
+  adjustments `http://` scheme + no `bind`), the systemd unit templates
+  (`infrastructure/systemd/`), the **hard rule that any edge proxies
+  ONLY the backend `:8001`** — never the MCP write layer `:8010`/`:8012`
+  (`tests/test_caddy_invariant.py` guards it). What stays out of scope
+  here: DNS, TLS certs, the deployed Caddyfile content, gate's own config
+  — those are tailnet Claude's lane (see below). Verify a future cutover
+  change safely with an **isolated stack** — armed fs-manager/git-sync/
+  backend on alt ports with a temp `SENTINEL_WORLDS_ROOT` (direct env
+  injection; `SENTINEL_SKIP_ENV_CHECK=1` if not loading `.env`) — so
+  nothing touches the running live stack.
+- **Local play/smoke sessions commit to the checked-out branch — UNLESS
+  `SENTINEL_WORLDS_ROOT` is armed.** The engine's `git-sync` writes a
+  per-turn `[sentinel] world=… session=… turn=…` commit (the `world=`
+  prefix since ADR 0002 Slice 1 threads a per-session `world_id`) to
+  whatever branch is checked out — normally `master` — on every turn.
+  **On origin-core (post-2026-06-07 cutover) this is no longer a hazard**:
+  `SENTINEL_WORLDS_ROOT=<WORLDS_ROOT>` (a path outside the code repo) is
+  armed in `infrastructure/.env`, so all gameplay routes to per-world
+  repos *outside* the code repo. **The hazard remains for any machine where
+  the env var is unset** (any fresh clone, a contributor's laptop, a
+  test box) — running a playthrough there pollutes the checked-out
+  branch (this is what produced the 22 stray commits cleaned up
+  2026-05-30, and what produced the 10 ahead-of-origin commits cleaned
+  up by the 2026-06-07 cutover restart). **Fix on unconfigured machines:**
+  `export SENTINEL_WORLDS_ROOT=~/sentinel-worlds` in your shell and run
+  the servers via the individual recipes (`just fs-manager` / `just
+  git-sync` / `just dev-backend`) — **not** `just start`, whose `env`
+  prerequisite regenerates `.env` and clobbers the value (and the LLM
+  key). See `docs/WORKSPACE.md` § "Local dev: keep gameplay out of the
+  code repo".
+- **Tailnet Claude owns the public-facing edge (now LIVE).** The lane
+  split, validated through deployment 2026-06-07: *sentinel-side (mine):*
+  the app, the access-layer cutover (env knobs armed in
+  `infrastructure/.env` on origin-core), the structural edge artifacts
+  (`infrastructure/caddy/Caddyfile.example` + `infrastructure/systemd/*.service`
+  templates), and the **hard invariant Caddy proxies only `:8001`, never
+  `:8010`/`:8012`** (the MCP write layer stays loopback;
+  `tests/test_caddy_invariant.py` guards it — 15 tests including the
+  gate-fronted invariants: `http://` scheme, hostname is the apex,
+  hostname root returns 404, bare `/alpha` redirects to `/alpha/`, all
+  app handles wrapped in `handle_path /alpha/*`, operator paths
+  (`/api/sessions*`, `/api/admin*`, `/_status`) 404 on the edge).
+  *tailnet-Claude-side:* DNS (apex points at gate, not origin-core), TLS
+  certs (terminated at gate, cleartext over tailnet to origin-core),
+  the live edge config on gate, cloud-key management, prod-LiteLLM
+  build, and **operational page content in any deployed Caddyfile**
+  (maintenance HTML, `handle_errors` blocks — see
+  `project_caddy_handle_errors_lane` memory). The gate-fronted topology
+  is captured in `project_gate_fronted_topology` memory; the multi-tenant
+  origin-core Caddy constraint (which rules out `bind` in our template)
+  is captured in `project_origin_core_caddy_is_multitenant`. Don't list
+  DNS/cert/public-edge work as a sentinel gap or try to fix it here.
+  Term precision: "tailnet Claude" is the project's deliberate term for
+  this role (used throughout memory + commit messages + Caddyfile.example);
+  keep it even when a review bot suggests genericizing it.
 - **Cross-lane coordination protocol** (validated on the `handle_errors`
   loop 2026-06-06): when sentinel knows the shape of an artifact but
   tailnet (or another peer agent) owns its placement, *draft → relay → verify
