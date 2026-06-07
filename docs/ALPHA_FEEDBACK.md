@@ -37,12 +37,14 @@ Cross-link: [`BACKLOG.md`](./BACKLOG.md) for triaged work entries; [`ROADMAP.md`
 - [2026-06-07, internal smoke] DM-narrative markdown emphasis (`*x*` / `**x**` / `***x***`) renders on the live streamBuffer (visible during streaming) but disappears once the turn commits to messages[]. Bold not visible anywhere. → BACKLOG ("DM-narrative markdown emphasis renders ONLY on the live streamBuffer")
 - [2026-06-07, internal smoke] iOS Chrome/Safari `:hover` background on action pills stays lit after tap until the next interaction elsewhere. Cosmetic only. → BACKLOG ("iOS stuck `:hover` on action pills after tap")
 - [2026-06-07, internal smoke] SystemLog doesn't persist across browser refresh — `chatStore` is in-memory and `useWorldHydration` doesn't reconstruct system-log entries from the per-turn `world_updates` history. Refresh = empty system log until new turns happen. (Not yet a BACKLOG entry; capture for triage.)
+- [2026-06-07, internal smoke] First feedback submission landed with `bundleHash: "dev"` — `VITE_BUNDLE_HASH` not wired into the build. Loses "which bundle?" provenance for triage. → BACKLOG ("Inject bundle hash into the SPA via VITE_BUNDLE_HASH at build time")
 
 ## UI/UX Improvements
 
 - [2026-06-07, tester feedback] Narrative font is too small for comfortable reading on iOS. Want a player-adjustable size. Settings-drawer shape decided. → BACKLOG ("Player font-size control via Settings drawer") — targeted for Monday 2026-06-08 patch window
 - [2026-06-07, internal smoke] DM action-pill tone-rainbow dropped for v1 because color meaning isn't conveyed to the player. Re-enable with a legend when we have a teaching moment. → BACKLOG ("Re-enable DM action-pill tones with a player-visible legend")
 - [2026-06-07, internal smoke] Long action-button text glued the trailing `?` onto its own line; coalesced trailing punctuation onto the action's display. ✅ Shipped → PR #113
+- [2026-06-07, Russell] In-product feedback form at `/alpha/feedback/` with TopBar message-icon link. Replaces ad-hoc texting with structured submissions; auto-captures viewport/UA/world+session/url. ✅ Shipped → PR #116
 
 ## General Feedback
 
