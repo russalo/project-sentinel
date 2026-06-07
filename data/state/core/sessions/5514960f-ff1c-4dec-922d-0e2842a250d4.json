@@ -27,6 +27,21 @@
         ]
       },
       "created_at": ""
+    },
+    {
+      "id": 3,
+      "session_id": "5514960f-ff1c-4dec-922d-0e2842a250d4",
+      "turn_number": 2,
+      "player_action": "Approach the warden",
+      "narrative": "You make your way across the short, broken-cobble path towards the watchhouse. As you draw near, Warden Meral Hult pushes herself away from the doorframe, her movements stiff but purposeful. Her eyes, a startling pale blue in her weathered face, meet yours with an intensity that seems to catalog every detail of your being. There's no warmth in her expression, but no overt hostility either\u2014only an ingrained, unyielding assessment. The scent of old parchment and woodsmoke, clinging to her simple wool tunic, precedes her by a step.\n\nShe gestures with a thumb towards the dim interior of the watchhouse, where a heavy, leather-bound ledger rests on a scarred wooden counter. \"Another soul drawn to the mouth of the Breach,\" she states, her voice gravelly but clear, carrying a faint, regional burr. \"State your name, Mage, and your purpose in defying the quiet counsel of these barren lands. The ledger of entry awaits, as do my records of your egress, should you be so fortunate.\"\n\nShe waits, arms crossed, her gaze unwavering. What do you tell Warden Meral Hult?",
+      "world_updates": {
+        "world": {},
+        "characters": [],
+        "locations": [],
+        "factions": [],
+        "items": []
+      },
+      "created_at": ""
     }
   ],
   "active": true,
