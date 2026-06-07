@@ -98,13 +98,34 @@ describe('ActionPillRail', () => {
     expect(allDmPills).toHaveLength(1);
   });
 
-  it('falls back to neutral styling for unknown tone (prompt drift)', () => {
+  it('all DM pills use the same amber class regardless of tone (tones not visualized in v1)', () => {
+    // Per 2026-06-07 UX call: drop the tone-rainbow until we can convey color
+    // meaning to the player. The `tone` field is still ingested + persisted —
+    // just not visualized today. Any tone (or no tone, or a malformed tone)
+    // produces the same amber pill styling, matching the inline `<action>`
+    // highlights in NarrativeText.
     useChatStore.setState({
-      suggestedActions: [{ label: 'mystery move', tone: 'unknown_tone_xyz' }],
+      suggestedActions: [
+        { label: 'A', tone: 'aggressive' },
+        { label: 'B', tone: 'cautious' },
+        { label: 'C', tone: 'unknown_tone_xyz' },
+        { label: 'D' },  // no tone at all
+      ],
     });
     render(<ActionPillRail />);
-    const pill = screen.getByRole('button', { name: 'Suggested action: mystery move' });
-    // Neutral classes (border-border) should be present rather than crashing.
-    expect(pill.className).toContain('border-border');
+    const a = screen.getByRole('button', { name: 'Suggested action: A' });
+    const b = screen.getByRole('button', { name: 'Suggested action: B' });
+    const c = screen.getByRole('button', { name: 'Suggested action: C' });
+    const d = screen.getByRole('button', { name: 'Suggested action: D' });
+    // All DM pills share the same amber-themed class — no tone-specific
+    // coloring (rust / cobalt / moss / ether) leaks into the rendered class.
+    expect(a.className).toContain('border-amber');
+    expect(b.className).toContain('border-amber');
+    expect(c.className).toContain('border-amber');
+    expect(d.className).toContain('border-amber');
+    expect(a.className).not.toContain('border-rust');
+    expect(a.className).not.toContain('border-cobalt');
+    expect(a.className).not.toContain('border-moss');
+    expect(a.className).not.toContain('border-ether');
   });
 });

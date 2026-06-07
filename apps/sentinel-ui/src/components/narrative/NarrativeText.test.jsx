@@ -64,4 +64,111 @@ describe('NarrativeText', () => {
     const { container } = render(<NarrativeText>{null}</NarrativeText>);
     expect(container.textContent).toBe('');
   });
+
+  it('coalesces trailing punctuation onto the action display (prevents orphan)', () => {
+    // The narrative ends `...<action>flee</action>?` — without coalescing the
+    // `?` lives in its own segment and can wrap to a new line when the
+    // preceding action is long. The action button should DISPLAY 'flee?' but
+    // the click label stays clean ('flee', no punctuation).
+    render(<NarrativeText>{'Do you <action>flee</action>?'}</NarrativeText>);
+    const btn = screen.getByRole('button', { name: 'Suggest action: flee' });
+    expect(btn.textContent).toBe('flee?');
+  });
+
+  it('click label is unchanged when trailing punctuation is glued onto display', async () => {
+    render(<NarrativeText>{'Do you <action>strike</action>?'}</NarrativeText>);
+    await userEvent.click(screen.getByRole('button', { name: 'Suggest action: strike' }));
+    // setInput should receive just 'strike' — NOT 'strike?'
+    expect(useChatStore.getState().input).toBe('strike');
+  });
+
+  it('coalesces only the leading-punctuation prefix and keeps the rest as text', () => {
+    // After an action: `<action>X</action>, then`
+    // The `,` should glue onto the action, ` then` should remain as text.
+    const { container } = render(
+      <NarrativeText>{'You <action>flee</action>, then look back.'}</NarrativeText>,
+    );
+    const btn = screen.getByRole('button', { name: 'Suggest action: flee' });
+    expect(btn.textContent).toBe('flee,');
+    expect(container.textContent).toContain(' then look back.');
+  });
+
+  it('renders *word* markdown as italic <em>', () => {
+    const { container } = render(<NarrativeText>{'You *must* hurry.'}</NarrativeText>);
+    const em = container.querySelector('em');
+    expect(em).not.toBeNull();
+    expect(em.textContent).toBe('must');
+    // Tailwind preflight wipes <em>'s default italic — verify the explicit
+    // `italic` class is present so the word actually renders italic.
+    expect(em.className).toContain('italic');
+    // Surrounding text preserved
+    expect(container.textContent).toBe('You must hurry.');
+  });
+
+  it('renders multi-word *phrases* as italic', () => {
+    const { container } = render(
+      <NarrativeText>{'Magic *of the old gods* lingers.'}</NarrativeText>,
+    );
+    const em = container.querySelector('em');
+    expect(em.textContent).toBe('of the old gods');
+  });
+
+  it('does not crash on dangling single asterisks', () => {
+    const { container } = render(
+      <NarrativeText>{'A 5 * 7 multiplication keeps asterisks literal.'}</NarrativeText>,
+    );
+    // No <em> element — the dangling `*` should render literally.
+    expect(container.querySelector('em')).toBeNull();
+    expect(container.textContent).toContain('5 * 7');
+  });
+
+  it('handles emphasis inside narrative containing action tags', () => {
+    const { container } = render(
+      <NarrativeText>
+        {'The *ancient* doors creak. Do you <action>enter</action>?'}
+      </NarrativeText>,
+    );
+    expect(container.querySelector('em').textContent).toBe('ancient');
+    const btn = screen.getByRole('button', { name: 'Suggest action: enter' });
+    expect(btn.textContent).toBe('enter?');
+  });
+
+  it('renders **word** as bold <strong>', () => {
+    const { container } = render(<NarrativeText>{'You **must** hurry.'}</NarrativeText>);
+    const strong = container.querySelector('strong');
+    expect(strong).not.toBeNull();
+    expect(strong.textContent).toBe('must');
+    // Tailwind preflight wipes <strong>'s default bold — verify class is present.
+    expect(strong.className).toContain('font-bold');
+    // No <em> for plain bold.
+    expect(container.querySelector('em')).toBeNull();
+    expect(container.textContent).toBe('You must hurry.');
+  });
+
+  it('renders ***word*** as bold-italic <strong><em>', () => {
+    const { container } = render(
+      <NarrativeText>{'Behold, the ***Final Word*** spoken.'}</NarrativeText>,
+    );
+    const strong = container.querySelector('strong');
+    const em = container.querySelector('em');
+    expect(strong).not.toBeNull();
+    expect(em).not.toBeNull();
+    // The <em> should be nested inside the <strong>.
+    expect(strong.contains(em)).toBe(true);
+    expect(em.textContent).toBe('Final Word');
+    expect(strong.className).toContain('font-bold');
+    expect(em.className).toContain('italic');
+    expect(container.textContent).toBe('Behold, the Final Word spoken.');
+  });
+
+  it('does not double-wrap **bold** into italic (regression on single-asterisk overmatch)', () => {
+    // Before the bold-aware regex, `**bold**` matched the inner `*bold*` and
+    // rendered as `*<em>bold</em>*` (literal asterisks around italics).
+    // After: it renders as a single <strong> with no <em> wrapper.
+    const { container } = render(<NarrativeText>{'The **truth** matters.'}</NarrativeText>);
+    expect(container.querySelector('strong').textContent).toBe('truth');
+    expect(container.querySelector('em')).toBeNull();
+    // No literal asterisks in the rendered text.
+    expect(container.textContent).toBe('The truth matters.');
+  });
 });

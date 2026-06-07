@@ -8,17 +8,102 @@
 // content renders as plain text. No crash, no styling glitch — just no
 // highlight on that phrase. The pill rail still surfaces whatever's in
 // `suggestedActions` so the player has options regardless.
+//
+// Polish (2026-06-07):
+//   1. Trailing punctuation immediately after a `</action>` close tag is
+//      glued onto the action's *display* (not its click label). Without this,
+//      a long action span ending at the right edge of the column would push
+//      the trailing `?` / `,` / `.` onto its own line — looks orphaned.
+//   2. `*word*` markdown emphasis in text segments renders as <em>. Bold
+//      `**word**` is deferred — single-asterisk only for now.
 
+import { Fragment } from 'react';
 import { parseActionTags } from '../../utils/parseActionTags';
 import { useChatStore } from '../../stores/chatStore';
+
+const TRAILING_PUNCT_RE = /^([.,;:!?]+)(.*)$/s;
+// Alternation ordered longest-first so `***bold-italic***` matches the triple
+// pattern before being mis-snatched by the double or single. `[^*\n]+?` means
+// the content can't itself contain `*` — keeps the pattern simple and avoids
+// catastrophic backtracking on long runs of asterisks.
+const EMPHASIS_RE = /(\*\*\*[^*\n]+?\*\*\*|\*\*[^*\n]+?\*\*|\*[^*\n]+?\*)/g;
+
+// Coalesce trailing punctuation from a text segment immediately following an
+// action into the action's `trailingPunct` field. Click label stays clean;
+// only the visual display picks up the punctuation. Prevents orphan-line
+// punctuation when the preceding action span fills the column width.
+function coalesceTrailingPunctuation(segments) {
+  const out = [];
+  let i = 0;
+  while (i < segments.length) {
+    const seg = segments[i];
+    const next = segments[i + 1];
+    if (seg.type === 'action' && next && next.type === 'text') {
+      const m = next.content.match(TRAILING_PUNCT_RE);
+      if (m) {
+        const [, punct, rest] = m;
+        out.push({ ...seg, trailingPunct: punct });
+        if (rest && rest.length > 0) {
+          out.push({ type: 'text', content: rest });
+        }
+        i += 2;
+        continue;
+      }
+    }
+    out.push(seg);
+    i += 1;
+  }
+  return out;
+}
+
+// Render a text segment with markdown emphasis:
+//   `***x***` → <strong><em>x</em></strong>  (bold-italic)
+//   `**x**`   → <strong>x</strong>           (bold)
+//   `*x*`     → <em>x</em>                    (italic)
+// Order matters: check triple before double before single so longer markers
+// win. Tailwind preflight resets <em> + <strong> user-agent styling so the
+// `italic` / `font-bold` classes are required for them to actually render.
+// Adjacent text runs are not coalesced — the caller keys by index. Empty
+// asterisk pairs (whitespace-only content) fall through as literal text.
+function renderEmphasis(content) {
+  if (!content || !content.includes('*')) {
+    return content;
+  }
+  const parts = content.split(EMPHASIS_RE);
+  return parts.map((p, i) => {
+    if (p.length > 6 && p.startsWith('***') && p.endsWith('***') && p.slice(3, -3).trim().length > 0) {
+      return (
+        <strong key={i} className="font-bold">
+          <em className="italic">{p.slice(3, -3)}</em>
+        </strong>
+      );
+    }
+    if (p.length > 4 && p.startsWith('**') && p.endsWith('**') && p.slice(2, -2).trim().length > 0) {
+      return <strong key={i} className="font-bold">{p.slice(2, -2)}</strong>;
+    }
+    if (p.length > 2 && p.startsWith('*') && p.endsWith('*') && p.slice(1, -1).trim().length > 0) {
+      return <em key={i} className="italic">{p.slice(1, -1)}</em>;
+    }
+    return p;
+  });
+}
+
+const ACTION_BTN_CLASS =
+  'inline text-amber underline decoration-dotted decoration-amber/60 ' +
+  'underline-offset-2 hover:text-amber/80 hover:decoration-amber ' +
+  'focus:outline-none focus:ring-1 focus:ring-amber rounded-sm transition-colors';
 
 export function NarrativeText({ children, className = '' }) {
   const setInput = useChatStore((state) => state.setInput);
   const text = typeof children === 'string' ? children : '';
-  const segments = parseActionTags(text);
+  const segments = coalesceTrailingPunctuation(parseActionTags(text));
 
-  // Fast path: nothing to highlight. Avoid wrapping each char in a span.
-  if (segments.length === 0 || segments.every((s) => s.type === 'text')) {
+  // Fast path: no actions to highlight, no asterisks to format → return the
+  // string as-is for the cheap rendering case.
+  if (
+    segments.length === 0 ||
+    (segments.every((s) => s.type === 'text') && !text.includes('*'))
+  ) {
     return <span className={className}>{text}</span>;
   }
 
@@ -26,20 +111,18 @@ export function NarrativeText({ children, className = '' }) {
     <span className={className}>
       {segments.map((seg, i) => {
         if (seg.type === 'text') {
-          return <span key={i}>{seg.content}</span>;
+          return <Fragment key={i}>{renderEmphasis(seg.content)}</Fragment>;
         }
-        // Action span — styled distinctly + clickable. Tailwind classes match
-        // the existing amber/accent palette (apps/sentinel-ui's color tokens
-        // use amber for highlights / discovery / interactive accents).
+        const display = seg.trailingPunct ? seg.label + seg.trailingPunct : seg.label;
         return (
           <button
             key={i}
             type="button"
             onClick={() => setInput(seg.label)}
-            className="inline text-amber underline decoration-dotted decoration-amber/60 underline-offset-2 hover:text-amber/80 hover:decoration-amber focus:outline-none focus:ring-1 focus:ring-amber rounded-sm transition-colors"
+            className={ACTION_BTN_CLASS}
             aria-label={`Suggest action: ${seg.label}`}
           >
-            {seg.label}
+            {display}
           </button>
         );
       })}
