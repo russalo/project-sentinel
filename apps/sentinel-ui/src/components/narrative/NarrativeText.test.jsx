@@ -64,4 +64,69 @@ describe('NarrativeText', () => {
     const { container } = render(<NarrativeText>{null}</NarrativeText>);
     expect(container.textContent).toBe('');
   });
+
+  it('coalesces trailing punctuation onto the action display (prevents orphan)', () => {
+    // The narrative ends `...<action>flee</action>?` — without coalescing the
+    // `?` lives in its own segment and can wrap to a new line when the
+    // preceding action is long. The action button should DISPLAY 'flee?' but
+    // the click label stays clean ('flee', no punctuation).
+    render(<NarrativeText>{'Do you <action>flee</action>?'}</NarrativeText>);
+    const btn = screen.getByRole('button', { name: 'Suggest action: flee' });
+    expect(btn.textContent).toBe('flee?');
+  });
+
+  it('click label is unchanged when trailing punctuation is glued onto display', async () => {
+    render(<NarrativeText>{'Do you <action>strike</action>?'}</NarrativeText>);
+    await userEvent.click(screen.getByRole('button', { name: 'Suggest action: strike' }));
+    // setInput should receive just 'strike' — NOT 'strike?'
+    expect(useChatStore.getState().input).toBe('strike');
+  });
+
+  it('coalesces only the leading-punctuation prefix and keeps the rest as text', () => {
+    // After an action: `<action>X</action>, then`
+    // The `,` should glue onto the action, ` then` should remain as text.
+    const { container } = render(
+      <NarrativeText>{'You <action>flee</action>, then look back.'}</NarrativeText>,
+    );
+    const btn = screen.getByRole('button', { name: 'Suggest action: flee' });
+    expect(btn.textContent).toBe('flee,');
+    expect(container.textContent).toContain(' then look back.');
+  });
+
+  it('renders *word* markdown as italic <em>', () => {
+    const { container } = render(<NarrativeText>{'You *must* hurry.'}</NarrativeText>);
+    const em = container.querySelector('em');
+    expect(em).not.toBeNull();
+    expect(em.textContent).toBe('must');
+    // Surrounding text preserved
+    expect(container.textContent).toBe('You must hurry.');
+  });
+
+  it('renders multi-word *phrases* as italic', () => {
+    const { container } = render(
+      <NarrativeText>{'Magic *of the old gods* lingers.'}</NarrativeText>,
+    );
+    const em = container.querySelector('em');
+    expect(em.textContent).toBe('of the old gods');
+  });
+
+  it('does not crash on dangling single asterisks', () => {
+    const { container } = render(
+      <NarrativeText>{'A 5 * 7 multiplication keeps asterisks literal.'}</NarrativeText>,
+    );
+    // No <em> element — the dangling `*` should render literally.
+    expect(container.querySelector('em')).toBeNull();
+    expect(container.textContent).toContain('5 * 7');
+  });
+
+  it('handles emphasis inside narrative containing action tags', () => {
+    const { container } = render(
+      <NarrativeText>
+        {'The *ancient* doors creak. Do you <action>enter</action>?'}
+      </NarrativeText>,
+    );
+    expect(container.querySelector('em').textContent).toBe('ancient');
+    const btn = screen.getByRole('button', { name: 'Suggest action: enter' });
+    expect(btn.textContent).toBe('enter?');
+  });
 });
