@@ -26,8 +26,7 @@
 #   2. put the bcrypt hash in $SENTINEL_INVITE_HASH (env / chezmoi-managed,
 #      NEVER committed) — e.g. via the caddy unit's EnvironmentFile.
 #   3. pnpm --filter @sentinel/ui build:alpha   # produces dist/ with /alpha/-prefixed assets
-#   4. substitute <TAILNET_IP> below with origin-core's tailnet IP and
-#      <REPO_ROOT> with the absolute checkout path
+#   4. substitute <REPO_ROOT> below with the absolute checkout path
 #   5. caddy reload --config /etc/caddy/Caddyfile
 #
 # URL SHAPE: the alpha lives at sentinel.russalo.com/alpha/ — the SPA, its
@@ -53,6 +52,23 @@
 # gate's IP gets one shared bucket for every alpha tester (red-team #3,
 # 2026-06-04 — the same X-Forwarded-For spoofability fix relies on this knob
 # being correct).
+#
+# DEPLOYED-CADDYFILE GOTCHAS surfaced during the 2026-06-07 cutover (NOT in
+# this template, but documented here for whoever maintains the deployed
+# Caddyfile):
+#
+#   - DON'T add a `bind` directive on origin-core if its Caddy serves multiple
+#     sites on the same wildcard listener (blog, Blueprint catch-all on :80,
+#     etc.). A site-block `bind` shadows the wildcard listener for sibling
+#     sites and breaks them. Listener isolation between public and tailnet is
+#     instead enforced at the UFW firewall layer (same trap as 2026-06-04).
+#   - `handle_errors` CANNOT be nested inside `handle_path` — Caddy 2.x rejects
+#     it. Hoist `handle_errors` to site-block scope. Matcher paths inside the
+#     hoisted block see the ORIGINAL pre-strip request path (so match on
+#     `/alpha/*`, not `/*`).
+#   - The `respond` directive uses POSITIONAL `<body> <status>` form. A subdir
+#     shape like `respond {placeholder} { ... }` is parser-ambiguous and Caddy
+#     errors out — use `respond "<json-body>" <status>` instead.
 
 # `http://` scheme is explicit — overrides Caddy's automatic TLS so origin-core
 # does NOT try to provision its own cert. Gate already terminated TLS on the
@@ -61,14 +77,6 @@
 # hostname so gate's reverse_proxy with `Host: sentinel.russalo.com` resolves
 # to this site block.
 http://sentinel.russalo.com {
-	# Bind the listener to origin-core's tailnet IP only. Without this, Caddy
-	# would listen on all interfaces (0.0.0.0/::) — and even though origin-core
-	# is firewalled, the gate-fronted topology's whole point is that
-	# origin-core's listener is unreachable from the public internet by
-	# construction, not by firewall. Substitute the actual tailnet IP (e.g.
-	# 100.x.y.z) at deploy time. If origin-core has multiple tailnet IPs
-	# (IPv4 + IPv6 over Tailscale), list both: `bind <v4> <v6>`.
-	bind <TAILNET_IP>
 
 	# Everything under /alpha/* is the closed-alpha SPA + its API. `handle_path`
 	# (not `handle`) strips the matched `/alpha` prefix before evaluating inner

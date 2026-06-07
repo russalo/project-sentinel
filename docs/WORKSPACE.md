@@ -236,12 +236,18 @@ The closed alpha is deployed **gate-fronted, not direct-to-origin-core**
 Claude's lane) that owns DNS, TLS provisioning, and TLS termination. Gate
 reverse-proxies cleartext HTTP over tailnet to origin-core's Caddy, which
 runs the committed template (`infrastructure/caddy/Caddyfile.example`).
-Origin-core's Caddy is `bind`-scoped to the tailnet IP only — it never
-listens on the public interface, by construction, not by firewall. Inside
-the site block, our template owns the sentinel-specific shape: `basic_auth`
-invite gate, `handle_path /alpha/*`, the SPA fallback, and the static-asset
-cache headers. `handle_errors` (operational, deploy-only) is scoped inside
-the alpha block per tailnet Claude — non-alpha paths already 404.
+Origin-core's Caddy is multi-tenant (serves blog + Blueprint + sentinel on
+a shared wildcard `:80` listener); listener isolation between public and
+tailnet is enforced at the UFW firewall layer, NOT by `bind` in the Caddy
+site block — adding `bind` to one site-block would shadow the wildcard
+listener for the others. Inside the site block, our template owns the
+sentinel-specific shape: `basic_auth` invite gate, `handle_path /alpha/*`,
+the SPA fallback, and the static-asset cache headers. `handle_errors`
+(operational, deploy-only) is hoisted to site-block scope in the deployed
+Caddyfile (Caddy 2.x rejects nesting inside `handle_path`) — non-alpha
+paths already 404, so the friendly error page only fires for the alpha
+block. The template's leading comment documents these deployed-Caddyfile
+gotchas surfaced during the 2026-06-07 cutover.
 
 Caddy strips the `/alpha` prefix at origin-core (`handle_path /alpha/*`)
 before reverse-proxy, so the backend stays mounted at `/api/...` unchanged

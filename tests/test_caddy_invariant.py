@@ -162,27 +162,6 @@ def test_origin_core_does_not_provision_tls(caddyfile):
     )
 
 
-def test_listener_bound_to_tailnet_only(directives):
-    # Gate-fronted security invariant: origin-core's Caddy must NEVER listen
-    # on the public interface — the `bind` directive scopes the listener to
-    # the tailnet IP only. Without `bind`, Caddy defaults to listening on all
-    # interfaces (0.0.0.0/::), so even a firewall hole or a future IP change
-    # could expose the basic_auth-gated SPA + API directly to the internet,
-    # defeating the gate-fronted topology's whole point.
-    assert "bind " in directives, (
-        "missing `bind` directive — origin-core's Caddy must bind only to the "
-        "tailnet IP (defense in depth — gate is the only public-facing edge)"
-    )
-    # The bind directive must NOT bind to all interfaces (an explicit
-    # mis-configuration regression).
-    assert "bind 0.0.0.0" not in directives, (
-        "`bind 0.0.0.0` would defeat the gate-fronted topology"
-    )
-    assert "bind [::]" not in directives, (
-        "`bind [::]` would defeat the gate-fronted topology"
-    )
-
-
 def test_hostname_root_returns_404(directives):
     # The hostname root (sentinel.russalo.com/) is reserved for a future
     # landing page — for now sentinel only owns /alpha/*. A bare `respond 404`
