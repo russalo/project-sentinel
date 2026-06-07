@@ -330,10 +330,18 @@ in `GEMINI.md`.
   Blueprint on the same wildcard `:80` listener; see
   `project_origin_core_caddy_is_multitenant` memory).
   The cutover landed: `SENTINEL_WORLDS_ROOT`, `SENTINEL_SESSION_TOKEN_SECRET`,
-  `SENTINEL_RL_*`, `SENTINEL_LLM_DAILY_CEILING=10000`,
+  `SENTINEL_RL_SESSION_CREATE_PER_HOUR=20`,
+  `SENTINEL_RL_STREAM_PER_MINUTE=30`, `SENTINEL_LLM_DAILY_CEILING=10000`,
   `SENTINEL_MAX_CONCURRENT_STREAMS=10`, `SENTINEL_DEBUG=false`,
   `SENTINEL_TRUSTED_PROXY_HOPS=1` all armed in `infrastructure/.env` on
-  origin-core; `just cutover-check` reports READY. The repo's contribution
+  origin-core; `just cutover-check` reports READY. Per-world routing
+  applies ONLY to the mutable world state (session JSON in
+  `data/state/core/sessions/`, session-log markdown in
+  `data/lore/core/sessions/`, fs-manager write sets for entities /
+  locations / items / world meta) — read-only shared assets
+  (`schemas/`, the core-lore codex under `data/lore/core/` *outside*
+  `sessions/`, persona presets) continue to load from the repo root
+  and are NOT relocated per-world. The repo's contribution
   remains *artifacts + invariant*: the Caddy invite-gate template
   (`infrastructure/caddy/Caddyfile.example`, with the gate-fronted
   adjustments `http://` scheme + no `bind`), the systemd unit templates
@@ -352,9 +360,9 @@ in `GEMINI.md`.
   prefix since ADR 0002 Slice 1 threads a per-session `world_id`) to
   whatever branch is checked out — normally `master` — on every turn.
   **On origin-core (post-2026-06-07 cutover) this is no longer a hazard**:
-  `SENTINEL_WORLDS_ROOT=/home/russellp/sentinel-worlds` is armed in
-  `infrastructure/.env`, so all gameplay routes to per-world repos
-  *outside* the code repo. **The hazard remains for any machine where
+  `SENTINEL_WORLDS_ROOT=<WORLDS_ROOT>` (a path outside the code repo) is
+  armed in `infrastructure/.env`, so all gameplay routes to per-world
+  repos *outside* the code repo. **The hazard remains for any machine where
   the env var is unset** (any fresh clone, a contributor's laptop, a
   test box) — running a playthrough there pollutes the checked-out
   branch (this is what produced the 22 stray commits cleaned up
