@@ -78,6 +78,17 @@
 # to this site block.
 http://sentinel.russalo.com {
 
+	# Bare `/alpha` (no trailing slash) redirects to `/alpha/` — without this,
+	# `handle_path /alpha/*` only matches `/alpha/` and `/alpha/...`, NOT bare
+	# `/alpha`, so a tester typing `sentinel.russalo.com/alpha` into the URL
+	# bar would fall through to the site-level `respond 404`. The 301 lands
+	# them at the SPA. (codex P2 on PR #108, 2026-06-07.) Caddy's
+	# most-specific-first handle matching makes this win over the broader
+	# `handle_path /alpha/*` below for the exact-`/alpha` case.
+	handle /alpha {
+		redir /alpha/ 301
+	}
+
 	# Everything under /alpha/* is the closed-alpha SPA + its API. `handle_path`
 	# (not `handle`) strips the matched `/alpha` prefix before evaluating inner
 	# directives — the backend and file_server see the un-prefixed path. The

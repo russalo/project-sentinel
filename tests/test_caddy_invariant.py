@@ -100,6 +100,22 @@ def test_admin_status_not_exposed_on_edge(caddyfile):
     assert "reverse_proxy" not in status_block.group(1)
 
 
+def test_bare_alpha_prefix_redirects_to_trailing_slash(caddyfile):
+    # `handle_path /alpha/*` matches `/alpha/` and `/alpha/...` but NOT bare
+    # `/alpha` (no trailing slash) — a tester typing sentinel.russalo.com/alpha
+    # into the URL bar would otherwise fall through to the site-level
+    # `respond 404`. An explicit `handle /alpha` block returns a 301 redirect
+    # to `/alpha/`. (codex P2 on PR #108, 2026-06-07.)
+    pattern = re.compile(
+        r"handle\s+/alpha\s*\{[^}]*redir\s+/alpha/\s+301[^}]*\}",
+        re.DOTALL,
+    )
+    assert pattern.search(caddyfile) is not None, (
+        "missing `handle /alpha { redir /alpha/ 301 }` — bare /alpha "
+        "would 404 instead of redirecting to /alpha/"
+    )
+
+
 def test_alpha_path_prefix_wraps_app_handles(directives):
     # Closed alpha lives at sentinel.russalo.com/alpha/ — the SPA, its assets,
     # and the API all sit under that prefix. The Caddy template MUST use
