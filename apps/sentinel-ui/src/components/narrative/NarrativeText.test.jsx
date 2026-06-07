@@ -132,4 +132,43 @@ describe('NarrativeText', () => {
     const btn = screen.getByRole('button', { name: 'Suggest action: enter' });
     expect(btn.textContent).toBe('enter?');
   });
+
+  it('renders **word** as bold <strong>', () => {
+    const { container } = render(<NarrativeText>{'You **must** hurry.'}</NarrativeText>);
+    const strong = container.querySelector('strong');
+    expect(strong).not.toBeNull();
+    expect(strong.textContent).toBe('must');
+    // Tailwind preflight wipes <strong>'s default bold — verify class is present.
+    expect(strong.className).toContain('font-bold');
+    // No <em> for plain bold.
+    expect(container.querySelector('em')).toBeNull();
+    expect(container.textContent).toBe('You must hurry.');
+  });
+
+  it('renders ***word*** as bold-italic <strong><em>', () => {
+    const { container } = render(
+      <NarrativeText>{'Behold, the ***Final Word*** spoken.'}</NarrativeText>,
+    );
+    const strong = container.querySelector('strong');
+    const em = container.querySelector('em');
+    expect(strong).not.toBeNull();
+    expect(em).not.toBeNull();
+    // The <em> should be nested inside the <strong>.
+    expect(strong.contains(em)).toBe(true);
+    expect(em.textContent).toBe('Final Word');
+    expect(strong.className).toContain('font-bold');
+    expect(em.className).toContain('italic');
+    expect(container.textContent).toBe('Behold, the Final Word spoken.');
+  });
+
+  it('does not double-wrap **bold** into italic (regression on single-asterisk overmatch)', () => {
+    // Before the bold-aware regex, `**bold**` matched the inner `*bold*` and
+    // rendered as `*<em>bold</em>*` (literal asterisks around italics).
+    // After: it renders as a single <strong> with no <em> wrapper.
+    const { container } = render(<NarrativeText>{'The **truth** matters.'}</NarrativeText>);
+    expect(container.querySelector('strong').textContent).toBe('truth');
+    expect(container.querySelector('em')).toBeNull();
+    // No literal asterisks in the rendered text.
+    expect(container.textContent).toBe('The truth matters.');
+  });
 });

@@ -22,7 +22,11 @@ import { parseActionTags } from '../../utils/parseActionTags';
 import { useChatStore } from '../../stores/chatStore';
 
 const TRAILING_PUNCT_RE = /^([.,;:!?]+)(.*)$/s;
-const EMPHASIS_RE = /(\*[^*\n]+?\*)/g;
+// Alternation ordered longest-first so `***bold-italic***` matches the triple
+// pattern before being mis-snatched by the double or single. `[^*\n]+?` means
+// the content can't itself contain `*` — keeps the pattern simple and avoids
+// catastrophic backtracking on long runs of asterisks.
+const EMPHASIS_RE = /(\*\*\*[^*\n]+?\*\*\*|\*\*[^*\n]+?\*\*|\*[^*\n]+?\*)/g;
 
 // Coalesce trailing punctuation from a text segment immediately following an
 // action into the action's `trailingPunct` field. Click label stays clean;
@@ -52,25 +56,32 @@ function coalesceTrailingPunctuation(segments) {
   return out;
 }
 
-// Render a text segment with `*word*` → <em>word</em>. Single-asterisk only.
-// Returns an array of React nodes (text spans + em). Adjacent text runs are
-// not coalesced — the caller keys directly by index. Empty asterisk pairs
-// `**` or `*  *` (only whitespace inside) fall through as literal text.
+// Render a text segment with markdown emphasis:
+//   `***x***` → <strong><em>x</em></strong>  (bold-italic)
+//   `**x**`   → <strong>x</strong>           (bold)
+//   `*x*`     → <em>x</em>                    (italic)
+// Order matters: check triple before double before single so longer markers
+// win. Tailwind preflight resets <em> + <strong> user-agent styling so the
+// `italic` / `font-bold` classes are required for them to actually render.
+// Adjacent text runs are not coalesced — the caller keys by index. Empty
+// asterisk pairs (whitespace-only content) fall through as literal text.
 function renderEmphasis(content) {
   if (!content || !content.includes('*')) {
     return content;
   }
   const parts = content.split(EMPHASIS_RE);
   return parts.map((p, i) => {
-    if (
-      p.length > 2 &&
-      p.startsWith('*') &&
-      p.endsWith('*') &&
-      p.slice(1, -1).trim().length > 0
-    ) {
-      // `italic` class needed because Tailwind's preflight reset wipes <em>'s
-      // user-agent italic — without it the asterisks come off but the word
-      // renders as normal weight (caught in live alpha smoke 2026-06-07).
+    if (p.length > 6 && p.startsWith('***') && p.endsWith('***') && p.slice(3, -3).trim().length > 0) {
+      return (
+        <strong key={i} className="font-bold">
+          <em className="italic">{p.slice(3, -3)}</em>
+        </strong>
+      );
+    }
+    if (p.length > 4 && p.startsWith('**') && p.endsWith('**') && p.slice(2, -2).trim().length > 0) {
+      return <strong key={i} className="font-bold">{p.slice(2, -2)}</strong>;
+    }
+    if (p.length > 2 && p.startsWith('*') && p.endsWith('*') && p.slice(1, -1).trim().length > 0) {
       return <em key={i} className="italic">{p.slice(1, -1)}</em>;
     }
     return p;
