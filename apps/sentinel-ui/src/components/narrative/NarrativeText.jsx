@@ -68,7 +68,10 @@ function renderEmphasis(content) {
       p.endsWith('*') &&
       p.slice(1, -1).trim().length > 0
     ) {
-      return <em key={i}>{p.slice(1, -1)}</em>;
+      // `italic` class needed because Tailwind's preflight reset wipes <em>'s
+      // user-agent italic — without it the asterisks come off but the word
+      // renders as normal weight (caught in live alpha smoke 2026-06-07).
+      return <em key={i} className="italic">{p.slice(1, -1)}</em>;
     }
     return p;
   });

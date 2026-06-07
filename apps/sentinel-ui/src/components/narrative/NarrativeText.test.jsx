@@ -98,6 +98,9 @@ describe('NarrativeText', () => {
     const em = container.querySelector('em');
     expect(em).not.toBeNull();
     expect(em.textContent).toBe('must');
+    // Tailwind preflight wipes <em>'s default italic — verify the explicit
+    // `italic` class is present so the word actually renders italic.
+    expect(em.className).toContain('italic');
     // Surrounding text preserved
     expect(container.textContent).toBe('You must hurry.');
   });
