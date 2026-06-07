@@ -1,9 +1,20 @@
 import { useEffect, useRef } from 'react';
 import { useChatStore } from '../../stores/chatStore';
 import { DeltaMessage } from './DeltaMessage';
+import { NarrativeText } from './NarrativeText';
 
 export function NarrativeScroll() {
-  const { messages, streamBuffer, systemLog, activeView, setActiveView, unreadSystemLog } = useChatStore();
+  // Fine-grained selectors instead of full-store destructuring so the scroll
+  // does NOT re-render on every command-bar keystroke (which writes to the
+  // `input` slice). Without these selectors, every character typed in
+  // CommandBar would trigger a full re-render of the message scroll. (gemini
+  // HIGH on PR #112.)
+  const messages = useChatStore((state) => state.messages);
+  const streamBuffer = useChatStore((state) => state.streamBuffer);
+  const systemLog = useChatStore((state) => state.systemLog);
+  const activeView = useChatStore((state) => state.activeView);
+  const setActiveView = useChatStore((state) => state.setActiveView);
+  const unreadSystemLog = useChatStore((state) => state.unreadSystemLog);
   const scrollRef = useRef(null);
   const scrollLogRef = useRef(null);
 
@@ -66,7 +77,9 @@ export function NarrativeScroll() {
         {messages.map((msg) => (
           <div key={msg.id} className="animate-fade-in">
             {msg.type === 'dm' && (
-              <div className="text-ink font-crimson leading-relaxed prose-narrative">{msg.content}</div>
+              <div className="text-ink font-crimson leading-relaxed prose-narrative">
+                <NarrativeText>{msg.content}</NarrativeText>
+              </div>
             )}
             {msg.type === 'player' && (
               <div className="text-amber/80 text-sm italic">&gt; {msg.content}</div>
@@ -84,7 +97,7 @@ export function NarrativeScroll() {
 
         {streamBuffer && (
           <div className="text-ink font-crimson leading-relaxed prose-narrative animate-fade-in">
-            {streamBuffer}
+            <NarrativeText>{streamBuffer}</NarrativeText>
             <span className="cursor"></span>
           </div>
         )}

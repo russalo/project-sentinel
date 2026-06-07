@@ -60,6 +60,12 @@ export const useChatStore = create((set) => ({
     // Strip the <world_update> block before showing the narrative
     // to the player. The block is internal state for the Fact-
     // Extractor, not story beat content.
+    //
+    // NOTE: inline <action>...</action> tags are NOT stripped here —
+    // they stay in the narrative text and are parsed at render time
+    // by NarrativeText (apps/sentinel-ui/src/components/narrative/).
+    // Stripping them here would lose the action labels for inline
+    // highlighting.
     const content = stripWorldUpdate(state.streamBuffer);
     if (content) {
       return {
@@ -76,4 +82,21 @@ export const useChatStore = create((set) => ({
     }
     return { streamBuffer: '', isStreaming: false };
   }),
+
+  // Command-bar input — lifted from CommandBar's local useState so action
+  // pills + inline `<action>` highlights can populate the input on click.
+  // The clicker calls `setInput(label)`; CommandBar reads `input` as a
+  // controlled component value. Pills NEVER auto-submit (per BACKLOG-#474):
+  // the player reviews / edits before sending.
+  input: '',
+  setInput: (text) => set({ input: text }),
+
+  // DM-emitted action suggestions for the current turn — populated by
+  // useDMStream when the SSE `world_update` event arrives carrying a
+  // `suggestedActions: [{label, tone}]` array. Cleared at the start of
+  // each new turn so stale suggestions don't carry over to a different
+  // narrative moment.
+  suggestedActions: [],
+  setSuggestedActions: (actions) => set({ suggestedActions: Array.isArray(actions) ? actions : [] }),
+  clearSuggestedActions: () => set({ suggestedActions: [] }),
 }));

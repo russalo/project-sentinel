@@ -70,6 +70,7 @@ export function useWorldHydration(worldId) {
         // a real player message and is kept.
         const chat = useChatStore.getState();
         chat.clearMessages();
+        chat.clearSuggestedActions();
         for (const turn of data.turns || []) {
           if (!turn || typeof turn !== 'object') continue;
           const action = turn.player_action;
@@ -82,6 +83,23 @@ export function useWorldHydration(worldId) {
           if (narrative) {
             chat.addMessage({ type: 'dm', content: narrative, author: 'DM', timestamp: new Date() });
           }
+        }
+        // Seed the pill rail with the latest turn's DM-emitted suggestions so
+        // resume mirrors live play. Turns are ordered oldest-first; the last
+        // turn's world_updates carries the suggestions still relevant.
+        //
+        // Filter null / non-object turn elements BEFORE picking the last one
+        // (gemini medium on PR #112) — a stray null or malformed element at the
+        // tail would otherwise either crash on the `?.world_updates` access
+        // (`?.` saves us here but is fragile) or hide valid suggestions just
+        // before it.
+        const validTurns = (data.turns || []).filter(
+          (t) => t && typeof t === 'object',
+        );
+        const lastWorldUpdate =
+          validTurns.length > 0 ? validTurns[validTurns.length - 1].world_updates : null;
+        if (lastWorldUpdate && Array.isArray(lastWorldUpdate.suggestedActions)) {
+          chat.setSuggestedActions(lastWorldUpdate.suggestedActions);
         }
       } catch (err) {
         if (cancelled) return;

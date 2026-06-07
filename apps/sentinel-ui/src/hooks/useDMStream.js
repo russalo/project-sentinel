@@ -7,13 +7,18 @@ import { usePlayerStore } from '../stores/playerStore';
 import { computeDelta, hasDelta } from '../utils/delta';
 
 export function useDMStream() {
-  const { appendToBuffer, commitStreamMessage, setIsStreaming, setStreamError, addMessage, addSystemLogEntry } = useChatStore();
+  const { appendToBuffer, commitStreamMessage, setIsStreaming, setStreamError, addMessage, addSystemLogEntry, setSuggestedActions, clearSuggestedActions } = useChatStore();
   const applyUpdate = useWorldStore((s) => s.applyUpdate);
 
   const sendAction = useCallback(
     async (action, sessionId) => {
       setIsStreaming(true);
       setStreamError(false); // clear any prior turn's error
+      // Drop the previous turn's DM-emitted action pills the moment a new
+      // turn starts — stale "fondle the berries" suggestions from N-1 turns
+      // ago shouldn't sit next to the new turn's narrative. Always-available
+      // pills (rule-based, frontend-only) are unaffected.
+      clearSuggestedActions();
       let buffer = '';
       const pendingDeltas = [];
       // worldId is advisory for the backend (it routes by session_id), but the
@@ -75,6 +80,13 @@ export function useDMStream() {
                 addSystemLogEntry({ delta, timestamp: ts });
                 pendingDeltas.push({ delta, timestamp: ts });
               }
+              // Surface this turn's DM-emitted action pills. The DM-side
+              // contract (see engine/prompts/dm.py) is `suggestedActions:
+              // [{label, tone}]` byte-identical to the inline `<action>` tags
+              // in the narrative, so click on either surface types the same
+              // string into the input. Missing/non-array field → cleared
+              // (graceful fallback to always-available rail).
+              setSuggestedActions(event.data?.suggestedActions);
             }
             if (event.type === 'system') addMessage({ type: 'system', content: event.content, timestamp: new Date() });
             if (event.type === 'error') addMessage({ type: 'system', content: `[Error: ${event.content}]`, timestamp: new Date() });
@@ -96,7 +108,7 @@ export function useDMStream() {
         setIsStreaming(false);
       }
     },
-    [appendToBuffer, commitStreamMessage, setIsStreaming, setStreamError, addMessage, addSystemLogEntry, applyUpdate],
+    [appendToBuffer, commitStreamMessage, setIsStreaming, setStreamError, addMessage, addSystemLogEntry, applyUpdate, setSuggestedActions, clearSuggestedActions],
   );
 
   return { sendAction };
