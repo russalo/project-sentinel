@@ -1,16 +1,12 @@
 import { create } from 'zustand';
 
-// Map a numeric tension (0–10, as load_world_context / the DM hint emit) to the
-// label band WorldMetrics renders. worldStore's tension contract is a string
-// label (its default is 'calm'); a resumed world's canonical tension is an int,
-// so normalize it here. A string passed through unchanged (idempotent).
-function tensionLabel(t) {
-  if (typeof t !== 'number') return t;
-  if (t >= 9) return 'critical';
-  if (t >= 6) return 'high';
-  if (t >= 3) return 'moderate';
-  return 'calm';
-}
+// worldStore's tension contract is the raw 0-10 integer the backend emits
+// (via load_world_context and via every DM world_update). WorldMetrics derives
+// the colour band + categorical label from the int at render time — see
+// components/world-state/WorldMetrics.jsx. Keeping the int in the store means
+// the meter can render its bar width directly, the delta layer compares
+// raw ints (utils/delta.js), and a future surface (e.g. a tension-history
+// chart) can read the actual value instead of an already-banded label.
 
 export const useWorldStore = create((set) => ({
   // World metadata
@@ -52,7 +48,7 @@ export const useWorldStore = create((set) => ({
 
   // World metrics
   day: 1,
-  tension: 'calm', // calm, moderate, high, critical
+  tension: 0, // 0-10 int; encounter-pressure value the DM emits each turn
   setDay: (day) => set({ day }),
   setTension: (tension) => set({ tension }),
 
@@ -72,7 +68,7 @@ export const useWorldStore = create((set) => ({
     factions: [],
     items: [],
     day: 1,
-    tension: 'calm',
+    tension: 0,
   }),
 
   // Replace the store with a world's persisted state on /w/<id> resume (ADR
@@ -95,7 +91,7 @@ export const useWorldStore = create((set) => ({
       currentLocation: worldState.currentLocation ?? state.currentLocation,
       timeOfDay: worldState.timeOfDay ?? state.timeOfDay,
       weather: worldState.weather ?? state.weather,
-      tension: worldState.tension != null ? tensionLabel(worldState.tension) : state.tension,
+      tension: typeof worldState.tension === 'number' ? worldState.tension : state.tension,
       characters: arr(worldState.characters, state.characters),
       locations: arr(worldState.locations, state.locations),
       factions: arr(worldState.factions, state.factions),
@@ -112,12 +108,7 @@ export const useWorldStore = create((set) => ({
       if (w.currentLocation !== undefined) next.currentLocation = w.currentLocation;
       if (w.timeOfDay !== undefined) next.timeOfDay = w.timeOfDay;
       if (w.weather !== undefined) next.weather = w.weather;
-      if (w.tension !== undefined) {
-        // Normalize to the label band WorldMetrics renders (same as hydrate),
-        // so tension is consistently a string label whether it came from a
-        // live SSE update or a resume. tensionLabel is idempotent on strings.
-        next.tension = tensionLabel(w.tension);
-      }
+      if (typeof w.tension === 'number') next.tension = w.tension;
     }
 
     if (worldUpdate.characters?.length) {

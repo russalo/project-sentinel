@@ -137,6 +137,21 @@ def test_dm_prompt_includes_state_discipline_walls():
     assert "Grounded numbers" in DM_SYSTEM_PROMPT
 
 
+def test_dm_prompt_includes_tension_encounter_pressure():
+    """Presence guard for the tension-drives-encounters pacing clause.
+    Tension was a tracked 0-10 stat the DM never actually acted on, so the
+    world could hold at 9 forever with no consequence. This block tells the
+    DM that tension is encounter pressure, names the thresholds, and lists
+    non-combat encounter kinds so the model doesn't default to a fight. The
+    test asserts the rule text is present — behavioral efficacy (does the
+    model actually escalate?) is measured by the smoke harness, not here."""
+    assert "TENSION & ENCOUNTER PRESSURE" in DM_SYSTEM_PROMPT
+    assert "encounter pressure" in DM_SYSTEM_PROMPT
+    assert "OVERDUE" in DM_SYSTEM_PROMPT
+    assert "MUST occur" in DM_SYSTEM_PROMPT
+    assert "DO NOT default to combat" in DM_SYSTEM_PROMPT
+
+
 # ── _build_messages ─────────────────────────────────────────────────
 
 
