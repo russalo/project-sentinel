@@ -10,16 +10,24 @@ the chat scroll and continue play. Read-only; resolves the world's own tree
 
 from __future__ import annotations
 
+import logging
 import uuid
 
 import engine
 from fastapi import APIRouter, HTTPException, Request, status
 
-from ..auth.access import enforce_world_token
+from ..auth import world_token
+from ..auth.access import (
+    enforce_world_token,
+    enforcement_enabled,
+    extract_basic_auth_user,
+)
 from ..engine_bridge import build_engine_config
 from ..state import sessions as session_state
 from ..state.world_context import load_world_context
 from ..state.world_root import find_world_session, iter_worlds
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api")
 
@@ -183,3 +191,101 @@ def get_world(world_id: str, request: Request) -> dict:
         "turns": session.turns,
         "worldState": world_state,
     }
+
+
+@router.post("/world/{world_id}/reauth")
+def reauth_world(world_id: str, request: Request) -> dict:
+    """Re-mint a per-world token for the basic_auth'd creator (per-tester reauth).
+
+    The SPA calls this when a world-scoped request 401s — usually because the
+    tester's localStorage was cleared (private mode, browser data wipe, fresh
+    device) and the world token went with it. The edge proxy (Caddy basic_auth)
+    has already authenticated the request, so we trust the username it carries
+    and confirm it matches the world's stored ``creator_username``. If it does,
+    we mint a fresh username-bound token and return it. If it doesn't, 403.
+
+    **TOFU for legacy worlds.** A world created before this PR (or via the
+    anonymous tailnet flow, with no basic_auth header) has no
+    ``creator_username``. The first authenticated /reauth claims that slot:
+    we write the requesting user onto the session JSON and proceed. Acceptable
+    for the closed cohort (≤10 trusted testers); risky at open-signup scale,
+    so the claim is logged for audit. All TOFU writes go through fs-manager so
+    concurrent reauths on the same legacy world serialize on the per-world
+    cross-process lock (no double-claim).
+    """
+    # Canonicalize the path id (matches delete_world / get_world) — clean 404
+    # on a malformed id, and the token we mint is bound to the canonical form.
+    try:
+        world_id = str(uuid.UUID(world_id))
+    except (ValueError, AttributeError, TypeError):
+        raise HTTPException(status_code=404, detail="world not found")
+
+    settings = request.app.state.settings
+
+    # Reauth is meaningless when no token system is configured — the SPA only
+    # calls it on a 401, which can't happen with enforcement off. 404 keeps the
+    # surface tight and the response shape uniform (no "null token" half-state).
+    if not enforcement_enabled(settings):
+        raise HTTPException(status_code=404, detail="reauth unavailable")
+
+    username = extract_basic_auth_user(request)
+    if not username:
+        # No basic_auth identity → we can't bind a new token to anyone. 401 so
+        # the edge proxy (or the browser) prompts for credentials, matching the
+        # missing-token semantics on the world-scoped routes.
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="missing basic_auth credentials",
+        )
+
+    found = find_world_session(
+        settings.worlds_root, world_id, default_data_dir=settings.data_dir
+    )
+    if found is None:
+        raise HTTPException(status_code=404, detail="world not found")
+    data_dir, session_id = found
+    session = session_state.read_session(data_dir, session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="world not found")
+
+    stored_creator = session.creator_username or ""
+
+    if stored_creator:
+        if stored_creator != username:
+            # Owner mismatch — the world belongs to a different tester. Never
+            # leak the actual creator's name; just refuse.
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="not the world creator",
+            )
+    else:
+        # TOFU: legacy world (or anonymous-creation world) — first
+        # authenticated reauth claims the creator slot. Write back through the
+        # engine → fs-manager → git-sync path so the claim is committed to the
+        # world's repo (and serialized against any concurrent /reauth on the
+        # same world by the per-world filelock).
+        session.creator_username = username
+        write_result = session_state.write_session(
+            build_engine_config(settings),
+            session,
+            log_entry=f"[Reauth] creator slot claimed by {username}",
+            turn_number=len(session.turns or []),
+        )
+        if not write_result.ok:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"failed to persist creator claim: {write_result.error}",
+            )
+        logger.info(
+            "reauth TOFU: world %s creator slot claimed by %s",
+            world_id,
+            username,
+        )
+
+    token = world_token.mint(
+        world_id,
+        secret=settings.session_token_secret,
+        ttl_seconds=settings.session_token_ttl_seconds,
+        username=username,
+    )
+    return {"worldId": world_id, "token": token}

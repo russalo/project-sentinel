@@ -76,6 +76,13 @@ class Session:
     # threaded into git-sync commit messages; per-world data isolation lands
     # in a later slice. Empty on legacy sessions written before world_id.
     world_id: str = ""
+    # Tester username captured from ``Authorization: Basic`` at world creation
+    # (per-tester reauth, 2026-06-08). The world's /reauth endpoint uses this
+    # to confirm a re-mint request comes from the creator. Empty on sessions
+    # created without basic_auth (the anonymous tailnet flow) and on legacy
+    # sessions written before this field existed — legacy worlds get TOFU on
+    # first authenticated reauth (the creator slot is claimed atomically).
+    creator_username: str = ""
 
 
 def session_file_path(data_dir: Path, session_id: str) -> Path:
@@ -127,6 +134,7 @@ def read_session(data_dir: Path, session_id: str) -> Session | None:
         persona_id=raw.get("persona_id", ""),
         mood=raw.get("mood", ""),
         world_id=raw.get("world_id", ""),
+        creator_username=raw.get("creator_username", ""),
     )
 
 
@@ -160,6 +168,7 @@ def _build_session_payload(session: Session, log_entry: str, turn_number: int) -
                     "persona_id": session.persona_id,
                     "mood": session.mood,
                     "world_id": session.world_id,
+                    "creator_username": session.creator_username,
                 },
             }
         ],

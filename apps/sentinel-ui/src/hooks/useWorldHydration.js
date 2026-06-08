@@ -1,10 +1,51 @@
 import { useEffect } from 'react';
 import { apiClient } from '../api/client';
-import { worldTokenHeader } from '../api/worldToken';
+import { reauth, worldTokenHeader } from '../api/worldToken';
 import { usePlayerStore } from '../stores/playerStore';
 import { usePersonaStore } from '../stores/personaStore';
 import { useWorldStore } from '../stores/worldStore';
 import { useChatStore, stripWorldUpdate } from '../stores/chatStore';
+
+// Fetch the world payload, recovering from a 401 by calling /reauth once and
+// retrying with the fresh token. Factored out so the hydration body below
+// stays readable — the actual recovery logic lives here:
+//
+//   1. Try GET /world/{id} with whatever token we have.
+//   2. On 401 (stale/missing token), call reauth(worldId). reauth carries
+//      the browser's already-cached basic_auth header; the backend confirms
+//      the user is the world's creator and re-mints a fresh token.
+//   3. Retry GET /world/{id} with the fresh token.
+//   4. If reauth itself 401s (no basic_auth reached the backend — dev /
+//      unenforced topology) or 403s (this isn't your world), surface the
+//      original 401 by re-throwing — the caller's "[Could not load world]"
+//      message is the right user-facing outcome.
+async function fetchWorldWithReauth(worldId) {
+  try {
+    return await apiClient.get(`/world/${worldId}`, {
+      headers: worldTokenHeader(worldId),
+    });
+  } catch (err) {
+    if (err?.status !== 401) throw err;
+    // Stale or missing token. Try the recovery dance — at most once, so a
+    // genuinely-broken auth path doesn't loop forever.
+    try {
+      await reauth(worldId);
+    } catch (reauthErr) {
+      // reauth failed — bubble a clear error. If basic_auth was the issue
+      // the original 401 was already correct; if reauth 403'd the user is
+      // not the creator, which we surface so the player sees something.
+      if (reauthErr?.status === 403) {
+        const e = new Error('Not your world');
+        e.status = 403;
+        throw e;
+      }
+      throw err; // bubble the original 401
+    }
+    return await apiClient.get(`/world/${worldId}`, {
+      headers: worldTokenHeader(worldId),
+    });
+  }
+}
 
 // Hydrate the game from a world's URL (ADR 0002 Slice 4).
 //
@@ -34,9 +75,7 @@ export function useWorldHydration(worldId) {
     let cancelled = false;
     (async () => {
       try {
-        const data = await apiClient.get(`/world/${worldId}`, {
-          headers: worldTokenHeader(worldId),
-        });
+        const data = await fetchWorldWithReauth(worldId);
         if (cancelled) return;
         if (!data || typeof data !== 'object') {
           throw new Error('empty world response');
