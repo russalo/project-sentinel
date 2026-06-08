@@ -54,6 +54,15 @@ def test_malformed_token_is_false_not_exception(bad):
     assert world_token.verify(bad, WID, secret=SECRET) is False
 
 
+@pytest.mark.parametrize("bad", [0, 12345, b"bytes.token", [], {}, object(), 3.14])
+def test_non_string_token_is_false_not_typeerror(bad):
+    # The docstring guarantees "never raises". A non-str token (None already
+    # covered above, plus ints/bytes/lists/etc. that callers might mishandle)
+    # must surface as False, not a TypeError on the first str method.
+    # (gemini-medium on PR #125.)
+    assert world_token.verify(bad, WID, secret=SECRET) is False
+
+
 def test_mint_rejects_non_uuid_world_id():
     with pytest.raises(ValueError):
         world_token.mint("not-a-uuid", secret=SECRET, ttl_seconds=10)

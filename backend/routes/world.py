@@ -265,8 +265,9 @@ def reauth_world(world_id: str, request: Request) -> dict:
         # world's repo (and serialized against any concurrent /reauth on the
         # same world by the per-world filelock).
         session.creator_username = username
+        engine_config = build_engine_config(settings)
         write_result = session_state.write_session(
-            build_engine_config(settings),
+            engine_config,
             session,
             log_entry=f"[Reauth] creator slot claimed by {username}",
             turn_number=len(session.turns or []),
@@ -275,6 +276,28 @@ def reauth_world(world_id: str, request: Request) -> dict:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail=f"failed to persist creator claim: {write_result.error}",
+            )
+        # Commit the claim through git-sync so the TOFU write enters the
+        # world's git history. Symmetric with session.py's create-and-commit:
+        # an audit gap on a security-relevant mutation (who owns this world)
+        # would be exactly the kind of silent loss the per-world repo is
+        # supposed to prevent. (gemini-high on PR #125.) Failure here is
+        # logged but not fatal — the on-disk claim has already landed and
+        # subsequent reauths will read it; refusing the response would leave
+        # the world stuck without ANY token. The session-create path makes
+        # the same trade-off (see session.py § "Fire-and-log").
+        commit_result = engine.commit_snapshot(
+            engine_config,
+            session_id=session.session_id,
+            turn_number=len(session.turns or []),
+            summary=f"[Reauth] creator slot claimed by {username}",
+            world_id=world_id,
+        )
+        if not commit_result.ok:
+            logger.warning(
+                "commit_snapshot failed on TOFU creator-claim for world %s: %s",
+                world_id,
+                commit_result.error,
             )
         logger.info(
             "reauth TOFU: world %s creator slot claimed by %s",

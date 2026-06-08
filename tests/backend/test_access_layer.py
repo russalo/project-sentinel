@@ -416,9 +416,7 @@ def _req(headers: dict[str, str] | None = None):
 
 def test_extract_basic_auth_user_happy_path():
     raw = base64.b64encode(b"russell:hunter2").decode("ascii")
-    assert (
-        extract_basic_auth_user(_req({"Authorization": f"Basic {raw}"})) == "russell"
-    )
+    assert extract_basic_auth_user(_req({"Authorization": f"Basic {raw}"})) == "russell"
 
 
 def test_extract_basic_auth_user_no_header_returns_none():
@@ -461,18 +459,14 @@ def test_extract_basic_auth_user_username_with_dots_passes_through():
 
 def test_extract_basic_auth_user_handles_unicode_username():
     raw = base64.b64encode("björk:hunter2".encode("utf-8")).decode("ascii")
-    assert (
-        extract_basic_auth_user(_req({"Authorization": f"Basic {raw}"})) == "björk"
-    )
+    assert extract_basic_auth_user(_req({"Authorization": f"Basic {raw}"})) == "björk"
 
 
 def test_extract_basic_auth_user_lowercase_basic_scheme():
     raw = base64.b64encode(b"russell:x").decode("ascii")
     # The scheme token is case-insensitive per RFC 7617; the extractor
     # normalizes via .lower().
-    assert (
-        extract_basic_auth_user(_req({"Authorization": f"basic {raw}"})) == "russell"
-    )
+    assert extract_basic_auth_user(_req({"Authorization": f"basic {raw}"})) == "russell"
 
 
 # ── /session/new captures creator_username + binds the token ────────
@@ -621,11 +615,15 @@ def test_reauth_happy_path_returns_bound_token(client, tmp_data_dir):
     assert world_token.verify(forged, WORLD_ID, secret=SECRET) is False
 
 
-def test_reauth_tofu_claims_legacy_world(client, tmp_data_dir, fake_dispatch_log):
+def test_reauth_tofu_claims_legacy_world(
+    client, tmp_data_dir, fake_dispatch_log, fake_commit_log
+):
     """A legacy world has creator_username='' on disk; the first reauth
     claims it for the requesting basic_auth user. We assert: (a) 200 + bound
     token returned, (b) a fs-manager dispatch happened that carries
-    creator_username='russell' in the session payload (TOFU write).
+    creator_username='russell' in the session payload (TOFU write), (c) a
+    git-sync commit_snapshot ran so the claim enters git history (no audit
+    gap — gemini-high on PR #125).
     """
     _seed_session(tmp_data_dir, creator_username="")  # legacy world
     _enforce(client, session_token_secret=SECRET)
@@ -641,6 +639,29 @@ def test_reauth_tofu_claims_legacy_world(client, tmp_data_dir, fake_dispatch_log
     assert session_writes, "TOFU should have dispatched a session write"
     data = session_writes[-1]["payload"]["updates"][0]["data"]
     assert data["creator_username"] == "russell"
+    # Commit followed: every state mutation enters git history, including
+    # the security-relevant ownership claim. The summary line carries the
+    # username so the audit trail in `git log` is greppable.
+    assert fake_commit_log, "TOFU claim must call commit_snapshot for audit"
+    last_commit = fake_commit_log[-1]
+    assert "Reauth" in last_commit["summary"]
+    assert "russell" in last_commit["summary"]
+
+
+def test_reauth_no_tofu_no_extra_write_when_creator_matches(
+    client, tmp_data_dir, fake_dispatch_log, fake_commit_log
+):
+    """An idempotent re-mint for an already-claimed world should NOT trigger
+    another session write / commit — those are reserved for TOFU. Otherwise
+    every page-refresh-driven reauth would churn the world's git log.
+    """
+    _seed_session(tmp_data_dir, creator_username="russell")
+    _enforce(client, session_token_secret=SECRET)
+    r = client.post(f"/api/world/{WORLD_ID}/reauth", headers=_basic_auth("russell"))
+    assert r.status_code == 200
+    # No session write nor commit — happy-path re-mint is read-only.
+    assert not fake_dispatch_log, "matching reauth must not dispatch a write"
+    assert not fake_commit_log, "matching reauth must not commit"
 
 
 def test_reauth_tofu_only_first_caller_claims(client, tmp_data_dir):
@@ -685,9 +706,7 @@ def test_reauth_new_token_unlocks_world_get(client, tmp_data_dir):
     r1 = client.get(f"/api/world/{WORLD_ID}")
     assert r1.status_code == 401
     # 2. /reauth with basic_auth → returns a fresh bound token
-    r2 = client.post(
-        f"/api/world/{WORLD_ID}/reauth", headers=_basic_auth("russell")
-    )
+    r2 = client.post(f"/api/world/{WORLD_ID}/reauth", headers=_basic_auth("russell"))
     assert r2.status_code == 200
     fresh = r2.json()["token"]
     # 3. Retry /world/{id} with the fresh token → 200

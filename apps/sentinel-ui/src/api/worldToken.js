@@ -91,7 +91,18 @@ export function worldTokenHeader(worldId) {
 // from a transient network failure.
 export async function reauth(worldId) {
   const data = await apiClient.post(`/world/${worldId}/reauth`, {});
-  const token = data?.token;
+  // Defensively validate the response shape — apiClient only guarantees
+  // res.ok + JSON parsed, not that the JSON is the shape we expect. A
+  // malformed payload (e.g. a proxy injecting an HTML error page parsed as
+  // text/json by mistake, or a backend regression returning `null`) should
+  // surface as a recoverable error in useWorldHydration's catch, not a
+  // TypeError on `data.token`. (gemini-medium on PR #125.)
+  if (!data || typeof data !== 'object') {
+    const err = new Error('Invalid reauth response');
+    err.status = 502;
+    throw err;
+  }
+  const token = data.token;
   if (token) setWorldToken(worldId, token);
   return token;
 }

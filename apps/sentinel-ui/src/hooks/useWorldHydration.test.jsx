@@ -250,4 +250,24 @@ describe('useWorldHydration', () => {
     // reauth was NOT attempted — 404 is not in the 401-recovery class.
     expect(apiClient.post).not.toHaveBeenCalled()
   })
+
+  it('handles a malformed reauth response without TypeError-ing', async () => {
+    // reauth() defensively validates `data` is a non-null object before
+    // accessing `.token` (gemini-medium on PR #125). A proxy returning HTML
+    // parsed as null, or a backend regression dropping the body, should
+    // surface as a recoverable "Could not load world" — never a crash.
+    apiClient.get.mockRejectedValue(apiError(401))
+    apiClient.post.mockResolvedValueOnce(null)
+
+    renderHook(() => useWorldHydration(WORLD_ID))
+    await waitFor(() =>
+      expect(
+        useChatStore.getState().messages.some(
+          (m) => m.type === 'system' && /Could not load world/.test(m.content),
+        ),
+      ).toBe(true),
+    )
+    // No retry happened — the recovery dance bailed before re-issuing the GET.
+    expect(apiClient.get).toHaveBeenCalledTimes(1)
+  })
 })

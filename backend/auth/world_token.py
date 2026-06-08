@@ -112,7 +112,11 @@ def verify(
     Never raises — any malformed input is simply an invalid token (False), so
     callers map a falsy result straight to 401/403 without catching.
     """
-    if not token:
+    # Defensively reject non-str tokens (None, int, bytes, etc.) before any
+    # str-method calls below — the docstring guarantees "never raises" and a
+    # non-string would otherwise TypeError on `"." in token` or `.rsplit(...)`.
+    # (gemini-medium on PR #125.)
+    if not isinstance(token, str) or not token:
         return False
     # Canonicalize the same way mint() does; a non-UUID world_id is simply
     # invalid (False), never an exception.
