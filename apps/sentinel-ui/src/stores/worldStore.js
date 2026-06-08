@@ -91,7 +91,9 @@ export const useWorldStore = create((set) => ({
       currentLocation: worldState.currentLocation ?? state.currentLocation,
       timeOfDay: worldState.timeOfDay ?? state.timeOfDay,
       weather: worldState.weather ?? state.weather,
-      tension: typeof worldState.tension === 'number' ? worldState.tension : state.tension,
+      // Number.isFinite (not typeof) so NaN doesn't propagate into the store
+      // (gemini-medium on PR #124).
+      tension: Number.isFinite(worldState.tension) ? worldState.tension : state.tension,
       characters: arr(worldState.characters, state.characters),
       locations: arr(worldState.locations, state.locations),
       factions: arr(worldState.factions, state.factions),
@@ -108,7 +110,9 @@ export const useWorldStore = create((set) => ({
       if (w.currentLocation !== undefined) next.currentLocation = w.currentLocation;
       if (w.timeOfDay !== undefined) next.timeOfDay = w.timeOfDay;
       if (w.weather !== undefined) next.weather = w.weather;
-      if (typeof w.tension === 'number') next.tension = w.tension;
+      // Number.isFinite (not typeof) so NaN doesn't survive the upsert
+      // (gemini-medium on PR #124).
+      if (Number.isFinite(w.tension)) next.tension = w.tension;
     }
 
     if (worldUpdate.characters?.length) {

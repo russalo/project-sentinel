@@ -53,6 +53,27 @@ describe('WorldMetrics — tension meter', () => {
     expect(screen.getByText(/0\/10/)).toBeInTheDocument()
   })
 
+  it('treats NaN as missing — does not render NaN/10 (gemini-medium guard)', () => {
+    // typeof NaN === 'number' would let NaN propagate; Number.isFinite is the
+    // correct gate. If this test fails, the bar width math will produce NaN%
+    // and the ARIA attributes will be invalid.
+    render(<WorldMetrics day={1} tension={NaN} />)
+    expect(screen.getByText(/Calm/)).toBeInTheDocument()
+    expect(screen.getByText(/0\/10/)).toBeInTheDocument()
+    const bar = screen.getByRole('progressbar')
+    expect(bar).toHaveAttribute('aria-valuenow', '0')
+  })
+
+  it('exposes aria-valuetext with the categorical band for screen readers', () => {
+    // Sighted readers see "Overdue (7/10)"; screen-reader users should hear
+    // the band too, not just the bare integer aria-valuenow exposes.
+    render(<WorldMetrics day={1} tension={7} />)
+    expect(screen.getByRole('progressbar')).toHaveAttribute(
+      'aria-valuetext',
+      'Overdue 7/10',
+    )
+  })
+
   it('exposes day on the dashboard', () => {
     render(<WorldMetrics day={42} tension={3} />)
     expect(screen.getByText(/Day/)).toBeInTheDocument()

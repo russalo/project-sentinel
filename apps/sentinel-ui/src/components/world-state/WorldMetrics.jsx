@@ -11,7 +11,10 @@ function tensionTone(t) {
 }
 
 export function WorldMetrics({ day, tension }) {
-  const t = typeof tension === 'number' ? Math.max(0, Math.min(10, tension)) : 0;
+  // Use Number.isFinite (not typeof) so NaN — which is typeof === 'number' —
+  // is treated as missing rather than propagating into the bar-width math and
+  // ARIA values. (gemini-medium on PR #124.)
+  const t = Number.isFinite(tension) ? Math.max(0, Math.min(10, tension)) : 0;
   const tone = tensionTone(t);
   const widthPct = t * 10;
 
@@ -33,6 +36,10 @@ export function WorldMetrics({ day, tension }) {
             aria-valuenow={t}
             aria-valuemin={0}
             aria-valuemax={10}
+            // aria-valuetext gives screen readers the categorical band
+            // ("Calm 0/10" / "Overdue 7/10") rather than the bare integer,
+            // mirroring what the sighted reader sees. (gemini-medium on PR #124.)
+            aria-valuetext={`${tone.label} ${t}/10`}
           >
             <div
               className={`h-full ${tone.fill} transition-all duration-300`}
