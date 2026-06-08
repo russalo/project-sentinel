@@ -296,6 +296,26 @@ in `GEMINI.md`.
 - This is a cross-OS project. Do not write scripts or configs that assume linux-only.
 - Replit was the original development platform. Migration is complete.
   Do not introduce new `@replit/*` dependencies.
+- **Time reference defaults to Pacific Time (Russell's local time —
+  America/Los_Angeles).** When stating "today", "tomorrow", "tonight", or
+  any user-facing time-relative phrasing, compute it relative to Pacific
+  Time — NOT the UTC date the harness's system reminders give. Pacific
+  Time is **PDT (UTC−7) during DST** (roughly mid-March → early November)
+  and **PST (UTC−8) the rest of the year** — so the harness/UTC offset
+  varies. Either way UTC is **ahead** of Pacific Time, so the UTC date
+  rolls **before** Pacific does; treating UTC as user-side "today"
+  produces wrong-by-a-day claims (and in summer, wrong-by-an-hour on a
+  cuspy time). When unsure of the current offset, fall back to
+  `America/Los_Angeles` semantics rather than a fixed PST/UTC−8. See
+  `feedback_time_equals_pst` memory for the full rule and mental model.
+- **Daily patch-window cadence: 05:00–08:00 Pacific Time every day**
+  (= 12:00–15:00 UTC in PST winter / 13:00–16:00 UTC in summer DST).
+  Low-traffic slot for the closed-alpha cohort; ~30 sec backend restart +
+  zero-downtime SPA rebuild fits comfortably. **Stack multi-day work
+  across consecutive windows** rather than compressing it. ~60–90 min of
+  focused work fits in a window — two queued PRs is the realistic ceiling.
+  Pre-stage next-day PR the prior evening so the window is review + merge +
+  deploy, not coding from scratch. See `project_daily_patch_window` memory.
 - **React is the 1.0 frontend.** Decided 2026-04-15 by the landing of
   `feat/panel-ux-entity-cards` — the "undecided, do not build new
   frontend features" gate that previously lived here is resolved. See
@@ -374,6 +394,32 @@ in `GEMINI.md`.
   prerequisite regenerates `.env` and clobbers the value (and the LLM
   key). See `docs/WORKSPACE.md` § "Local dev: keep gameplay out of the
   code repo".
+- **Live alpha features shipped this week (cohort feedback channels).**
+  As of 2026-06-07, the closed alpha at `sentinel.russalo.com/alpha/`
+  has two shipped feedback channels in addition to the game itself:
+  (a) **DM action suggestions** — the DM emits `<action>label</action>`
+  tags inline in narrative + a structured `suggestedActions` field in
+  the world_update block; the SPA highlights both as clickable
+  affordances (amber pills in a rail above the command bar + amber
+  underlined inline). Click types the action into the input; player
+  reviews + sends. See PR #112 + polish PR #113. (b) **In-product
+  feedback form at `/alpha/feedback/`** — testers submit structured
+  reports (subject, body, category, platform, browser, optional severity
+  / repro / handle) that auto-capture worldId, sessionId, viewport,
+  currentUrl, bundleHash, userAgent. Backend writes JSON to
+  `<SENTINEL_FEEDBACK_ROOT>/YYYY-MM-DD/<ts>-<id>.json` (gitignored;
+  configured in `infrastructure/.env` — origin-core points it at the
+  repo-relative `feedback/` dir, but the path is environment-specific
+  so don't hard-code it in docs or scripts).
+  Per-IP rate limit `SENTINEL_RL_FEEDBACK_PER_HOUR=10`. Triage flow:
+  read submissions on disk, graduate ripe items into
+  `docs/ALPHA_FEEDBACK.md` + `docs/BACKLOG.md`. See PR #116.
+- **`docs/ALPHA_FEEDBACK.md` is the capture surface for tester feedback;**
+  `docs/BACKLOG.md` is the triaged-work surface. Items land in FEEDBACK
+  first (one-line, dated, by category — bugs / UI-UX / general / future
+  features) and graduate to BACKLOG when ripe with a `→ BACKLOG`
+  cross-link. The on-disk feedback dir is the raw stream; the docs are
+  the human-curated view.
 - **Tailnet Claude owns the public-facing edge (now LIVE).** The lane
   split, validated through deployment 2026-06-07: *sentinel-side (mine):*
   the app, the access-layer cutover (env knobs armed in
