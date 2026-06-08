@@ -296,20 +296,26 @@ in `GEMINI.md`.
 - This is a cross-OS project. Do not write scripts or configs that assume linux-only.
 - Replit was the original development platform. Migration is complete.
   Do not introduce new `@replit/*` dependencies.
-- **Time reference defaults to PST (Russell's local time).** When stating
-  "today", "tomorrow", "tonight", or any user-facing time-relative phrasing,
-  compute it relative to PST — NOT the UTC date the harness's system
-  reminders give. UTC is 8 hours ahead (7 during PDT), so the UTC date rolls
-  before PST does; treating UTC as user-side "today" produces wrong-by-a-day
-  claims. See `feedback_time_equals_pst` memory for the full rule and the
-  PST↔UTC mental model.
-- **Daily patch-window cadence: 05:00–08:00 PST every day.** Low-traffic
-  slot for the closed-alpha cohort; ~30 sec backend restart + zero-downtime
-  SPA rebuild fits comfortably. **Stack multi-day work across consecutive
-  windows** rather than compressing it. ~60–90 min of focused work fits in
-  a window — two queued PRs is the realistic ceiling. Pre-stage next-day PR
-  the prior evening so the window is review + merge + deploy, not coding from
-  scratch. See `project_daily_patch_window` memory.
+- **Time reference defaults to Pacific Time (Russell's local time —
+  America/Los_Angeles).** When stating "today", "tomorrow", "tonight", or
+  any user-facing time-relative phrasing, compute it relative to Pacific
+  Time — NOT the UTC date the harness's system reminders give. Pacific
+  Time is **PDT (UTC−7) during DST** (roughly mid-March → early November)
+  and **PST (UTC−8) the rest of the year** — so the harness/UTC offset
+  varies. Either way UTC is **ahead** of Pacific Time, so the UTC date
+  rolls **before** Pacific does; treating UTC as user-side "today"
+  produces wrong-by-a-day claims (and in summer, wrong-by-an-hour on a
+  cuspy time). When unsure of the current offset, fall back to
+  `America/Los_Angeles` semantics rather than a fixed PST/UTC−8. See
+  `feedback_time_equals_pst` memory for the full rule and mental model.
+- **Daily patch-window cadence: 05:00–08:00 Pacific Time every day**
+  (= 12:00–15:00 UTC in PST winter / 13:00–16:00 UTC in summer DST).
+  Low-traffic slot for the closed-alpha cohort; ~30 sec backend restart +
+  zero-downtime SPA rebuild fits comfortably. **Stack multi-day work
+  across consecutive windows** rather than compressing it. ~60–90 min of
+  focused work fits in a window — two queued PRs is the realistic ceiling.
+  Pre-stage next-day PR the prior evening so the window is review + merge +
+  deploy, not coding from scratch. See `project_daily_patch_window` memory.
 - **React is the 1.0 frontend.** Decided 2026-04-15 by the landing of
   `feat/panel-ux-entity-cards` — the "undecided, do not build new
   frontend features" gate that previously lived here is resolved. See
@@ -401,7 +407,10 @@ in `GEMINI.md`.
   reports (subject, body, category, platform, browser, optional severity
   / repro / handle) that auto-capture worldId, sessionId, viewport,
   currentUrl, bundleHash, userAgent. Backend writes JSON to
-  `/srv/projects/project-sentinel/feedback/YYYY-MM-DD/` (gitignored).
+  `<SENTINEL_FEEDBACK_ROOT>/YYYY-MM-DD/<ts>-<id>.json` (gitignored;
+  configured in `infrastructure/.env` — origin-core points it at the
+  repo-relative `feedback/` dir, but the path is environment-specific
+  so don't hard-code it in docs or scripts).
   Per-IP rate limit `SENTINEL_RL_FEEDBACK_PER_HOUR=10`. Triage flow:
   read submissions on disk, graduate ripe items into
   `docs/ALPHA_FEEDBACK.md` + `docs/BACKLOG.md`. See PR #116.
