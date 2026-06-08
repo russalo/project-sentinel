@@ -118,4 +118,46 @@ describe('SettingsDrawer', () => {
     const drawer = container.querySelector('[role="dialog"]');
     expect(drawer.hasAttribute('inert')).toBe(false);
   });
+
+  it('aside element is programmatically focusable (tabIndex=-1 + ref)', () => {
+    useUIStore.setState({ settingsOpen: true });
+    const { container } = render(<SettingsDrawer />);
+    const drawer = container.querySelector('[role="dialog"]');
+    expect(drawer.getAttribute('tabindex')).toBe('-1');
+  });
+
+  it('focus moves into the drawer when it opens', async () => {
+    // Start closed
+    useUIStore.setState({ settingsOpen: false });
+    const { container } = render(<SettingsDrawer />);
+    const drawer = container.querySelector('[role="dialog"]');
+    // Open — should focus the drawer
+    useUIStore.getState().openSettings();
+    // React-effects flush after a microtask in jsdom
+    await new Promise((r) => setTimeout(r, 0));
+    expect(document.activeElement).toBe(drawer);
+  });
+
+  it('Tab from last focusable element wraps to first (focus trap forward)', async () => {
+    useUIStore.setState({ settingsOpen: true, fontSize: 'normal' });
+    const { container } = render(<SettingsDrawer />);
+    // Focusable elements in order: close button, A−, A+
+    const closeBtn = container.querySelector('button[aria-label="Close settings"]');
+    const plusBtn = container.querySelector('button[aria-label="Increase font size"]');
+    plusBtn.focus();
+    expect(document.activeElement).toBe(plusBtn);
+    await userEvent.keyboard('{Tab}');
+    expect(document.activeElement).toBe(closeBtn);
+  });
+
+  it('Shift-Tab from first focusable element wraps to last (focus trap reverse)', async () => {
+    useUIStore.setState({ settingsOpen: true, fontSize: 'normal' });
+    const { container } = render(<SettingsDrawer />);
+    const closeBtn = container.querySelector('button[aria-label="Close settings"]');
+    const plusBtn = container.querySelector('button[aria-label="Increase font size"]');
+    closeBtn.focus();
+    expect(document.activeElement).toBe(closeBtn);
+    await userEvent.keyboard('{Shift>}{Tab}{/Shift}');
+    expect(document.activeElement).toBe(plusBtn);
+  });
 });

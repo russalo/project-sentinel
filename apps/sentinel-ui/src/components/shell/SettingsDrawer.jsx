@@ -9,7 +9,7 @@
 // (e.g., a deep-link to "/?settings" later). Today only the TopBar gear
 // triggers it.
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { X, AArrowDown, AArrowUp } from 'lucide-react';
 import { useUIStore, FONT_SIZES } from '../../stores/uiStore';
 
@@ -25,15 +25,61 @@ export function SettingsDrawer() {
   const closeSettings = useUIStore((s) => s.closeSettings);
   const fontSize = useUIStore((s) => s.fontSize);
   const stepFontSize = useUIStore((s) => s.stepFontSize);
+  const drawerRef = useRef(null);
 
-  // Escape-to-close keyboard listener — matches the mobile drawer pattern in
-  // AppShell.jsx + makes the drawer keyboard-accessible without needing to
-  // hunt for the close button. Only registers while open (no leaked global
-  // listener when closed). (gemini medium on PR #120.)
+  // Focus management when drawer opens: capture previously-focused element
+  // (the gear-icon button by default), move focus into the drawer container,
+  // restore the prior focus on close. Standard WAI-ARIA modal pattern.
+  // (gemini medium on PR #120 re-review.)
+  useEffect(() => {
+    if (settingsOpen) {
+      const previouslyFocused = document.activeElement;
+      drawerRef.current?.focus();
+      return () => {
+        previouslyFocused?.focus?.();
+      };
+    }
+  }, [settingsOpen]);
+
+  // Rescue focus back to the drawer container if the currently-focused element
+  // becomes disabled (e.g., A+ button greys out when fontSize hits xlarge,
+  // browser would otherwise drop focus to <body>). Pairs with the focus trap
+  // below.
+  useEffect(() => {
+    if (settingsOpen && document.activeElement?.disabled) {
+      drawerRef.current?.focus();
+    }
+  }, [fontSize, settingsOpen]);
+
+  // Escape-to-close + focus trap inside the drawer. Tab/Shift-Tab cycles
+  // within the drawer's focusable descendants; can't escape into the
+  // background page. Only registers while open (no leaked global listener
+  // when closed). (gemini medium on PR #120 — original + re-review.)
   useEffect(() => {
     if (!settingsOpen) return;
+
     const handleKeyDown = (e) => {
-      if (e.key === 'Escape') closeSettings();
+      if (e.key === 'Escape') {
+        closeSettings();
+        return;
+      }
+      if (e.key === 'Tab') {
+        const focusable = Array.from(
+          drawerRef.current?.querySelectorAll(
+            'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+          ) || [],
+        );
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          last.focus();
+          e.preventDefault();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          first.focus();
+          e.preventDefault();
+        }
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
@@ -63,7 +109,9 @@ export function SettingsDrawer() {
           opening Settings. Pairs with aria-hidden for assistive-tech support.
           (gemini medium + codex P2 on PR #120.) */}
       <aside
-        className={`fixed top-0 right-0 z-50 h-full w-full sm:w-96 bg-codex border-l border-border shadow-2xl transform transition-transform duration-200 flex flex-col ${
+        ref={drawerRef}
+        tabIndex={-1}
+        className={`fixed top-0 right-0 z-50 h-full w-full sm:w-96 bg-codex border-l border-border shadow-2xl transform transition-transform duration-200 flex flex-col outline-none ${
           settingsOpen ? 'translate-x-0' : 'translate-x-full'
         }`}
         role="dialog"
