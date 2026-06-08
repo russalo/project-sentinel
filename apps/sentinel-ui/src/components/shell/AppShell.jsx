@@ -7,6 +7,7 @@ import { usePlayerStore } from '../../stores/playerStore';
 import { useWorldHydration } from '../../hooks/useWorldHydration';
 import { TopBar } from './TopBar';
 import { CommandBar } from './CommandBar';
+import { SettingsDrawer } from './SettingsDrawer';
 import { WorldStateDashboard } from '../world-state/WorldStateDashboard';
 import { NarrativeScroll } from '../narrative/NarrativeScroll';
 import { PanelRouter } from '../panels/PanelRouter';
@@ -161,6 +162,7 @@ export function AppShell() {
       </div>
 
       <CommandBar />
+      <SettingsDrawer />
     </div>
   );
 }
