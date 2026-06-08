@@ -36,7 +36,7 @@ import engine
 from engine.agents import dm as dm_agent
 from engine.agents import fact_extractor
 
-from ..auth.access import issue_token
+from ..auth.access import extract_basic_auth_user, issue_token
 from ..config import Settings
 from ..engine_bridge import build_engine_config
 from ..presets import get_prompt_fragment
@@ -90,6 +90,13 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
     # (routing reads/writes to the world's own tree) lands in a later slice.
     world_id = str(uuid.uuid4())
     started_at = datetime.now(timezone.utc).isoformat()
+
+    # Per-tester reauth (2026-06-08): capture the basic_auth identity the edge
+    # proxy authenticated this request with, so the world knows its creator and
+    # the /reauth endpoint can confirm a re-mint request. None on the anonymous
+    # tailnet flow (no basic_auth) → token stays unbound (legacy shape), which
+    # keeps single-user dev unchanged.
+    creator_username = extract_basic_auth_user(request)
 
     # Provision the world's git repo before any write to it (ADR 0002 Slice 3).
     # A fresh per-world repo has no HEAD, so the commit_snapshot below would
@@ -212,6 +219,7 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
         persona_id=body.persona_id or "",
         mood=body.mood or "",
         world_id=world_id,
+        creator_username=creator_username or "",
     )
 
     # Writing the session file is the critical durability step: if
@@ -264,8 +272,11 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
 
     # ADR 0003 Slice A — mint the per-world token (None when enforcement is
     # off). The client stores it keyed by world_id and presents it on
-    # world-scoped calls (/stream, /world GET+DELETE).
-    session_token = issue_token(settings, world_id)
+    # world-scoped calls (/stream, /world GET+DELETE). When the request carried
+    # a basic_auth identity (closed-alpha cohort), bind the token to that
+    # username so /reauth can confirm a re-mint request comes from the creator;
+    # otherwise mint an unbound (legacy-shape) token.
+    session_token = issue_token(settings, world_id, username=creator_username)
 
     return NewSessionResponse(
         session_id=session_id,
