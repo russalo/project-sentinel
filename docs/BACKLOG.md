@@ -391,6 +391,114 @@ context, which is fragile and prevents any genre from having real rules.
 
 ---
 
+## Core Systems — Fantasy as Flagship Model
+
+Sentinel's ambient surfaces (HP silhouette, tension meter, character cards,
+encounter pressure) only mean something durable if the **systemic layer
+underneath** is defined. Right now those surfaces visualize state the DM
+emits freely — they read off `world_update` blocks with no rules attaching
+mechanical meaning to the numbers. A "50/100 HP wounded silhouette" is
+ambient feedback only; what 50 HP *does* (rests heal? potions? combat
+damage curves? death stakes?) is invented turn-to-turn by the DM. That's
+fine for ambience but fragile for cohesion.
+
+**The flagship-genre approach (Russell 2026-06-12):** define the core
+systems for the **Fantasy** genre first as the canonical reference model
+— combat resolution, healing/recovery, magic costs and limits, encounter
+mechanics, character progression, time/calendar advancement, weather and
+environment effects, faction/economy basics, death stakes. Once Fantasy
+has a coherent systemic layer, **other genres (Sci-Fi, Cyberpunk, Western,
+Horror, etc.) follow the same shape**, swapping flavor (mana → energy →
+ammo → ritual; healing potion → med-pack → bandage → spell) but inheriting
+the structural pattern. This collapses N independent rulesets into "1
+template + per-genre overrides," which is roughly how the world-creation
+preset pipeline (`data/lore/core/presets/genres/`) already wants to work.
+
+- [ ] **Define Fantasy-flagship core systems — the canonical mechanical
+      layer underneath the ambient surfaces.** Big initiative; needs its
+      own planning doc (probably `docs/CORE_SYSTEMS.md` with near-term /
+      vision split per CLAUDE.md). Scope the v1 to "what's the minimum set
+      of systems the DM and the schema need to agree on so a Fantasy run
+      feels mechanically coherent?" Likely starting list:
+
+      - **Combat resolution.** What does "attack" mean — initiative,
+        hit/miss, damage curve, weapon type effects, defender's armor /
+        stance. Today: the DM narrates outcomes freely; HP drops are
+        ungrounded. Goal: a deterministic-enough resolution that the DM
+        can describe but doesn't invent the *result* of (the systemic
+        layer commits to outcomes; the DM dresses them).
+      - **Healing & recovery.** How HP comes back — rest (short / long),
+        healing items (potions, herbs, food), healing spells, time
+        between encounters. Connects to the silhouette directly: today
+        the DM picks "you regain 20 HP" arbitrarily; with a system, the
+        rate is bounded and the silhouette's recovery is mechanically
+        honest.
+      - **Magic costs and limits.** Spell slots? Mana pool? Casting
+        fatigue? Schools? Per-genre flavor will differ but the
+        underlying "resource that gates magical action" pattern is
+        universal — Fantasy mana ↔ Sci-Fi energy cell ↔ Cyberpunk RAM ↔
+        Horror sanity. Defining the shape here once means every genre
+        gets it for free.
+      - **Encounter mechanics.** Tension's job is to *signal* an
+        overdue encounter (PR #124); the core-systems layer says
+        *what an encounter looks like* — surprise vs telegraphed,
+        scaling to party level, escape conditions, persistent
+        consequences. The new tension prompt clause names several
+        encounter kinds (combat, crash, illness, trap, betrayal,
+        weather) — those want light systemic frames.
+      - **Character progression.** Levels? XP? Skill check
+        improvement? Item-driven? Defining this commits to a power
+        curve and lets the DM ground "you feel stronger" claims.
+      - **Time & calendar.** Day counter already exists; needs
+        meaning — what advances it (sleep, travel, encounters)?
+        What changes when day N → N+1 (NPC routines, faction
+        movements, weather)?
+      - **Weather & environment.** Already tracked in `world.weather`
+        + `world.timeOfDay`; needs mechanical hooks (rain → reduced
+        tracking, night → stealth bonus, sandstorm → visibility
+        penalty).
+      - **Faction & economy basics.** Reputation tracking, basic
+        currency, trade. Even a minimal version (`gold` + `reputation
+        per faction`) gives the DM real stakes to play with.
+      - **Death stakes.** What HP=0 actually means — unconscious
+        with a save, permadeath (the existing `permadeath` flag on
+        sessions hints at this), reincarnation, run-ends. The
+        silhouette's "Fallen" state needs a system to resolve.
+
+      **Approach:** start with a planning doc (one Russell-input session
+      to set the shape) → draft Fantasy v1 spec → pilot one system end-
+      to-end (combat is the obvious candidate — high-stakes, the player
+      will *feel* the difference between systemic and improv) → wire
+      DM-prompt schema additions + Fact-Extractor handling → add the
+      first 2–3 genre overrides (Sci-Fi + Cyberpunk are good early
+      proofs that the template generalizes).
+
+      **Why now:** the ambient surfaces shipping this month (tension,
+      HP silhouette, action suggestions) are starting to *imply* a
+      systemic layer that doesn't exist yet. Each surface we add
+      without grounding it widens the gap between what testers see and
+      what the world actually models. The silhouette in particular
+      will surface this — when HP drops dramatically the player will
+      ask "how do I heal?" and the DM will improvise an answer that
+      contradicts the next session's improvisation.
+
+      **Cross-links:** [[project_minimum_viable_structure_loop]] —
+      this initiative is the concrete version of the "minimum viable
+      structure" research thread; we're committing to *find* that
+      minimum by building it. Also lines up with the existing
+      "Player action catalog" item above (item 6 of which already
+      names Fantasy combat as the proof-of-concept) — the action
+      catalog is one slice of the core systems.
+
+      _Discovered: 2026-06-12 | Context: Russell asked for this while
+      drafting the player-vitals HP silhouette PR — surfacing HP
+      ambiently raised the question "but what does HP *mean*?". The
+      flagship-genre framing (Fantasy first, other genres pattern on
+      it) was his explicit call, replacing an N-independent-genres
+      approach with 1-template-plus-overrides._
+
+---
+
 ## Frontend / Turn UX
 
 Turn-finalization and in-turn exploration UX both surfaced as clear
