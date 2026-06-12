@@ -214,3 +214,64 @@ describe('PlayerVitals — edge cases', () => {
     expect(meter).toHaveAttribute('aria-valuetext', 'Wounded — 45/100')
   })
 })
+
+describe('PlayerVitals — wash visibility per band (Russell 2026-06-12 fix)', () => {
+  // The dark codex background eats subtle opacity, so the wash uses a stepped
+  // per-band floor (not a smooth (100-hp)/100 curve which produced ~9% opacity
+  // at HP=90 — effectively invisible). These tests lock the floor so a
+  // regression silently dimming the wash would fail CI.
+  function washOpacity() {
+    const wash = screen.getByTestId('vitals-damage-wash')
+    return Number(wash.getAttribute('opacity'))
+  }
+
+  it('Whole (HP 100) → no wash', () => {
+    seedPlayer({ health: 100 })
+    render(<PlayerVitals />)
+    expect(washOpacity()).toBe(0)
+  })
+
+  it('Bruised (HP 70-99) → visible wash, opacity ≥ 0.25', () => {
+    seedPlayer({ health: 90 })
+    render(<PlayerVitals />)
+    // The exact value the pre-fix code produced at HP=90 was ~0.095;
+    // anything ≥ 0.25 is the new visible-on-dark floor.
+    expect(washOpacity()).toBeGreaterThanOrEqual(0.25)
+  })
+
+  it('Wounded (HP 40-69) → opacity ≥ 0.50', () => {
+    seedPlayer({ health: 50 })
+    render(<PlayerVitals />)
+    expect(washOpacity()).toBeGreaterThanOrEqual(0.50)
+  })
+
+  it('Bleeding (HP 10-39) → opacity ≥ 0.70', () => {
+    seedPlayer({ health: 20 })
+    render(<PlayerVitals />)
+    expect(washOpacity()).toBeGreaterThanOrEqual(0.70)
+  })
+
+  it('Near death (HP 1-9) → opacity ≥ 0.85', () => {
+    seedPlayer({ health: 5 })
+    render(<PlayerVitals />)
+    expect(washOpacity()).toBeGreaterThanOrEqual(0.85)
+  })
+
+  it('Fallen (HP 0 or status=dead) → dim red wash, opacity ~0.40', () => {
+    // Death wash is intentionally dimmer than "Near death" — the player is
+    // gone, the silhouette itself drops to 30% opacity so the visual is
+    // "spent" rather than "bleeding out."
+    seedPlayer({ health: 0 })
+    render(<PlayerVitals />)
+    expect(washOpacity()).toBeGreaterThan(0)
+    expect(washOpacity()).toBeLessThanOrEqual(0.50)
+  })
+
+  it('placeholder (no player) → no wash', () => {
+    useWorldStore.setState({
+      characters: [{ name: 'Kael', role: 'npc', health: 100 }],
+    })
+    render(<PlayerVitals />)
+    expect(washOpacity()).toBe(0)
+  })
+})
