@@ -382,3 +382,93 @@ describe('PlayerVitals — wash visibility per band (Russell 2026-06-12 fix)', (
     expect(washOpacity()).toBe(0)
   })
 })
+
+describe('PlayerVitals — damage area height (Russell 2026-06-12 "Can\'t see the 45% hit loss")', () => {
+  // The wash AREA (rect height) scales with HP loss, so the silhouette
+  // communicates the actual percentage damage — not just "you're hurt."
+  // Combined with the per-band opacity above: AREA tells you HOW MUCH,
+  // OPACITY tells you HOW BAD. These tests lock the area mapping so a
+  // regression that flattens the visual back to "uniform wash regardless
+  // of HP" would fail CI.
+  function washHeight() {
+    const wash = screen.getByTestId('vitals-damage-wash')
+    return Number(wash.getAttribute('height'))
+  }
+  const SVG_HEIGHT = 180
+
+  it('HP=100 (Whole) → damage height is 0', () => {
+    seedPlayer({ health: 100 })
+    render(<PlayerVitals />)
+    expect(washHeight()).toBe(0)
+  })
+
+  it('HP=55 → damage covers ~45% of the body height (the originating bug case)', () => {
+    seedPlayer({ health: 55 })
+    render(<PlayerVitals />)
+    // 45% of 180 = 81
+    expect(washHeight()).toBeCloseTo(81, 0)
+  })
+
+  it('HP=50 → damage covers exactly half', () => {
+    seedPlayer({ health: 50 })
+    render(<PlayerVitals />)
+    expect(washHeight()).toBe(90)
+  })
+
+  it('HP=5 → damage covers ~95% of the body', () => {
+    seedPlayer({ health: 5 })
+    render(<PlayerVitals />)
+    // 95% of 180 = 171
+    expect(washHeight()).toBeCloseTo(171, 0)
+  })
+
+  it('HP=0 → damage covers the full body', () => {
+    seedPlayer({ health: 0 })
+    render(<PlayerVitals />)
+    expect(washHeight()).toBe(SVG_HEIGHT)
+  })
+
+  it('status=dead with HP>0 → damage still covers full body (death is more authoritative than the number)', () => {
+    seedPlayer({ health: 20, status: 'dead' })
+    render(<PlayerVitals />)
+    expect(washHeight()).toBe(SVG_HEIGHT)
+  })
+
+  it('HP=99 → minimum visible damage area (~12 SVG units) so Bruised isn\'t identical to Whole', () => {
+    // (100-99)/100 * 180 = 1.8 units — would be invisible without a floor.
+    // With MIN_DAMAGE_HEIGHT=12, the silhouette shows a small but legible
+    // wash at the head — communicates "you took a hit" unambiguously.
+    seedPlayer({ health: 99 })
+    render(<PlayerVitals />)
+    expect(washHeight()).toBeGreaterThanOrEqual(12)
+    expect(washHeight()).toBeLessThanOrEqual(20)
+  })
+
+  it('placeholder (no player) → damage height 0 (Unknown doesn\'t fake damage)', () => {
+    useWorldStore.setState({
+      characters: [{ name: 'Kael', role: 'npc', health: 100 }],
+    })
+    render(<PlayerVitals />)
+    expect(washHeight()).toBe(0)
+  })
+
+  it('HP=55 and HP=15 produce visibly different damage heights (the regression this fix addresses)', () => {
+    // The pre-fix bug: per-band opacity covered the whole body, so HP=55
+    // and HP=15 looked identical visually. Post-fix, HP=15 should show
+    // dramatically more area than HP=55.
+    seedPlayer({ health: 55 })
+    const view1 = render(<PlayerVitals />)
+    const at55 = washHeight()
+    view1.unmount()
+
+    useWorldStore.setState({
+      characters: [{ name: 'Russalo', role: 'player', health: 15 }],
+    })
+    const view2 = render(<PlayerVitals />)
+    const at15 = washHeight()
+    view2.unmount()
+
+    expect(at15).toBeGreaterThan(at55)
+    expect(at15 - at55).toBeGreaterThanOrEqual(60) // 40-percentage-point gap = 72 SVG units
+  })
+})
