@@ -111,16 +111,24 @@ export function PlayerVitals() {
     ? { label: 'Unknown', text: 'text-dust' }
     : bandFor(hp, isDead);
 
-  // Wash opacity scales smoothly with (100 - hp), capped at 0.85 so the
-  // outline stays just visible even at 1 HP. On a "Fallen" player the wash
-  // is a fixed dim-red 0.30 and the silhouette itself drops to 30% opacity
-  // — together they read as "spent" without resorting to a slashed-X mark
-  // (we may iterate this with Russell).
-  const washOpacity = placeholder
-    ? 0
-    : isDead
-    ? 0.3
-    : Math.min(0.85, (100 - hp) / 100 * 0.95);
+  // Wash opacity is stepped per band, not a smooth function of HP. The dark
+  // codex background eats subtle opacity — a smooth (100-hp)/100 curve
+  // produced ~10% wash at HP=90 (Bruised) which was effectively invisible
+  // against the parchment palette. Each band now has a floor that makes
+  // damage unambiguously legible at every level. (Reported by Russell
+  // 2026-06-12 looking at HP=90 Johnny.) On a "Fallen" player the wash is
+  // a fixed dim-red 0.40 and the silhouette itself drops to 30% opacity —
+  // together they read as "spent" without a slashed-X mark.
+  function washFor(hp_, isDead_, placeholder_) {
+    if (placeholder_) return 0;
+    if (isDead_) return 0.40;
+    if (hp_ >= 100) return 0;       // Whole — no wash
+    if (hp_ >= 70) return 0.30;     // Bruised — visible amber edge
+    if (hp_ >= 40) return 0.55;     // Wounded — clear amber→red
+    if (hp_ >= 10) return 0.75;     // Bleeding — heavy red
+    return 0.90;                     // Near death — near-opaque
+  }
+  const washOpacity = washFor(hp, isDead, placeholder);
   const silhouetteOpacity = isDead ? 0.3 : 1;
 
   const ariaValueText = placeholder
@@ -152,16 +160,25 @@ export function PlayerVitals() {
               <ellipse cx="50" cy="22" rx="11" ry="12" />
               <path d={BODY_PATH} />
             </clipPath>
-            <radialGradient id="vitals-damage" cx="50%" cy="55%" r="55%">
-              <stop offset="0%" stopColor="#8c3a3a" />
-              <stop offset="60%" stopColor="#c9973a" stopOpacity="0.5" />
-              <stop offset="100%" stopColor="#c9973a" stopOpacity="0" />
+            {/* Damage gradient — solid blood at the core, fading to a
+                still-saturated amber at the body edges (NOT to transparent
+                — the wash should color the whole silhouette body so the
+                damage is visible against the dark codex background). The
+                rect-level `opacity` prop controls overall intensity per
+                band; this gradient just gives the wash a hot-center,
+                inked-bleed shape inside the silhouette. (Russell visual
+                feedback 2026-06-12.) */}
+            <radialGradient id="vitals-damage" cx="50%" cy="50%" r="65%">
+              <stop offset="0%" stopColor="#8c3a3a" stopOpacity="1" />
+              <stop offset="60%" stopColor="#8c3a3a" stopOpacity="0.95" />
+              <stop offset="100%" stopColor="#c9973a" stopOpacity="0.75" />
             </radialGradient>
           </defs>
 
           {/* Damage wash — clipped to the body so it never spills outside
               the silhouette. Opacity is the runtime mapping of HP loss. */}
           <rect
+            data-testid="vitals-damage-wash"
             x="0"
             y="0"
             width="100"
