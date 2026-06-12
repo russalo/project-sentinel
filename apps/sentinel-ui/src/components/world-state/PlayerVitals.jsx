@@ -85,7 +85,17 @@ const RACE_BODIES = {
 
 function bodyPathFor(race) {
   if (typeof race !== 'string') return HUMAN_BODY_PATH;
-  return RACE_BODIES[race.trim().toLowerCase()] || HUMAN_BODY_PATH;
+  const key = race.trim().toLowerCase();
+  // `hasOwnProperty.call` guard (not `key in RACE_BODIES` or
+  // `RACE_BODIES[key]`) so a race string that matches an Object.prototype
+  // member — 'constructor', 'toString', 'valueOf', '__proto__' — falls back
+  // to human instead of returning the prototype function (which would land
+  // as a non-string `d` attribute on <path>, crashing the render). The DM
+  // emits free-form strings so this isn't hypothetical. (gemini-medium on
+  // PR #129.)
+  return Object.prototype.hasOwnProperty.call(RACE_BODIES, key)
+    ? RACE_BODIES[key]
+    : HUMAN_BODY_PATH;
 }
 
 function bandFor(hp, isDead) {

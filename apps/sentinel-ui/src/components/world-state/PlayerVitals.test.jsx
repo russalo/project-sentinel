@@ -305,6 +305,21 @@ describe('PlayerVitals — race-keyed body geometry (stub)', () => {
       view.unmount()
     }
   })
+
+  it('Object.prototype keys ("constructor" / "toString" / etc.) fall back to human', () => {
+    // Without the hasOwnProperty guard, RACE_BODIES['constructor'] would
+    // return the prototype function — landing as a non-string `d` attribute
+    // on <path>, crashing the render. (gemini-medium on PR #129.) DM emits
+    // free-form race strings, so this isn't theoretical.
+    for (const race of ['constructor', 'toString', 'valueOf', 'hasOwnProperty', '__proto__']) {
+      useWorldStore.setState({
+        characters: [{ name: 'Russalo', role: 'player', health: 100, race }],
+      })
+      const view = render(<PlayerVitals />)
+      expect(svgPaths()[0]).toMatch(/M 36 36/)
+      view.unmount()
+    }
+  })
 })
 
 describe('PlayerVitals — wash visibility per band (Russell 2026-06-12 fix)', () => {
