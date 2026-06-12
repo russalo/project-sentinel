@@ -20,12 +20,23 @@ import { useWorldStore } from '../../stores/worldStore';
 //  - NaN / out-of-range → Number.isFinite gate + clamp to [0, 100], same
 //    pattern WorldMetrics uses (gemini-medium fix on PR #124).
 
-// One shared body geometry — used both as the clip-path region (filled, so
-// the damage wash gets confined to the silhouette body) AND as the visible
-// outline (stroke only, no fill). Single source of truth means the wash
-// never escapes the outline. Path covers shoulders → arms hanging at the
-// sides → tapered torso → split legs.
-const BODY_PATH = `
+// Body geometry per race (Fantasy flagship; other genres' equivalents — Sci-Fi
+// species, Cyberpunk frame, etc. — slot in here too once authored). Each entry
+// is an SVG path that fills the silhouette body (used both as the clip-path
+// region for the damage wash AND as the stroked visible outline). Single
+// source of truth per race means the wash never escapes the outline.
+//
+// **Stub status (2026-06-12):** every race in this map currently points at
+// HUMAN_BODY_PATH. The dispatch is real (PlayerVitals reads player.race and
+// looks up the matching geometry), but the per-race art hasn't been drawn
+// yet — so an elf, a dwarf, and a human all render the same shape today.
+// Authoring real geometry per race is filed in docs/BACKLOG.md "Author
+// race-specific silhouette geometries"; the dispatch here lets that work
+// land race-by-race without re-architecting the component.
+//
+// The shared default is the humanoid Russell sees on the live alpha: covers
+// shoulders → arms hanging at the sides → tapered torso → split legs.
+const HUMAN_BODY_PATH = `
   M 36 36
   C 30 38, 26 42, 24 50
   L 18 90
@@ -51,6 +62,31 @@ const BODY_PATH = `
   L 50 34
   Z
 `;
+
+// Race → body path. Keys are lowercased so the lookup is case-insensitive
+// against whatever spelling the DM emits ("Elf" vs "elf" vs "ELF"). Add a new
+// race by authoring a path constant above and registering it here; everything
+// else flows through automatically. Unknown races (any string not in this map)
+// fall back to the human silhouette, so a fresh genre that emits "android"
+// or "rigger" doesn't crash — it just renders the default until art lands.
+const RACE_BODIES = {
+  human: HUMAN_BODY_PATH,
+  // Fantasy stubs — all human-shaped for now; per-race geometry is BACKLOG.
+  elf: HUMAN_BODY_PATH,
+  'half-elf': HUMAN_BODY_PATH,
+  dwarf: HUMAN_BODY_PATH,
+  halfling: HUMAN_BODY_PATH,
+  gnome: HUMAN_BODY_PATH,
+  orc: HUMAN_BODY_PATH,
+  'half-orc': HUMAN_BODY_PATH,
+  tiefling: HUMAN_BODY_PATH,
+  dragonborn: HUMAN_BODY_PATH,
+};
+
+function bodyPathFor(race) {
+  if (typeof race !== 'string') return HUMAN_BODY_PATH;
+  return RACE_BODIES[race.trim().toLowerCase()] || HUMAN_BODY_PATH;
+}
 
 function bandFor(hp, isDead) {
   if (isDead) return { label: 'Fallen', text: 'text-blood' };
@@ -134,6 +170,11 @@ export function PlayerVitals() {
     : bandFor(hp, isDead);
 
   const washOpacity = washOpacityFor(hp, isDead, placeholder);
+  // Race-keyed body geometry — stubbed today (every known race resolves to
+  // the human silhouette). When real per-race art lands, only the path
+  // string in RACE_BODIES needs to change. Reads from player.race when set;
+  // falls back to the human default otherwise.
+  const bodyPath = bodyPathFor(player?.race);
   const silhouetteOpacity = isDead ? 0.3 : 1;
 
   const ariaValueText = placeholder
@@ -170,7 +211,7 @@ export function PlayerVitals() {
           <defs>
             <clipPath id="vitals-body-clip">
               <ellipse cx="50" cy="22" rx="11" ry="12" />
-              <path d={BODY_PATH} />
+              <path d={bodyPath} />
             </clipPath>
             {/* Damage gradient — solid blood at the core, fading to a
                 still-saturated amber at the body edges (NOT to transparent
@@ -210,7 +251,7 @@ export function PlayerVitals() {
             strokeLinecap="round"
           >
             <ellipse cx="50" cy="22" rx="11" ry="12" />
-            <path d={BODY_PATH} />
+            <path d={bodyPath} />
           </g>
         </svg>
 

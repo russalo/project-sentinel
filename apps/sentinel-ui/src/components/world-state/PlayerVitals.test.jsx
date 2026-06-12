@@ -215,6 +215,98 @@ describe('PlayerVitals — edge cases', () => {
   })
 })
 
+describe('PlayerVitals — race-keyed body geometry (stub)', () => {
+  // Stub status: every known race resolves to the same human silhouette
+  // today; real per-race art is BACKLOG. These tests lock the dispatch so
+  // that (a) known races never crash, (b) unknown races fall back to the
+  // human default, (c) the lookup is case-insensitive + trim-tolerant
+  // against whatever spelling the DM emits.
+  function svgPaths() {
+    // The component renders BOTH a clipPath <path> and an outline <path>
+    // with the same d attribute. Either one is fine for the assertion;
+    // querySelectorAll lets us pick out both for sanity.
+    return Array.from(document.querySelectorAll('svg path')).map(
+      (p) => p.getAttribute('d') || '',
+    )
+  }
+
+  it('renders without crashing for each registered Fantasy race', () => {
+    const fantasyRaces = [
+      'human', 'elf', 'half-elf', 'dwarf', 'halfling',
+      'gnome', 'orc', 'half-orc', 'tiefling', 'dragonborn',
+    ]
+    for (const race of fantasyRaces) {
+      useWorldStore.setState({
+        characters: [{ name: 'Russalo', role: 'player', health: 100, race }],
+      })
+      const view = render(<PlayerVitals />)
+      expect(screen.getByRole('meter')).toBeInTheDocument()
+      view.unmount()
+    }
+  })
+
+  it('renders identical geometry across all stubbed races (proves they all resolve to HUMAN_BODY_PATH today)', () => {
+    seedPlayer({ race: 'human' })
+    const view1 = render(<PlayerVitals />)
+    const humanPaths = svgPaths()
+    view1.unmount()
+
+    // Pick a non-human race; should produce the same path strings until
+    // per-race art lands.
+    useWorldStore.setState({
+      characters: [{ name: 'Russalo', role: 'player', health: 100, race: 'dwarf' }],
+    })
+    const view2 = render(<PlayerVitals />)
+    expect(svgPaths()).toEqual(humanPaths)
+    view2.unmount()
+  })
+
+  it('falls back to human geometry for an unknown race (no crash)', () => {
+    seedPlayer({ race: 'android' })
+    render(<PlayerVitals />)
+    // Component still mounts; the silhouette is the human default.
+    expect(screen.getByRole('meter')).toBeInTheDocument()
+    // And the rendered geometry matches the human path (no empty d= because
+    // bodyPathFor's || fallback fired).
+    expect(svgPaths()[0]).toMatch(/M 36 36/)
+  })
+
+  it('falls back to human geometry when race is undefined', () => {
+    seedPlayer({}) // health defaults to 100, no race field
+    render(<PlayerVitals />)
+    expect(screen.getByRole('meter')).toBeInTheDocument()
+    expect(svgPaths()[0]).toMatch(/M 36 36/)
+  })
+
+  it('lookup is case-insensitive (Elf / ELF / elf all resolve)', () => {
+    for (const race of ['Elf', 'ELF', 'elf', 'eLf']) {
+      useWorldStore.setState({
+        characters: [{ name: 'Russalo', role: 'player', health: 100, race }],
+      })
+      const view = render(<PlayerVitals />)
+      expect(svgPaths()[0]).toMatch(/M 36 36/)
+      view.unmount()
+    }
+  })
+
+  it('lookup trims surrounding whitespace from race', () => {
+    seedPlayer({ race: '  dwarf  ' })
+    render(<PlayerVitals />)
+    expect(svgPaths()[0]).toMatch(/M 36 36/)
+  })
+
+  it('non-string race (number, object, null) falls back to human without crashing', () => {
+    for (const race of [42, {}, null, true, []]) {
+      useWorldStore.setState({
+        characters: [{ name: 'Russalo', role: 'player', health: 100, race }],
+      })
+      const view = render(<PlayerVitals />)
+      expect(svgPaths()[0]).toMatch(/M 36 36/)
+      view.unmount()
+    }
+  })
+})
+
 describe('PlayerVitals — wash visibility per band (Russell 2026-06-12 fix)', () => {
   // The dark codex background eats subtle opacity, so the wash uses a stepped
   // per-band floor (not a smooth (100-hp)/100 curve which produced ~9% opacity

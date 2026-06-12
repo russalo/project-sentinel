@@ -497,6 +497,64 @@ preset pipeline (`data/lore/core/presets/genres/`) already wants to work.
       it) was his explicit call, replacing an N-independent-genres
       approach with 1-template-plus-overrides._
 
+- [ ] **Author race-specific silhouette geometries for `PlayerVitals`.**
+      The dispatch landed in PR #129 (Russell 2026-06-12 "put a stub out
+      for different races"): `apps/sentinel-ui/src/components/world-state/
+      PlayerVitals.jsx` has a `RACE_BODIES` map keyed by race that all
+      Fantasy entries currently point at the shared `HUMAN_BODY_PATH`. The
+      plumbing is real (reads `player.race` from the DM-emitted character
+      record, looks up case-insensitively, falls back to human for unknown
+      races), but every elf / dwarf / orc renders as a human-shaped figure
+      today. This is the **content** half — author distinct SVG path
+      strings per race so each one reads visually distinct.
+
+      **v1 set (Fantasy flagship, ordered by player frequency):**
+        1. dwarf — shorter, broader torso, stubbier legs
+        2. elf — taller, leaner, longer limbs
+        3. halfling — smaller overall, head-to-body ratio closer to a child
+        4. orc / half-orc — broad shoulders, hunched, heavier limbs
+        5. dragonborn — taller, tail hint, broader chest
+        6. tiefling — close to human with horns hint at the head silhouette
+        7. gnome — small, slight, head proportion smaller than halfling
+        8. half-elf — slight elf lean, mostly human geometry
+
+      Once Fantasy has its set, the other genres' equivalents stub in via
+      the same map (Sci-Fi: human / android / synth / alien-bipedal;
+      Cyberpunk: meat / chromed / rigger; Western: mostly humans;
+      Horror: human / cursed-variant). The map structure is genre-agnostic
+      — only the keys change per genre — so once each path constant is
+      authored, registration is one line.
+
+      **Constraints inherited from the existing component:**
+      - 100×180 viewBox; head ellipse stays a separate `<ellipse>` element
+        so the head proportion is consistent across races (unless we
+        deliberately vary it, e.g. dragonborn). All-in-one path is fine
+        too — just clip-path needs to cover the whole figure.
+      - Path must close cleanly (the damage wash is clipped to it; a
+        non-closed shape lets the wash escape).
+      - Stay stroke-only on the visible render (no fill); the wash
+        provides the only fill. Single-color stroke against the
+        codex-ink palette.
+      - Keep the proportions visually distinct enough that a player
+        glancing at the panel can tell "I'm playing a dwarf" without
+        reading the character name.
+
+      **Acceptance per race:** new path string at the top of
+      `PlayerVitals.jsx`, registered in `RACE_BODIES` under the
+      lowercased race name, screenshot in the PR body so the visual
+      change is reviewable. No new tests needed — the existing
+      `renders identical geometry across all stubbed races` test
+      becomes the canary that gets retired naturally as paths diverge.
+
+      Cross-links: builds on the [[project_entity_sweeper_direction]]
+      and the Core Systems section above; the silhouette ↔ race
+      pairing is one slice of the broader "what does the systemic
+      layer underneath a character look like?" question.
+      _Discovered: 2026-06-12 | Context: stub landed in PR #129 with the
+      dispatch mechanism + the case-insensitive lookup; per-race art was
+      explicitly deferred so individual races can land race-by-race
+      without re-architecting the component._
+
 ---
 
 ## Frontend / Turn UX
