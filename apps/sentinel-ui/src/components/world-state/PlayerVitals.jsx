@@ -65,12 +65,30 @@ export function PlayerVitals() {
   const characters = useWorldStore((s) => s.characters);
   const playerName = usePlayerStore((s) => s.characterName);
 
-  // Find the player by role first (canonical) — fall back to name match for
-  // legacy/edge worlds where the DM emitted role=undefined but the name lines
-  // up with the session's recorded character.
-  let player = characters.find((c) => c?.role === 'player');
-  if (!player && playerName) {
-    player = characters.find((c) => c?.name === playerName);
+  // Find the player. Priority order, top to bottom:
+  //   1. role=player AND name=playerName — the unambiguous match. This wins
+  //      even when other role=player records exist, which is the codex-P2
+  //      case from PR #127: the shared/legacy state path can leak multiple
+  //      historical role=player entities into worldStore (the repo's
+  //      data/state/core/entities/ already has several), and a plain
+  //      `find(role=player)` would surface whichever happens to be first,
+  //      potentially the wrong character for the active session.
+  //   2. name match alone — covers the case where the DM emitted a player
+  //      record without setting role.
+  //   3. any role=player — last-resort fallback when playerName isn't set
+  //      yet (early hydration race, or the placeholder path).
+  // Order matters: only descend to (3) when nothing earlier matches.
+  let player;
+  if (playerName) {
+    player = characters.find(
+      (c) => c?.role === 'player' && c?.name === playerName,
+    );
+    if (!player) {
+      player = characters.find((c) => c?.name === playerName);
+    }
+  }
+  if (!player) {
+    player = characters.find((c) => c?.role === 'player');
   }
 
   // No player in either source → render a placeholder slot so the panel
@@ -119,7 +137,12 @@ export function PlayerVitals() {
           style={{ opacity: silhouetteOpacity, transition: 'opacity 300ms' }}
           role="meter"
           aria-label="Player vitals"
-          aria-valuenow={placeholder ? 0 : hp}
+          // Per WAI-ARIA: when the current value is unknown, aria-valuenow
+          // should be OMITTED, not set to 0 — a screen reader interprets
+          // 0 here as "Fallen / 0 HP," which is exactly the opposite of
+          // what "Unknown" means (gemini-medium on PR #127). Passing
+          // undefined lets React drop the attribute entirely.
+          aria-valuenow={placeholder ? undefined : hp}
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuetext={ariaValueText}

@@ -73,7 +73,49 @@ describe('PlayerVitals — finding the player', () => {
     // Unknown state so screen readers know data isn't available yet.
     expect(screen.getByText('Unknown')).toBeInTheDocument()
     expect(screen.getByText('—')).toBeInTheDocument()
-    expect(screen.getByRole('meter')).toHaveAttribute('aria-valuetext', 'Unknown')
+    const meter = screen.getByRole('meter')
+    expect(meter).toHaveAttribute('aria-valuetext', 'Unknown')
+    // Per WAI-ARIA: when value is unknown, aria-valuenow must be OMITTED,
+    // not set to 0 (which would announce as "Fallen / 0 HP"). gemini-medium
+    // on PR #127. React drops the attr when we pass undefined.
+    expect(meter).not.toHaveAttribute('aria-valuenow')
+  })
+
+  it('prefers the active session player when multiple role=player records exist', () => {
+    // The codex-P2 case from PR #127: legacy/shared state can leak multiple
+    // historical role=player entities into worldStore. A plain
+    // find(role=player) would surface whichever comes first, potentially the
+    // wrong character for the active session. With playerName set, the
+    // disambiguator picks the one whose name matches the session.
+    usePlayerStore.setState({ characterName: 'Russalo' })
+    useWorldStore.setState({
+      characters: [
+        { name: 'OldCharacter', role: 'player', health: 15 }, // first in list
+        { name: 'Russalo', role: 'player', health: 80 }, // active session
+        { name: 'AnotherOldOne', role: 'player', health: 100 },
+      ],
+    })
+    render(<PlayerVitals />)
+    // 80/100 = Bruised; if the picker took the first record we'd see
+    // Bleeding (15) and the name 'OldCharacter'.
+    expect(screen.getByText(/Bruised/)).toBeInTheDocument()
+    expect(screen.getByText(/80\/100/)).toBeInTheDocument()
+    expect(screen.getByText('Russalo')).toBeInTheDocument()
+    expect(screen.queryByText('OldCharacter')).not.toBeInTheDocument()
+  })
+
+  it('falls back to first role=player when playerName is not set', () => {
+    // Early-hydration / no-session-context case: pick something rather than
+    // nothing so the panel isn't blank during a brief race.
+    useWorldStore.setState({
+      characters: [
+        { name: 'SomePlayer', role: 'player', health: 50 },
+        { name: 'Kael', role: 'npc', health: 100 },
+      ],
+    })
+    render(<PlayerVitals />)
+    expect(screen.getByText(/Wounded/)).toBeInTheDocument()
+    expect(screen.getByText('SomePlayer')).toBeInTheDocument()
   })
 })
 
