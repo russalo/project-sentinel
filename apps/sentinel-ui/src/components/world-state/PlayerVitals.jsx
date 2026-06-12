@@ -61,6 +61,28 @@ function bandFor(hp, isDead) {
   return { label: 'Whole', text: 'text-leyline' };
 }
 
+// Wash opacity is stepped per band, not a smooth function of HP. The dark
+// codex background eats subtle opacity — a smooth (100-hp)/100 curve
+// produced ~10% wash at HP=90 (Bruised) which was effectively invisible
+// against the parchment palette. Each band now has a floor that makes
+// damage unambiguously legible at every level. (Reported by Russell
+// 2026-06-12 looking at HP=90 Johnny.) Fallen is intentionally dimmer
+// than "Near death" — the silhouette opacity also drops, the two together
+// read as "spent" not "bleeding out."
+//
+// Module-scoped (closes over nothing) so it's not re-allocated per render
+// — gemini-medium on PR #128 suggested an inline ternary, but a hoisted
+// named function reads more clearly than a 6-deep `? :` chain.
+function washOpacityFor(hp, isDead, placeholder) {
+  if (placeholder) return 0;
+  if (isDead) return 0.40;
+  if (hp >= 100) return 0;       // Whole
+  if (hp >= 70) return 0.30;     // Bruised
+  if (hp >= 40) return 0.55;     // Wounded
+  if (hp >= 10) return 0.75;     // Bleeding
+  return 0.90;                    // Near death
+}
+
 export function PlayerVitals() {
   const characters = useWorldStore((s) => s.characters);
   const playerName = usePlayerStore((s) => s.characterName);
@@ -111,24 +133,7 @@ export function PlayerVitals() {
     ? { label: 'Unknown', text: 'text-dust' }
     : bandFor(hp, isDead);
 
-  // Wash opacity is stepped per band, not a smooth function of HP. The dark
-  // codex background eats subtle opacity — a smooth (100-hp)/100 curve
-  // produced ~10% wash at HP=90 (Bruised) which was effectively invisible
-  // against the parchment palette. Each band now has a floor that makes
-  // damage unambiguously legible at every level. (Reported by Russell
-  // 2026-06-12 looking at HP=90 Johnny.) On a "Fallen" player the wash is
-  // a fixed dim-red 0.40 and the silhouette itself drops to 30% opacity —
-  // together they read as "spent" without a slashed-X mark.
-  function washFor(hp_, isDead_, placeholder_) {
-    if (placeholder_) return 0;
-    if (isDead_) return 0.40;
-    if (hp_ >= 100) return 0;       // Whole — no wash
-    if (hp_ >= 70) return 0.30;     // Bruised — visible amber edge
-    if (hp_ >= 40) return 0.55;     // Wounded — clear amber→red
-    if (hp_ >= 10) return 0.75;     // Bleeding — heavy red
-    return 0.90;                     // Near death — near-opaque
-  }
-  const washOpacity = washFor(hp, isDead, placeholder);
+  const washOpacity = washOpacityFor(hp, isDead, placeholder);
   const silhouetteOpacity = isDead ? 0.3 : 1;
 
   const ariaValueText = placeholder
@@ -138,7 +143,14 @@ export function PlayerVitals() {
   return (
     <div className="border-b border-border pb-4 mb-4">
       <h3 className="text-amber font-cinzel text-sm mb-2">VITALS</h3>
-      <div className="flex items-center gap-3">
+      {/* Stack vertically on narrow screens — iPhone screenshot 2026-06-12
+          showed the right column (band / HP / name) clipping off the screen
+          edge because the world-state drawer is too tight for a side-by-side
+          layout on mobile. `flex-col sm:flex-row` keeps the desktop look
+          but centers the silhouette over the readout on phones. The text
+          column also gets `text-center sm:text-left` so the labels track
+          alignment with the stacking axis. */}
+      <div className="flex flex-col sm:flex-row items-center gap-3">
         <svg
           viewBox="0 0 100 180"
           className="h-24 w-auto shrink-0 text-ink"
@@ -202,7 +214,7 @@ export function PlayerVitals() {
           </g>
         </svg>
 
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 text-center sm:text-left">
           <div className={band.text + ' font-medium text-sm font-cinzel'}>
             {band.label}
           </div>
@@ -210,7 +222,9 @@ export function PlayerVitals() {
             {placeholder ? '—' : `${hp}/100`}
           </div>
           {player?.name && !placeholder && (
-            <div className="text-ink text-xs mt-1 truncate">{player.name}</div>
+            <div className="text-ink text-xs mt-1 truncate max-w-full">
+              {player.name}
+            </div>
           )}
         </div>
       </div>
