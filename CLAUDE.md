@@ -394,9 +394,10 @@ in `GEMINI.md`.
   prerequisite regenerates `.env` and clobbers the value (and the LLM
   key). See `docs/WORKSPACE.md` § "Local dev: keep gameplay out of the
   code repo".
-- **Live alpha features shipped this week (cohort feedback channels).**
-  As of 2026-06-07, the closed alpha at `sentinel.russalo.com/alpha/`
-  has two shipped feedback channels in addition to the game itself:
+- **Live alpha features shipped this week (cohort feedback channels +
+  ambient surfaces).** As of 2026-06-12, the closed alpha at
+  `sentinel.russalo.com/alpha/` has these shipped surfaces in addition to
+  the game itself:
   (a) **DM action suggestions** — the DM emits `<action>label</action>`
   tags inline in narrative + a structured `suggestedActions` field in
   the world_update block; the SPA highlights both as clickable
@@ -414,6 +415,22 @@ in `GEMINI.md`.
   Per-IP rate limit `SENTINEL_RL_FEEDBACK_PER_HOUR=10`. Triage flow:
   read submissions on disk, graduate ripe items into
   `docs/ALPHA_FEEDBACK.md` + `docs/BACKLOG.md`. See PR #116.
+  (c) **Tension meter** at the bottom of the world-state panel — renders
+  the DM-emitted `world.tension` 0–10 as a colored progressbar with a
+  categorical band ("Calm / Off-balance / Overdue / Critical"); the DM
+  prompt's TENSION & ENCOUNTER PRESSURE block uses tension as encounter
+  pressure (PR #124). (d) **Player Vitals silhouette** at the top of
+  the same panel — an inked humanoid SVG whose body fills with an
+  amber→blood wash as `health` drops (PR #127), with per-band opacity
+  floors so the wash is visibly distinct at every damaged level on the
+  dark codex palette (PR #128 visual-iteration fix), and a race-keyed
+  geometry dispatch stub (`RACE_BODIES` map keyed by lowercased race
+  name with prototype-safe lookup; PR #129). Per-race art is BACKLOG;
+  every Fantasy race renders the human geometry today. The two
+  ambient surfaces together — Vitals at the top, Tension at the bottom
+  — read as a "you ↔ world" sandwich and surface a systemic layer the
+  DM increasingly implies (see **Fantasy-flagship core systems**
+  initiative in `docs/BACKLOG.md`).
 - **`docs/ALPHA_FEEDBACK.md` is the capture surface for tester feedback;**
   `docs/BACKLOG.md` is the triaged-work surface. Items land in FEEDBACK
   first (one-line, dated, by category — bugs / UI-UX / general / future
