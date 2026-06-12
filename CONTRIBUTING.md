@@ -185,7 +185,7 @@ If you are a Technician writing a new MCP tool (e.g., a `trade_items` function),
 
 - Use `additionalProperties: false` — prevent hallucinated payload keys.
 - Use strict Regex patterns on file paths — lock writes to `/data/state/` and `/data/lore/`.
-- Fail loudly — if schema validation fails, return a precise, structured error to the Inference Node so the Orchestrator can self-correct in the next loop cycle.
+- Fail loudly — if schema validation fails, return a precise, structured error to the Inference Node so the DM can self-correct in the next loop cycle. (The schema-rejection feedback travels directly back to the DM agent; there is no separate orchestrator agent in the current design.)
 - Use `$schema: "https://json-schema.org/draft/2020-12/schema"` for all new schemas.
 - Never hardcode credentials — use environment variables from `.env`.
 

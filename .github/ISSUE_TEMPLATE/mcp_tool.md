@@ -58,7 +58,7 @@ Define the exact Draft 2020-12 JSON Schema for the input and describe the output
 ```json
 {
   "code": "VALIDATION_ERROR | PATH_VIOLATION | ...",
-  "detail": "Human-readable error for the Orchestrator to relay to the DM for self-correction."
+  "detail": "Human-readable error returned to the DM agent for self-correction in the next loop cycle."
 }
 ```
 
