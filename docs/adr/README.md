@@ -1,5 +1,7 @@
 # Architecture Decision Records
 
+> Looking for lighter, feature-scoped designs? See **[`docs/rfc/`](../rfc/README.md)** for the Request For Comments (RFC) system that lives alongside this directory. ADRs cover long-lived architectural commitments; RFCs cover per-feature designs and minor iterations.
+
 This directory holds the Architecture Decision Records (ADRs) for Project Sentinel.
 
 An ADR is a short, long-lived document that captures **one decision** — the
