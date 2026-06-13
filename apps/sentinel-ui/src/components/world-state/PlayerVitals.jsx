@@ -107,14 +107,12 @@ function bandFor(hp, isDead) {
   return { label: 'Whole', text: 'text-leyline' };
 }
 
-// Wash opacity is stepped per band, not a smooth function of HP. The dark
-// codex background eats subtle opacity — a smooth (100-hp)/100 curve
-// produced ~10% wash at HP=90 (Bruised) which was effectively invisible
-// against the parchment palette. Each band now has a floor that makes
-// damage unambiguously legible at every level. (Reported by Russell
-// 2026-06-12 looking at HP=90 Johnny.) Fallen is intentionally dimmer
-// than "Near death" — the silhouette opacity also drops, the two together
-// read as "spent" not "bleeding out."
+// Wash opacity is stepped per band — controls the INTENSITY of the wash
+// inside the damaged region. The dark codex background eats subtle opacity
+// (Russell 2026-06-12 at HP=90 saw nothing on a smooth (100-hp)/100 curve),
+// so each band has a floor that makes damage unambiguously legible at every
+// level. Fallen is intentionally dimmer than "Near death" — the silhouette
+// opacity also drops, the two together read as "spent" not "bleeding out."
 //
 // Module-scoped (closes over nothing) so it's not re-allocated per render
 // — gemini-medium on PR #128 suggested an inline ternary, but a hoisted
@@ -127,6 +125,30 @@ function washOpacityFor(hp, isDead, placeholder) {
   if (hp >= 40) return 0.55;     // Wounded
   if (hp >= 10) return 0.75;     // Bleeding
   return 0.90;                    // Near death
+}
+
+// Damage AREA (height in SVG units that the wash covers, from the top down)
+// scales with HP loss so the silhouette visually communicates the PERCENTAGE
+// of damage — not just "you're hurt." (Russell 2026-06-12 at HP=55 wrote
+// "Can't see the 45% hit loss" — the per-band opacity alone covered the
+// whole body uniformly, so HP=55 and HP=15 looked identical visually.) The
+// wound spreads from the head down; at HP=55 the top 45% of the body shows
+// the wash, the bottom 55% stays clean. Combined with the per-band opacity
+// floor: damaged region INTENSITY varies by band, damaged region AREA varies
+// by raw HP. Two visual dimensions communicating two facts (how bad, how
+// much).
+//
+// Minimum visible area at any damaged band so the transition from Whole →
+// Bruised is unmistakable (otherwise HP=99 would draw a 1.8-unit wash that
+// reads as identical to HP=100).
+const SVG_HEIGHT = 180;
+const MIN_DAMAGE_HEIGHT = 12;
+function damageHeightFor(hp, isDead, placeholder) {
+  if (placeholder) return 0;
+  if (isDead) return SVG_HEIGHT;
+  if (hp >= 100) return 0;
+  const proportional = ((100 - hp) / 100) * SVG_HEIGHT;
+  return Math.max(MIN_DAMAGE_HEIGHT, proportional);
 }
 
 export function PlayerVitals() {
@@ -180,6 +202,10 @@ export function PlayerVitals() {
     : bandFor(hp, isDead);
 
   const washOpacity = washOpacityFor(hp, isDead, placeholder);
+  // Damage area: how MUCH of the body the wash covers (top-down). Combined
+  // with washOpacity above (the wash INTENSITY), the silhouette communicates
+  // both the band severity AND the actual percentage of HP lost.
+  const damageHeight = damageHeightFor(hp, isDead, placeholder);
   // Race-keyed body geometry — stubbed today (every known race resolves to
   // the human silhouette). When real per-race art lands, only the path
   // string in RACE_BODIES needs to change. Reads from player.race when set;
@@ -231,7 +257,21 @@ export function PlayerVitals() {
                 band; this gradient just gives the wash a hot-center,
                 inked-bleed shape inside the silhouette. (Russell visual
                 feedback 2026-06-12.) */}
-            <radialGradient id="vitals-damage" cx="50%" cy="50%" r="65%">
+            {/* `gradientUnits="userSpaceOnUse"` keeps the gradient's
+                hot-center fixed in the SVG coordinate space — without it the
+                default `objectBoundingBox` rescales the gradient to the
+                <rect>'s bounding box, so as `damageHeight` shrinks toward
+                the MIN_DAMAGE_HEIGHT floor (12 units) the gradient squishes
+                into a 100×12 region and the center expands disproportion-
+                ately. Center at (50, 90) = the middle of the SVG body
+                (gemini-medium on PR #131). */}
+            <radialGradient
+              id="vitals-damage"
+              cx="50"
+              cy="90"
+              r="65"
+              gradientUnits="userSpaceOnUse"
+            >
               <stop offset="0%" stopColor="#8c3a3a" stopOpacity="1" />
               <stop offset="60%" stopColor="#8c3a3a" stopOpacity="0.95" />
               <stop offset="100%" stopColor="#c9973a" stopOpacity="0.75" />
@@ -239,17 +279,27 @@ export function PlayerVitals() {
           </defs>
 
           {/* Damage wash — clipped to the body so it never spills outside
-              the silhouette. Opacity is the runtime mapping of HP loss. */}
+              the silhouette. The rect HEIGHT shrinks/grows with damage
+              (top-down fill: wound spreads from head as HP drops), the
+              rect OPACITY varies by band (intensity within the damaged
+              area). At HP=100 height is 0; at HP=0 / dead it's the full
+              SVG height.
+              **`height` lives in the inline `style` object, not as an XML
+              attribute** — CSS `transition: height` doesn't trigger on SVG
+              presentation attributes in most browsers; only style-driven
+              values animate. (gemini-medium on PR #131.) */}
           <rect
             data-testid="vitals-damage-wash"
             x="0"
             y="0"
             width="100"
-            height="180"
             fill="url(#vitals-damage)"
             opacity={washOpacity}
             clipPath="url(#vitals-body-clip)"
-            style={{ transition: 'opacity 400ms' }}
+            style={{
+              height: damageHeight,
+              transition: 'height 400ms, opacity 400ms',
+            }}
           />
 
           {/* Visible outline — stroke only, same geometry as the clip. */}
