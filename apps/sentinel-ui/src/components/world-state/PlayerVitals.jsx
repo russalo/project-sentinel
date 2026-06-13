@@ -61,7 +61,7 @@ const HUMAN_BODY_PATH = `
   C 74 42, 70 38, 64 36
   L 50 34
   Z
-`;
+`.trim();
 
 // Race → body path. Keys are lowercased so the lookup is case-insensitive
 // against whatever spelling the DM emits ("Elf" vs "elf" vs "ELF"). Add a new
@@ -196,7 +196,11 @@ export function PlayerVitals() {
     ? Math.max(0, Math.min(100, hpInput))
     : 100;
 
-  const isDead = !placeholder && (player?.status === 'dead' || hp === 0);
+  // status comparison is case-insensitive — DM emissions vary on casing
+  // ("Dead", "DEAD", "dead") and a corpse must NOT render as "Wounded" just
+  // because the DM capitalized the word. (Red-team finding 2026-06-12.)
+  const statusStr = typeof player?.status === 'string' ? player.status.trim().toLowerCase() : '';
+  const isDead = !placeholder && (statusStr === 'dead' || hp === 0);
   const band = placeholder
     ? { label: 'Unknown', text: 'text-dust' }
     : bandFor(hp, isDead);
@@ -230,7 +234,7 @@ export function PlayerVitals() {
       <div className="flex flex-col sm:flex-row items-center gap-3">
         <svg
           viewBox="0 0 100 180"
-          className="h-24 w-auto shrink-0 text-ink"
+          className="h-20 sm:h-24 w-auto shrink-0 text-ink"
           style={{ opacity: silhouetteOpacity, transition: 'opacity 300ms' }}
           role="meter"
           aria-label="Player vitals"
@@ -316,10 +320,18 @@ export function PlayerVitals() {
         </svg>
 
         <div className="flex-1 min-w-0 text-center sm:text-left">
-          <div className={band.text + ' font-medium text-sm font-cinzel'}>
+          {/* `whitespace-nowrap` on the band label so "Near death" /
+              "Off-balance" never wrap at narrow widths (~280px panel on a
+              small desktop drawer or a stacked-mobile column with a long
+              character name pushing the column narrow). Red-team finding
+              2026-06-12. */}
+          <div className={band.text + ' font-medium text-sm font-cinzel whitespace-nowrap'}>
             {band.label}
           </div>
-          <div className="text-dust text-xs mt-0.5">
+          {/* `whitespace-nowrap` on the HP readout so "55/100" never wraps
+              to "55/1" + "00" at narrow widths or under iOS 2x text
+              scaling. Red-team finding 2026-06-12. */}
+          <div className="text-dust text-xs mt-0.5 whitespace-nowrap">
             {placeholder ? '—' : `${hp}/100`}
           </div>
           {player?.name && !placeholder && (
