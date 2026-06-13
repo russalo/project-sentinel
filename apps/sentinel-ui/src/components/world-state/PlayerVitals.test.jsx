@@ -391,8 +391,11 @@ describe('PlayerVitals — damage area height (Russell 2026-06-12 "Can\'t see th
   // regression that flattens the visual back to "uniform wash regardless
   // of HP" would fail CI.
   function washHeight() {
+    // `height` is set via inline `style` (not an SVG attribute) so CSS
+    // transitions can drive it — read it from style, not from attribute.
+    // (gemini-medium on PR #131.)
     const wash = screen.getByTestId('vitals-damage-wash')
-    return Number(wash.getAttribute('height'))
+    return parseFloat(wash.style.height || '0')
   }
   const SVG_HEIGHT = 180
 

@@ -257,7 +257,21 @@ export function PlayerVitals() {
                 band; this gradient just gives the wash a hot-center,
                 inked-bleed shape inside the silhouette. (Russell visual
                 feedback 2026-06-12.) */}
-            <radialGradient id="vitals-damage" cx="50%" cy="50%" r="65%">
+            {/* `gradientUnits="userSpaceOnUse"` keeps the gradient's
+                hot-center fixed in the SVG coordinate space — without it the
+                default `objectBoundingBox` rescales the gradient to the
+                <rect>'s bounding box, so as `damageHeight` shrinks toward
+                the MIN_DAMAGE_HEIGHT floor (12 units) the gradient squishes
+                into a 100×12 region and the center expands disproportion-
+                ately. Center at (50, 90) = the middle of the SVG body
+                (gemini-medium on PR #131). */}
+            <radialGradient
+              id="vitals-damage"
+              cx="50"
+              cy="90"
+              r="65"
+              gradientUnits="userSpaceOnUse"
+            >
               <stop offset="0%" stopColor="#8c3a3a" stopOpacity="1" />
               <stop offset="60%" stopColor="#8c3a3a" stopOpacity="0.95" />
               <stop offset="100%" stopColor="#c9973a" stopOpacity="0.75" />
@@ -269,17 +283,23 @@ export function PlayerVitals() {
               (top-down fill: wound spreads from head as HP drops), the
               rect OPACITY varies by band (intensity within the damaged
               area). At HP=100 height is 0; at HP=0 / dead it's the full
-              SVG height. */}
+              SVG height.
+              **`height` lives in the inline `style` object, not as an XML
+              attribute** — CSS `transition: height` doesn't trigger on SVG
+              presentation attributes in most browsers; only style-driven
+              values animate. (gemini-medium on PR #131.) */}
           <rect
             data-testid="vitals-damage-wash"
             x="0"
             y="0"
             width="100"
-            height={damageHeight}
             fill="url(#vitals-damage)"
             opacity={washOpacity}
             clipPath="url(#vitals-body-clip)"
-            style={{ transition: 'height 400ms, opacity 400ms' }}
+            style={{
+              height: damageHeight,
+              transition: 'height 400ms, opacity 400ms',
+            }}
           />
 
           {/* Visible outline — stroke only, same geometry as the clip. */}
