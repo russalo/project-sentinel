@@ -168,6 +168,22 @@ describe('PlayerVitals — bands', () => {
     render(<PlayerVitals />)
     expect(screen.getByText(/Fallen/)).toBeInTheDocument()
   })
+
+  it('renders Fallen for capitalized "Dead" / "DEAD" / " dead " — status compare is case-insensitive', () => {
+    // Red-team 2026-06-12: DM emissions vary on casing. The original
+    // `player.status === 'dead'` exact-match would let "Dead" or "DEAD"
+    // fall through to the HP-band branch, so a corpse rendered as Wounded
+    // (or whatever HP-band the live HP value falls into). The case-/
+    // whitespace-tolerant compare prevents that.
+    for (const status of ['Dead', 'DEAD', ' dead ', 'dEaD']) {
+      useWorldStore.setState({
+        characters: [{ name: 'Russalo', role: 'player', health: 20, status }],
+      })
+      const view = render(<PlayerVitals />)
+      expect(screen.getByText(/Fallen/)).toBeInTheDocument()
+      view.unmount()
+    }
+  })
 })
 
 describe('PlayerVitals — edge cases', () => {
@@ -453,6 +469,33 @@ describe('PlayerVitals — damage area height (Russell 2026-06-12 "Can\'t see th
     })
     render(<PlayerVitals />)
     expect(washHeight()).toBe(0)
+  })
+
+  it('SVG height class is responsive (h-20 on mobile, sm:h-24 on desktop)', () => {
+    // Red-team 2026-06-12: SVG `h-24` (96px) is too tall for iPhone SE
+    // viewport (320px). Responsive shrink at mobile (`h-20` = 80px) plus
+    // the desktop default (`sm:h-24`) keeps the silhouette compact on
+    // phones without sacrificing desktop presence.
+    seedPlayer({ health: 100 })
+    render(<PlayerVitals />)
+    const svg = screen.getByRole('meter')
+    // SVGElement.className is an SVGAnimatedString (not a plain string) —
+    // read the attribute via getAttribute() instead. (Caught in test runner.)
+    const cls = svg.getAttribute('class') || ''
+    expect(cls).toMatch(/\bh-20\b/)
+    expect(cls).toMatch(/\bsm:h-24\b/)
+  })
+
+  it('band label and HP readout have whitespace-nowrap (never wrap on narrow widths)', () => {
+    // Red-team 2026-06-12: "55/100" was wrapping to "55/1" + "00" at narrow
+    // widths or under iOS 2x text scaling; "Near death" / "Off-balance"
+    // could truncate similarly. The fix is `whitespace-nowrap` on both.
+    seedPlayer({ health: 5 })
+    render(<PlayerVitals />)
+    const band = screen.getByText(/Near death/)
+    const hp = screen.getByText(/5\/100/)
+    expect(band.className).toMatch(/\bwhitespace-nowrap\b/)
+    expect(hp.className).toMatch(/\bwhitespace-nowrap\b/)
   })
 
   it('HP=55 and HP=15 produce visibly different damage heights (the regression this fix addresses)', () => {
