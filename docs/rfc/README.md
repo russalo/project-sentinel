@@ -87,19 +87,27 @@ one to land just bumps to the next number in their PR.
 
 An RFC moves through four states in its front matter:
 
-- **Draft** — Open PR, under discussion. The RFC may change shape
-  significantly.
-- **Accepted** — PR merged. The design is agreed; implementation may not
-  have started yet, or may be in progress.
+- **Draft** — Living in conversation / scratch / a local planning file.
+  **Not committed.** Design is being discussed and may change shape
+  significantly. The Draft stage exists in this project but does NOT
+  have a corresponding PR (see "PR workflow" below).
+- **Accepted** — The RFC file lands committed, **in the same PR as the
+  implementation** (or the first implementation PR if multi-step). The
+  design is agreed *and* the diff that fulfills it is on the same
+  review surface.
 - **Implemented** — The feature has landed and the RFC matches what
-  shipped. If the implementation diverged from the RFC, either update
-  the RFC to match or supersede it.
+  shipped. For single-PR RFCs this happens at the same merge as
+  Accepted (so a small RFC can land directly as Implemented). For
+  multi-PR RFCs, status flips from Accepted to Implemented when the
+  last acceptance criterion checks off. If the implementation
+  diverged from the RFC, either update the RFC to match or supersede
+  it.
 - **Superseded** — A newer RFC (or an ADR) has replaced this one. The
   front matter must link the replacement.
 
-State transitions happen in PRs, not in this README. Update the front
-matter of the RFC file itself; the index below gets refreshed when
-convenient.
+State transitions happen in the same PRs that drive the implementation;
+update the front matter of the RFC file itself. The index below gets
+refreshed when convenient.
 
 A **Superseded** RFC stays on disk — don't delete it. The history is
 the point.
@@ -153,20 +161,21 @@ structure makes the index of RFCs scannable.
 
 `docs/BACKLOG.md` is the **harvest pool**: a running stream of
 half-formed ideas, surfaced bugs, deferred work, and "we should think
-about this" notes. It's deliberately low-friction to append to and is
-becoming gitignored — it's a personal scratchpad, not a contract.
+about this" notes. It's deliberately low-friction to append to.
 
 RFCs are how a backlog item **graduates** into something that gets
 built:
 
 1. An item lives in `BACKLOG.md` until someone (usually Russell) decides
    it's ripe.
-2. The next step is an RFC PR — copy the backlog one-liner into the RFC
-   front matter's `Implements:` field, then flesh out the design.
-3. When the RFC merges (Accepted), the BACKLOG item can be removed —
-   the RFC is now the authoritative description of the work.
-4. The implementation PR(s) reference the RFC number in their
-   description.
+2. The next step is **drafting the RFC in conversation** — propose the
+   shape, surface alternatives, converge on direction. The RFC content
+   takes form here, not in a PR.
+3. When direction is set, the RFC file is **created on the
+   implementation branch**, alongside the diff that fulfills it. Both
+   land in the same PR; status on landing is **Accepted** (or
+   **Implemented** if the same PR finishes the work). The BACKLOG
+   item can be removed in the same merge — the RFC is now authoritative.
 
 If a backlog item is too small to need an RFC, just do it — the commit
 message is the record.
@@ -175,19 +184,38 @@ message is the record.
 
 ## PR workflow
 
-1. Branch off `master`: `git checkout -b rfc/NNNN-<slug>`.
-2. Copy `TEMPLATE.md` to `docs/rfc/NNNN-<slug>.md` and fill it in.
-3. Open the PR. Title: `RFC NNNN — <title>`.
-4. Discussion happens in PR comments. Update the RFC file in response
-   to feedback; the PR is the discussion thread.
-5. On merge: status flips from **Draft** to **Accepted** (in the same
-   PR; flip it just before the squash-merge, or in a follow-up commit
-   if the merge is what triggers the decision).
-6. Implementation PRs reference the RFC. When the last implementation
-   PR merges, flip status to **Implemented** in a small follow-up.
-7. If the design needs to change after Accepted, open a new RFC that
-   supersedes the old one rather than editing the old one substantively.
-   Minor corrections (typos, dead links) can be edited in place.
+Project Sentinel's RFC convention is **draft-in-conversation, accepted-on-implementation**:
+no "Draft RFC NNNN" PRs. The Draft stage lives in the discussion that produced
+the design; the RFC file lands committed only when it's ready to be Accepted.
+
+1. **Draft in conversation.** Propose the design inline; iterate
+   alternatives, code snippets, tradeoffs. Use a scratch file under
+   `~/.claude/plans/<slug>.md` if it's long. **Don't open a PR for the
+   draft.**
+2. **Pick a number.** The next free integer in `docs/rfc/` (e.g.
+   `ls docs/rfc/`). Two designs racing for the same number is fine —
+   the second one to land just bumps in their PR.
+3. **Land RFC + implementation together.** When direction is set,
+   create `docs/rfc/NNNN-<slug>.md` from `TEMPLATE.md` on the
+   implementation branch, alongside the code that fulfills it. Open
+   one PR. Title: `feat(...): <feature> (RFC NNNN — <slug>)` or similar.
+   - For single-PR RFCs (small enough that the whole feature lands at
+     once): set `Status: Implemented` directly.
+   - For multi-PR RFCs: set `Status: Accepted` on the first
+     implementation PR. Each subsequent PR references the RFC by
+     number. The last implementation PR flips status to
+     **Implemented**.
+4. **If the design needs to change after Accepted**, open a new RFC
+   that supersedes the old one rather than editing the old one
+   substantively. Minor corrections (typos, dead links) can be edited
+   in place.
+
+**Exception — the bootstrap.** PR #136 (the PR that introduced this
+RFC system) landed `RFC 0001` as `Draft` in a doc-only PR. That was
+the one-time bootstrap case: adopting the convention itself without
+a paired implementation. RFC 0001 will flip to Accepted / Implemented
+when its implementation PR lands. Future RFCs follow the
+draft-in-conversation pattern above.
 
 ---
 
