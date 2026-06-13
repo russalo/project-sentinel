@@ -84,7 +84,7 @@ the decision explicit in the docs when that branch merged.
 
 ### World identity and multi-session support → ADR 0002 (decided 2026-06-04)
 
-Settled by [ADR 0002 — World identity & isolation](adr/0002-world-identity-and-isolation.md). Per-world identity shipped (Slices 1–5): every session is minted a `world_id` (UUID) threaded into both dispatch calls and the git-sync commit subject; the backend resolves a turn's world from its `session_id`; resume is live (`GET /api/world/{world_id}` + the `/w/<world_id>` SPA route + the "my worlds" picker); per-world isolation routes each world to its own `data/` tree / git repo under `SENTINEL_WORLDS_ROOT`. The operational cutover landed 2026-06-07 (gate-fronted topology at `sentinel.russalo.com/alpha/`). See `ROADMAP.md` "Where we are."
+Settled by [ADR 0002 — World identity & isolation](adr/0002-world-identity-and-isolation.md). Per-world identity shipped (Slices 1–5): every session is minted a `world_id` (UUID) threaded into both dispatch calls and the git-sync commit subject; the backend resolves a turn's world from its `session_id`; resume is live (`GET /api/world/{world_id}` + the `/w/<world_id>` SPA route + the "my worlds" picker). The per-world routing applies **only to mutable world state** (session JSON, world-state JSON, fs-manager writes for entities/locations/items/world meta) — each world's data lives under `SENTINEL_WORLDS_ROOT/<world_id>/`. Read-only shared assets (`schemas/`, presets, the core-lore codex outside `sessions/`) continue to load from the repo root. The operational cutover landed 2026-06-07 (gate-fronted topology at `sentinel.russalo.com/alpha/`). See `ROADMAP.md` "Where we are."
 
 <details>
 <summary>Original open-question text (preserved as historical record)</summary>

@@ -79,11 +79,12 @@ _Last updated: 2026-06-13_
   shareable and survives a refresh — resume rebuilds the scroll, the world-state
   panels (entities/locations/factions/items), and the persona (id/name/mood)
   from `GET /api/world/<world_id>`.
-  **`SENTINEL_WORLDS_ROOT` is unset by default**, so per-world routing is dormant
-  and runtime behavior is unchanged (single shared `data/` tree); the cutover is
-  now a one-line operational flip (see `docs/WORKSPACE.md` § "Per-world isolation
-  cutover"). See the "ADR 0002
-  implementation — remaining slices" item in [`BACKLOG.md`](./BACKLOG.md).
+  **The cutover landed 2026-06-07** — `SENTINEL_WORLDS_ROOT` is armed in
+  `infrastructure/.env` on origin-core; per-world routing is **live** for mutable
+  state (session JSON, world-state JSON, fs-manager writes), while read-only
+  shared assets (schemas, presets, the core-lore codex outside `sessions/`) still
+  load from the repo root. See `docs/WORKSPACE.md` § "Per-world isolation cutover"
+  + ADR 0002's Implementation header.
 - **Mobile-responsive chat layout shipped (2026-05-30).** The game UI
   is now usable on phones. Side panels are hidden below the `lg`
   breakpoint and accessible via `Users` / `BookOpen` icon buttons in
@@ -105,21 +106,29 @@ or an RFC for the full technical detail; the roadmap stays short on purpose.
 long-lived architectural commitments; RFCs cover per-feature designs and
 minor iterations. The RFC system itself (`docs/rfc/` + README +
 TEMPLATE) is item #1 below — once it lands, items #2+ each cite the
-RFC that drives them. BACKLOG transitions from a tracked planning surface
-to a personal scratch / harvest pool for ideas that mature into RFCs
-(also part of item #1).
+RFC that drives them.
+
+`docs/BACKLOG.md` remains the harvest pool for ideas that mature into
+RFCs. Russell's 2026-06-13 directive is that BACKLOG will eventually be
+gitignored (treated as a personal scratch) once the current entries have
+either landed as code, graduated into RFCs, or been pruned. Defer that
+transition until the migration is complete; until then BACKLOG stays
+tracked and links to it stay valid.
 
 ### 1. **Adopt the RFC system + initial bootstrapping**
 
 `docs/rfc/` lands as a new doc surface alongside `docs/adr/`. Includes the
 README (conventions, lifecycle, BACKLOG-feeds-in pattern) + `TEMPLATE.md` +
 the first RFC (`RFC 0001 — PlayerVitals vitality-fill model`, see item #2).
-BACKLOG is becoming gitignored in the same batch — it transitions from a
-tracked planning surface to a personal scratch / harvest pool for ideas
-that mature into RFCs.
 
-- Status: drafted (workflow output staged); pending Russell green-light to commit + push.
-- Exit criteria: RFC structure on disk + BACKLOG removed from version control + first RFC live as a Draft PR.
+The BACKLOG gitignore transition is a downstream step — deferred until the
+current BACKLOG entries have either landed as code, been migrated into
+RFCs, or been pruned. Tracked separately; not part of this item's exit
+criteria.
+
+- Exit criteria: `docs/rfc/README.md` + `docs/rfc/TEMPLATE.md` + at least
+  `docs/rfc/0001-player-vitals-vitality-fill.md` (Draft status) on disk
+  and reachable from the ADR index / README.
 
 ### 2. **PlayerVitals vitality-fill flip (RFC 0001)**
 
@@ -149,7 +158,7 @@ gap between what testers see and what the world actually models.
 - Approach (from BACKLOG): planning RFC to set scope → Fantasy v1 spec →
   pilot one system end-to-end (combat is the obvious first proof) → 2–3
   genre overrides (Sci-Fi + Cyberpunk) to validate the template.
-- Backlog: [`Core Systems — Fantasy as Flagship Model`](./BACKLOG.md)
+- Backlog: `docs/BACKLOG.md` § "Core Systems — Fantasy as Flagship Model"
 - Exit criteria: scope-RFC Accepted; combat-resolution RFC follow-up
   drafted.
 
@@ -161,7 +170,7 @@ list. Spec already in BACKLOG; needs the RFC's open calls answered before
 implementation (single-use invite ledger shape, Caddy-write-back path,
 audit-log credential-id pattern). RFC follow-up.
 
-- Backlog: [`Tester self-signup page`](./BACKLOG.md)
+- Backlog: `docs/BACKLOG.md` § "Tester self-signup page"
 - Exit criteria: RFC Accepted; backend + signup page + admin approval flow
   land together.
 
