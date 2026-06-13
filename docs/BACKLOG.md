@@ -555,6 +555,94 @@ preset pipeline (`data/lore/core/presets/genres/`) already wants to work.
       explicitly deferred so individual races can land race-by-race
       without re-architecting the component._
 
+- [ ] **Invert PlayerVitals fill metaphor: vitality-remaining (red),
+      not damage-taken (red).** Russell visual feedback 2026-06-13 with
+      a screenshot at HP=55: "looks like 45% red, I guess I was
+      expecting the inverse, full health all red and empty means no
+      health." Current implementation (shipped PR #131 + PR #128) reads
+      the wash as *the wound spreading*: at HP=100 the silhouette is
+      clean, as HP drops the red wash grows from the head downward, at
+      HP=0 the wash covers the full body. The mental model Russell
+      expected — and the Diablo-health-orb idiom this echoes — is the
+      inverse: at HP=100 the silhouette is **full of red liquid**
+      (vitality), as HP drops the level drops, at HP=0 the silhouette
+      is **empty** (outline only).
+
+      **The two metaphors:**
+      | | Current (damage-taken) | Russell's expected (vitality-remaining) |
+      |---|---|---|
+      | HP=100 | Clean silhouette | **Entirely red** |
+      | HP=55  | Top 45% red (head + shoulders washed) | **Bottom 55% red** (legs filled, top emptied) |
+      | HP=0   | Entirely red (status dim) | **Empty silhouette** |
+
+      **Concrete implementation flip** (the wash already lives in a
+      `<rect>` clipped to the body via clipPath, so the change is
+      arithmetic + position, not architecture):
+
+      ```js
+      // Current — damage area grows from top:
+      damageHeight = (100 - hp) / 100 * SVG_HEIGHT
+      // rect at y=0, height=damageHeight (grows downward as HP drops)
+
+      // Inverted — vitality remaining drains from top:
+      vitalityHeight = hp / 100 * SVG_HEIGHT
+      // rect at y=(SVG_HEIGHT - vitalityHeight), height=vitalityHeight
+      // (liquid level: full at HP=100, drains downward, empty at HP=0)
+      ```
+
+      **Open design calls before implementation:**
+      1. **Drain direction:** liquid drains from the TOP (head empties
+         first, legs stay full until near-death — Diablo orb metaphor)
+         vs from the BOTTOM (feet empty first, head stays full —
+         less idiomatic but more anatomical: "you bleed out from the
+         core"). Russell's screenshot intuition suggests top-drains.
+      2. **Color semantics:** "red = vitality" is unusual (red usually
+         signals damage), but in the orb metaphor it's the liquid
+         color. Alternative: shift the gradient to a healthier color
+         (amber → leyline) at full HP and bleed toward blood-red as HP
+         drops. Per-band gradient lerp would land that without a hard
+         flip.
+      3. **What "Fallen" looks like:** at HP=0 the body is empty by
+         default; the current dimming of the silhouette opacity to
+         0.30 still applies, but read against an empty silhouette is
+         it strong enough? May need to keep a small dim-red wash at
+         the bottom of the body as a "blood pool" cue.
+      4. **The MIN_DAMAGE_HEIGHT floor (12 units)** inverts to a
+         MIN_VITALITY_HEIGHT ceiling — at HP=1 we want a sliver of
+         vitality visible (not totally drained), so likely 12 units of
+         red at the feet even at HP=1, draining to 0 only at HP=0 or
+         status=dead.
+
+      **Tests to flip:** the existing `damage area height` block in
+      `PlayerVitals.test.jsx` measures the rect's `style.height` and
+      asserts proportional values. The same shape works for vitality
+      (just invert the expected values + add a position assertion that
+      the rect's y-offset is `SVG_HEIGHT - vitalityHeight`). The
+      regression-guard test (`HP=55 and HP=15 produce visibly
+      different damage heights`) keeps working — it asserts a >=60
+      unit *difference*, which holds regardless of fill direction.
+
+      **Effort:** ~30-60 min implementation + tests. The CSS-driven
+      style-height animation from PR #131 already handles the
+      transition smoothly.
+
+      **Trigger:** Russell will decide direction (top-drain vs
+      bottom-drain, color semantics) before implementation. Filed as
+      BACKLOG explicitly per his 2026-06-13 directive — current PR
+      cycle on the silhouette is at equilibrium; this is the next
+      visual round.
+
+      Cross-link: builds on PRs #127–#132 (silhouette ship + iterative
+      visual fixes). Connects to [[feedback_visual_iteration_inline_svg]]
+      memory — the inline-SVG + single-shared-path + stub-then-content
+      pattern makes this flip cheap (one constant + one math inversion;
+      no asset rebundle).
+      _Discovered: 2026-06-13 | Context: Russell visual feedback at
+      HP=55 — the current visual reads as 45% damage taken, but the
+      intuitive mental model is 55% vitality remaining ("full health
+      all red and empty means no health"). Filed for a future PR;
+      design calls (drain direction + color semantics) needed first._
+
 ---
 
 ## Frontend / Turn UX
