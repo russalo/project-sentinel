@@ -82,6 +82,65 @@ the decision explicit in the docs when that branch merged.
   That's a post-1.0 question. "React is the 1.0 client" doesn't mean
   "React is the only client forever."
 
+### World identity and multi-session support → ADR 0002 (decided 2026-06-04)
+
+Settled by [ADR 0002 — World identity & isolation](adr/0002-world-identity-and-isolation.md). Per-world identity shipped (Slices 1–5): every session is minted a `world_id` (UUID) threaded into both dispatch calls and the git-sync commit subject; the backend resolves a turn's world from its `session_id`; resume is live (`GET /api/world/{world_id}` + the `/w/<world_id>` SPA route + the "my worlds" picker). The per-world routing applies **only to mutable world state** (session JSON, world-state JSON, fs-manager writes for entities/locations/items/world meta) — each world's data lives under `SENTINEL_WORLDS_ROOT/<world_id>/`. Read-only shared assets (`schemas/`, presets, the core-lore codex outside `sessions/`) continue to load from the repo root. The operational cutover landed 2026-06-07 (gate-fronted topology at `sentinel.russalo.com/alpha/`). See `ROADMAP.md` "Where we are."
+
+<details>
+<summary>Original open-question text (preserved as historical record)</summary>
+
+Right now the backend creates a new session UUID on every
+`POST /api/session/new` but there's no concept of "the same world across
+multiple sessions" or "resume where I left off." The architecture
+assumes one world per clone of the repo. That's the simplest possible
+answer and it's load-bearing for the "git is the canonical store"
+story (git doesn't want to arbitrate between parallel histories), but
+it breaks down as soon as a player wants to run two characters in the
+same world or resume a session after closing the tab.
+
+The open question: does Sentinel ever support *multiple parallel worlds*
+in one clone? A `world_id` in every commit message and every entity
+record would unlock it, but it also fragments the git history and
+complicates every read path. The alternative is "one world per clone,
+git branch to fork" — lower complexity, higher ceremony.
+
+An ADR should settle this before the Panel UX work ships, because the
+system-log tab's backend endpoint needs to know what it's filtering by.
+
+**2026-04-15 update — this is no longer just a design question.** The
+2026-04-15 live smoke test confirmed that starting a "new world" in
+the UI does not wipe `data/state/core/`: entities, items, and
+locations authored in prior sessions are still on disk and still in
+the DM's context on the next run. Referencing "AR15" mapped onto a
+`Ray Gun` the player had authored in an earlier session. The urgency
+tier on this question is now **prerequisite for the minimum-viable-
+structure research loop below** — isolated smoke-test runs require
+session → world isolation, and today there is no code path that
+provides it. See also the `docs/BACKLOG.md` Smoke-Test Findings
+section for the cross-session bleed entry and the `just reset-world`
+recipe proposed as the minimum-viable unblocker ahead of the full ADR.
+
+</details>
+
+### Core Systems — Fantasy as flagship-genre model (directional, 2026-06-12)
+
+Russell's directional commitment 2026-06-12: define Sentinel's **core systems** (combat resolution, healing/recovery, magic costs, encounter mechanics, character progression, time/calendar advancement, weather/environment effects, faction/economy basics, death stakes) for the **Fantasy** genre first as the canonical reference model. Other genres (Sci-Fi, Cyberpunk, Western, Horror) inherit the same template via per-genre flavor overrides — "1 template + per-genre overrides," not "N independent rulesets." This collapses the systemic layer that the ambient surfaces (HP silhouette, tension meter, action suggestions) increasingly imply but doesn't yet exist underneath.
+
+**Why this is directional, not implementational:** the commitment is to the *approach* — Fantasy-first, template-then-overrides. The actual mechanical content (combat dice? declarative outcomes? probabilistic narration?) is open and will be picked when the combat-pilot RFC lands. The Mechanical Resolution open question below has a `PARTIAL RESOLUTION` banner pointing here.
+
+Cross-link: `docs/BACKLOG.md` § "Core Systems — Fantasy as Flagship Model"; `project_fantasy_flagship_core_systems` memory entry.
+
+### Player-condition ambient surfaces live in the world-state panel (2026-06-12)
+
+Decided by shipping. The world-state panel now bookends with two ambient state-readouts that operate by reading DM-emitted fields and rendering proportional visual cues:
+
+- **Tension meter** at the bottom (PR #124) — renders `world.tension` 0–10 as a progressbar with a categorical band ("Calm / Off-balance / Overdue / Critical"). The DM prompt's TENSION & ENCOUNTER PRESSURE block uses tension as encounter pressure.
+- **PlayerVitals silhouette** at the top (PRs #127–#132) — inked humanoid SVG whose body fills proportionally with a damage wash as `health` drops. Six bands ("Whole / Bruised / Wounded / Bleeding / Near death / Fallen") and a race-keyed body-geometry dispatch (`RACE_BODIES` map; per-race art is BACKLOG; every race renders the human geometry today).
+
+The two surfaces together read as a **"you ↔ world" sandwich**: player condition at the top, world state in the middle, world pressure at the bottom. Both work by render-time derivation from raw DM-emitted integers — no separate stat-management agent, no schema changes beyond what the DM already emits. This pattern (ambient surface → render-time derive → DM emits raw value) is the template for future panel additions (mana / status-effect halos / faction-rep readouts / weather indicators).
+
+**Iteration discipline:** all panel additions inline their SVG so visual rounds are one-file edits (see `feedback_visual_iteration_inline_svg` memory). Per-band opacity floors on the codex parchment background (see `feedback_opacity_floors_dark_bg` memory). Stub-then-content for variants (race / class / mood) — dispatch lands in one PR, art in follow-ups.
+
 ### The genre / preset content system → shipped (decided 2026-04-15)
 
 The original VISION question was "what does each genre actually contain,
@@ -161,50 +220,20 @@ These are the things I'm deliberately leaving unresolved until evidence
 forces a choice. Each one is a seam where the project could diverge
 meaningfully.
 
-### World identity and multi-session support
-
-> **RESOLVED (2026-06-04) — settled by [ADR 0002](adr/0002-world-identity-and-isolation.md).**
-> Per-world identity shipped (Slices 1–5): every session is minted a `world_id`
-> (UUID) threaded into both dispatch calls and the git-sync commit subject, the
-> backend resolves a turn's world from its `session_id`, resume is live
-> (`GET /api/world/{world_id}` + the `/w/<world_id>` route + the "my worlds"
-> picker), and per-world isolation routes each world to its own `data/` tree /
-> git repo under `SENTINEL_WORLDS_ROOT` (dormant by default — an operational
-> cutover). See ROADMAP "Where we are." The original open-question text below is
-> kept as a record of the question before it was answered.
-
-Right now the backend creates a new session UUID on every
-`POST /api/session/new` but there's no concept of "the same world across
-multiple sessions" or "resume where I left off." The architecture
-assumes one world per clone of the repo. That's the simplest possible
-answer and it's load-bearing for the "git is the canonical store"
-story (git doesn't want to arbitrate between parallel histories), but
-it breaks down as soon as a player wants to run two characters in the
-same world or resume a session after closing the tab.
-
-The open question: does Sentinel ever support *multiple parallel worlds*
-in one clone? A `world_id` in every commit message and every entity
-record would unlock it, but it also fragments the git history and
-complicates every read path. The alternative is "one world per clone,
-git branch to fork" — lower complexity, higher ceremony.
-
-An ADR should settle this before the Panel UX work ships, because the
-system-log tab's backend endpoint needs to know what it's filtering by.
-
-**2026-04-15 update — this is no longer just a design question.** The
-2026-04-15 live smoke test confirmed that starting a "new world" in
-the UI does not wipe `data/state/core/`: entities, items, and
-locations authored in prior sessions are still on disk and still in
-the DM's context on the next run. Referencing "AR15" mapped onto a
-`Ray Gun` the player had authored in an earlier session. The urgency
-tier on this question is now **prerequisite for the minimum-viable-
-structure research loop below** — isolated smoke-test runs require
-session → world isolation, and today there is no code path that
-provides it. See also the `docs/BACKLOG.md` Smoke-Test Findings
-section for the cross-session bleed entry and the `just reset-world`
-recipe proposed as the minimum-viable unblocker ahead of the full ADR.
+_(World identity and multi-session support — moved to "Resolved decisions" above on 2026-06-13; resolved 2026-06-04 by ADR 0002.)_
 
 ### Mechanical resolution (dice, probability, rules)
+
+> **PARTIAL RESOLUTION (2026-06-13)** — directional commitment landed
+> 2026-06-12: Sentinel's core systems will be defined for the **Fantasy**
+> genre first as the canonical reference model, then other genres inherit
+> via per-genre flavor overrides ("1 template + per-genre overrides," not
+> "N independent rulesets"). The **mechanical model itself** — dice vs.
+> declarative outcomes vs. probabilistic narration — is still open and
+> will be picked when the Core Systems combat-pilot RFC lands. See
+> `docs/BACKLOG.md` § "Core Systems — Fantasy as Flagship Model" + the
+> `project_fantasy_flagship_core_systems` memory entry. The original
+> open-question text is preserved below.
 
 During the first live smoke test, the player observed they could type
 literally any action and the DM would improvise a plausible outcome.
