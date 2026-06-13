@@ -50,12 +50,15 @@ What flips:
 ### 1. Top-down drain (Diablo orb idiom)
 
 Vitality fills the body from the **feet up**. The damaged region — the part
-*missing* the wash — sits at the top.
+*missing* the wash — sits at the top. **`vitalityY` is derived from the
+floored vitality height** (see section 4), not the raw proportional value —
+otherwise at the floor cliff (HP=1) the rect's `y` and `height` disagree by a
+few SVG units and the rect overflows the bottom of the viewport.
 
 ```js
 const SVG_HEIGHT = 180;
-// vitalityHeight grows with HP: 100 -> 180, 0 -> 0.
-const vitalityHeight = (hp / 100) * SVG_HEIGHT;
+// vitalityHeightFor() applies the floor + status overrides; see section 4.
+const vitalityHeight = vitalityHeightFor(hp, status);
 const vitalityY = SVG_HEIGHT - vitalityHeight; // anchor at the bottom
 ```
 
@@ -105,8 +108,13 @@ PlayerVitals dispatches one of **three** body paths based on `player.status`:
 
 ```js
 function bodyPathFor(race, status) {
-  if (status === 'dead') return DEAD_BODY_PATH;
-  if (status === 'unconscious') return UNCONSCIOUS_BODY_PATH;
+  // Case- and whitespace-tolerant status compare — DM emits vary
+  // ('Dead' vs 'DEAD' vs ' dead '). PR #132 already shipped this
+  // normalization pattern for the existing `isDead` check; keep it
+  // consistent here.
+  const s = typeof status === 'string' ? status.trim().toLowerCase() : '';
+  if (s === 'dead') return DEAD_BODY_PATH;
+  if (s === 'unconscious') return UNCONSCIOUS_BODY_PATH;
   return raceBody(race); // existing RACE_BODIES dispatch
 }
 ```
@@ -130,7 +138,10 @@ Hold a floor at HP > 0:
 ```js
 const MIN_VITALITY_HEIGHT = 12; // SVG units; thin strip at the feet
 function vitalityHeightFor(hp, status) {
-  if (status === 'dead' || status === 'unconscious') return 0;
+  // Same normalization as bodyPathFor (above) — single helper in the
+  // implementation, here inlined for clarity.
+  const s = typeof status === 'string' ? status.trim().toLowerCase() : '';
+  if (s === 'dead' || s === 'unconscious') return 0;
   if (hp <= 0) return 0;
   const proportional = (hp / 100) * SVG_HEIGHT;
   return Math.max(MIN_VITALITY_HEIGHT, proportional);
