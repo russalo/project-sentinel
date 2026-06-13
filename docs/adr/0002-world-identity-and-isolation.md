@@ -4,6 +4,7 @@
 **Date:** 2026-06-02
 **Deciders:** Russell Pfister (ratified Option B, 2026-06-02); Claude (design session 2026-06-02, prompted by "can this handle multiple users?" → goal: concurrent isolated worlds for public test users)
 **Supersedes:** — (no prior ADR)
+**Implementation:** Landed. Slices 1–5 complete by 2026-06-04 (per-world routing end-to-end, provisioning at session-create, the tracer-soak gate, the `/w/<world_id>` frontend route, "my worlds" picker, hard-delete teardown, per-world cross-process write locking via `filelock`). Cutover armed 2026-06-07 (`SENTINEL_WORLDS_ROOT` set in `infrastructure/.env` on origin-core; gate-fronted topology live).
 
 ---
 
@@ -107,6 +108,12 @@ one world" intent. **Why not C:** a database contradicts ADR 0001's
 canonical-files decision and buys nothing here.
 
 ## Consequences
+
+> **Status note (added 2026-06-13):** Consequences and Implementation
+> implications below are stated forward-looking from the 2026-06-02 ADR.
+> All are now landed — see the **Implementation** field at the top of
+> this ADR. The text is preserved as decision-record per ADR
+> append-only convention.
 
 **Positive:** true per-world isolation; clean per-world concurrency (no global
 commit lock); the `master`-pollution hazard is eliminated (world data leaves the
