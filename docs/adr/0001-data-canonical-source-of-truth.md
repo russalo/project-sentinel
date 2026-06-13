@@ -4,6 +4,7 @@
 **Date:** 2026-04-13
 **Deciders:** Russell Pfister; Claude (design session on 2026-04-13 following the engine/ scaffold PR #9)
 **Supersedes:** — (no prior ADR)
+**Implementation:** Landed. Phase 1 — FastAPI backend reading `data/` directly with Postgres demoted to read cache — PR #12 (2026-04-13). Phase 2 — Postgres removed from the Docker stack entirely (compose, migrations, psycopg2 wiring) — PR #19 (2026-04-14). No database queries remain in the turn loop.
 
 ---
 
@@ -337,7 +338,13 @@ The immediate scope:
    retires in the same cleanup. It has been vestigial since PR #7 and has
    no remaining purpose. `lib/db/` (the Drizzle schema) retires with it.
 
-### Phase 2 — drop Postgres entirely (deferred, optional)
+### Phase 2 — drop Postgres entirely (landed 2026-04-14, PR #19)
+
+> **Implementation note (added 2026-06-13):** Phase 2 landed the day after
+> Phase 1 — see PR #19 (`chore: retire world-engine + db-vector + Postgres,
+> rewrite docs for post-Phase-2 state`). The text below described the
+> deferred-then state; preserved as historical record per ADR append-only
+> convention.
 
 If and when Phase 1 proves that the Postgres cache layer is never actually
 load-bearing, Phase 2 removes Postgres from the Docker stack:

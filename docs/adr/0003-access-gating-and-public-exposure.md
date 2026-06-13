@@ -6,6 +6,7 @@
 audience, 2026-06-03); Claude (design session 2026-06-03, prompted by "draft
 adr 0003" to satisfy the public-test-user prerequisite ADR 0002 deferred)
 **Supersedes:** — (no prior ADR)
+**Implementation:** Landed. Slices A + B + C all in by 2026-06-04 (per-world HMAC session tokens, three-dimensional rate/spend/concurrency limits, MCP network-isolation invariant + cutover config-agreement check, Caddy invite-gate template + systemd unit templates, the `tests/test_caddy_invariant.py` guard). Cutover went live 2026-06-07 via the gate-fronted topology — access-layer env knobs (`SENTINEL_WORLDS_ROOT`, `SENTINEL_SESSION_TOKEN_SECRET`, `SENTINEL_RL_SESSION_CREATE_PER_HOUR`, `SENTINEL_RL_STREAM_PER_MINUTE`, `SENTINEL_LLM_DAILY_CEILING`, `SENTINEL_MAX_CONCURRENT_STREAMS`, `SENTINEL_TRUSTED_PROXY_HOPS`, `SENTINEL_DEBUG`) armed in `infrastructure/.env` on origin-core; closed-alpha at `sentinel.russalo.com/alpha/` accepting invited testers. Subsequent hardening: per-tester reauth (PR #125, 2026-06-08); red-team pass 2026-06-04 closed XFF-spoof / namespace / protected-field gaps (PRs #92–#94).
 
 ---
 
@@ -25,7 +26,7 @@ State as of this ADR:
    a `session_id` + `world_id` (both uuid4) and returns them. The de-facto model
    is **capability-by-UUID** — possessing a `session_id` lets you drive that
    session (`/api/stream` reads the session by id and derives its `world_id`).
-   UUIDs are unguessable, so today the URL *is* the secret.
+   UUIDs are unguessable, so today the URL *is* the secret. _[Superseded 2026-06-07 — per-world HMAC session tokens are now the secret; the URL alone is insufficient to access a world under enforcement. See **Implementation** at the top of this ADR.]_
 2. **CORS only.** `backend/main.py` adds `CORSMiddleware` (allowlist, or
    allow-all in debug). That is the entire access surface.
 3. **Caddy already fronts the app.** On `origin-core`, Caddy serves

@@ -74,6 +74,8 @@ changed its mind.
 
 ## Index
 
-- [ADR 0001 — `data/` is the canonical source of truth](0001-data-canonical-source-of-truth.md)
-- [ADR 0002 — World identity & isolation (one player per world, concurrently)](0002-world-identity-and-isolation.md) — _Accepted 2026-06-02_
-- [ADR 0003 — Access gating & public exposure (closed-beta test users)](0003-access-gating-and-public-exposure.md) — _Accepted 2026-06-03_
+Each entry lists the decision-accepted date and, when the decision has shipped, the implementation-landed date.
+
+- [ADR 0001 — `data/` is the canonical source of truth](0001-data-canonical-source-of-truth.md) — _Accepted 2026-04-13; implementation landed 2026-04-14 (Phase 1 + Phase 2)._
+- [ADR 0002 — World identity & isolation (one player per world, concurrently)](0002-world-identity-and-isolation.md) — _Accepted 2026-06-02; implementation landed 2026-06-04 (Slices 1–5); cutover 2026-06-07._
+- [ADR 0003 — Access gating & public exposure (closed-beta test users)](0003-access-gating-and-public-exposure.md) — _Accepted 2026-06-03; implementation landed 2026-06-04 (Slices A + B + C); cutover 2026-06-07._
