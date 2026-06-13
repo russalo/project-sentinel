@@ -4,7 +4,7 @@
 > stack and architecture assumed fixed. For the long-term direction and
 > open stack questions, see [`VISION.md`](./VISION.md).
 
-_Last updated: 2026-06-05_
+_Last updated: 2026-06-13_
 
 ---
 
@@ -98,75 +98,72 @@ _Last updated: 2026-06-05_
 ## In flight — next 1–3 PRs
 
 Ordered by what unblocks what. Each item links to a `docs/BACKLOG.md` entry
-for the full technical detail; the roadmap stays short on purpose.
+or an RFC for the full technical detail; the roadmap stays short on purpose.
 
-**Note on Panel UX:** the initial Panel UX primitives (`EntityCard`,
-click-to-inspect wiring, panel tabs) are being built directly on
-`feat/panel-ux-entity-cards` without a preceding ADR. That was an
-intentional call — the ADR's open questions (tombstones for removed
-entities, `mentioned_only` state for future Entity Sweeper glimpses, the
-Phase 1/2/3 source-of-truth split for the system log) all depend on
-downstream work that doesn't exist yet, so writing the ADR now would be
-premature. The ADR is deferred until Entity Sweeper and system log work
-begin. See the BACKLOG entry for the full reframing.
+**Note on process (2026-06-13):** non-trivial designs now go through an
+**RFC** (Request For Comments) — a lighter sibling to ADRs. ADRs cover
+long-lived architectural commitments; RFCs cover per-feature designs and
+minor iterations. The RFC system itself (`docs/rfc/` + README +
+TEMPLATE) is item #1 below — once it lands, items #2+ each cite the
+RFC that drives them. BACKLOG transitions from a tracked planning surface
+to a personal scratch / harvest pool for ideas that mature into RFCs
+(also part of item #1).
 
-### 1. **Frontend store + hook tests**
+### 1. **Adopt the RFC system + initial bootstrapping**
 
-Vitest infrastructure landed in PR #37 with the first 34 tests covering
-`utils/delta.js` and the Panel UX primitives (`EntityCard`, `DeltaMessage`).
-The next slice is the Zustand stores (`chatStore`, `worldStore`, `uiStore`,
-`personaStore`) and the `useDMStream` hook. `useDMStream` is the highest-
-value target because it carries the SSE event parsing + delta computation
-+ pendingDeltas flush ordering that's been the source of multiple bugs
-(see PR #34's review history). Tests should mock `fetch` with a small
-SSE-event-emitting fake — no real backend required.
+`docs/rfc/` lands as a new doc surface alongside `docs/adr/`. Includes the
+README (conventions, lifecycle, BACKLOG-feeds-in pattern) + `TEMPLATE.md` +
+the first RFC (`RFC 0001 — PlayerVitals vitality-fill model`, see item #2).
+BACKLOG is becoming gitignored in the same batch — it transitions from a
+tracked planning surface to a personal scratch / harvest pool for ideas
+that mature into RFCs.
 
-- Backlog: [`Expand apps/sentinel-ui/ test coverage to stores and hooks`](./BACKLOG.md)
-- Exit criteria: store unit tests landed; `useDMStream` has at least one
-  end-to-end test covering the player → token → world_update → [DONE]
-  ordering with delta insertion happening AFTER `commitStreamMessage()`.
+- Status: drafted (workflow output staged); pending Russell green-light to commit + push.
+- Exit criteria: RFC structure on disk + BACKLOG removed from version control + first RFC live as a Draft PR.
 
-### 2. **World isolation — Slice 5 (world lifecycle) + ADR 0003 (auth/exposure)**
+### 2. **PlayerVitals vitality-fill flip (RFC 0001)**
 
-Slices 1–5 have landed (see "Where we are"): per-world routing end-to-end,
-provisioning, the tracer-soak gate, the `/w/<world_id>` frontend route, and
-resume completeness (persona + world-state panels rehydrate, not just the
-narrative). The capability is built and dormant (env unset); the production
-cutover is a one-line env flip (`docs/WORKSPACE.md` § "Per-world isolation
-cutover").
+Russell visual feedback 2026-06-13: the current "wound spreads from the head
+as HP drops" wash should be inverted — a vessel-of-vitality that drains from
+the head down as HP falls. Plus distinct visual states for **unconscious**
+(HP=0 recoverable) vs **dead** (terminal), which is a status enum expansion
+beyond the current `alive | dead | unknown | missing`. Solid-fill replaces
+the radial gradient.
 
-Landed since (Path A toward public readiness, 2026-06-03 → -04): the "my worlds"
-picker + hard-delete teardown (Slice 5); **per-world cross-process write
-locking** (ADR 0002 — a `filelock` shared by fs-manager + git-sync); the
-**ADR 0003 access layer (Slices A+B)** — per-world HMAC session tokens, rate
-limits, and a global LLM-call ceiling, all opt-in/dormant by default; the
-**MCP network-isolation invariant + cutover config-agreement check** (A2 —
-both servers refuse all-interfaces binds, backend refuses per-world startup
-unless both MCP `/health` agree); and **ADR 0003 Slice C** (A3, 2026-06-04 —
-the Caddy `basic_auth` invite-gate template `infrastructure/caddy/Caddyfile.example`
-guarded by `tests/test_caddy_invariant.py`, plus systemd unit templates for
-the backend and both MCP servers in `infrastructure/systemd/`). **All
-code/ops units for the public-exposure path are now in.**
+- RFC: `docs/rfc/0001-player-vitals-vitality-fill.md` (lands with item #1).
+- Open questions in the RFC: unconscious/dead pose artwork; status enum
+  spelling (just `"unconscious"`, or also `"dying"` / `"stable"`).
+- Exit criteria: RFC Accepted; implementation PR(s) flip the math + drop
+  the gradient + add status-keyed dispatch.
 
-The remaining prerequisites before inviting public test users:
+### 3. **Core Systems — Fantasy as flagship genre**
 
-- **The operational cutover itself (Path A / A4)** — *not* code: on origin-core
-  (or the prod droplet) set `SENTINEL_WORLDS_ROOT` + `SENTINEL_SESSION_TOKEN_SECRET`
-  + the `SENTINEL_RL_*` / `SENTINEL_LLM_DAILY_CEILING` knobs across all three
-  services, supply the Caddy invite hash, and flip the gate live — behind the
-  tracer-soak gate. See `docs/WORKSPACE.md` § "Per-world isolation cutover" /
-  "Production deployment".
-- **Slice 5 — residual resume-fidelity follow-ups** (*not* a public-exposure
-  blocker): persona available-mood *list* + `day` persistence (both need the
-  genesis/`world_seed` item), and `active`-vs-mtime session selection. Backend
-  world provisioning at session-create is wired (`backend/routes/session.py` →
-  `engine.init_world` when `SENTINEL_WORLDS_ROOT` is set).
+Russell directive 2026-06-12: define Sentinel's core systems (combat,
+healing, magic, encounter mechanics, progression, time, weather, faction,
+death stakes) for the **Fantasy** genre first as the canonical reference,
+then other genres inherit via per-genre flavor overrides. The ambient
+surfaces shipping this week (tension meter, HP silhouette) increasingly
+imply a systemic layer that doesn't exist yet — each new surface widens the
+gap between what testers see and what the world actually models.
 
-- Backlog: [`ADR 0002 implementation — remaining slices`](./BACKLOG.md),
-  [`Auth strategy — implement ADR 0003`](./BACKLOG.md)
-- Exit criteria: a world can be archived/reset from the UI; auth gate + per-world
-  token land behind the tracer-soak + with `SENTINEL_WORLDS_ROOT` set, two
-  browser sessions on different worlds never see each other's state.
+- Approach (from BACKLOG): planning RFC to set scope → Fantasy v1 spec →
+  pilot one system end-to-end (combat is the obvious first proof) → 2–3
+  genre overrides (Sci-Fi + Cyberpunk) to validate the template.
+- Backlog: [`Core Systems — Fantasy as Flagship Model`](./BACKLOG.md)
+- Exit criteria: scope-RFC Accepted; combat-resolution RFC follow-up
+  drafted.
+
+### 4. **Tester self-signup page (Tuesday-window-ish)**
+
+Per-tester reauth (PR #125) closed the recovery story; provisioning is still
+operator-as-relay. Self-signup replaces that with operator green-lights a
+list. Spec already in BACKLOG; needs the RFC's open calls answered before
+implementation (single-use invite ledger shape, Caddy-write-back path,
+audit-log credential-id pattern). RFC follow-up.
+
+- Backlog: [`Tester self-signup page`](./BACKLOG.md)
+- Exit criteria: RFC Accepted; backend + signup page + admin approval flow
+  land together.
 
 ---
 
@@ -180,15 +177,24 @@ Work that's actionable but waiting on a specific trigger or decision:
   `data/lore/**/*.md`, the `engine/agents/lorekeeper.py` agent itself, and
   an integration point in the DM prompt. The honest precondition (per
   `VISION.md`) is "enough lore to query to make the RAG earn its complexity,"
-  which isn't satisfied today. An ADR-sized design decision before any
+  which isn't satisfied today. An RFC-sized design decision before any
   implementation.
-- **Suggested Actions as a structured field** — small schema addition +
-  prompt bullet + frontend pill component. Tiny change, but gated on the
-  Panel UX ADR so the visuals compose correctly.
 - **Entity Sweeper second-pass extraction** — design captured in memory,
   implementation deferred. Waiting on: the first few live sessions that
   produce enough "DM mentioned it but didn't emit state" examples to
   validate the approach.
+- **PlayerVitals Tier 2 red-team follow-ups** — a11y Fallen-state silent
+  to AT, `prefers-reduced-motion` not respected on inline SVG transitions,
+  global SVG IDs (`vitals-body-clip` / `vitals-damage`) need `useId()`
+  scoping for multi-instance safety, same-named NPC + DM role-strip can
+  surface NPC HP as the player's. Each is its own focused PR;
+  collectively waiting on the RFC-0001 vitality-fill flip landing first
+  to avoid rework.
+
+(Suggested Actions — previously listed here — shipped in PRs #112/#113.
+DM emits `<action>label</action>` tags inline + a structured
+`suggestedActions` field on the world_update; the SPA highlights both as
+amber pill rail + inline underlines.)
 
 ---
 
