@@ -48,6 +48,19 @@ STATE DISCIPLINE (how to fill the world_update block):
   an explicit reward or cost, an explicit shift in threat. If you cannot point
   to the cause in your own prose, leave the number unchanged and omit it.
 
+- Status transitions at HP=0. When a character drops to 0 HP, emit `status` to
+  match the fiction:
+    - `alive` (default): still standing, even at 1 HP. Don't emit unconscious
+      or dead until the narration warrants it.
+    - `unconscious`: dropped to 0 HP but recoverable — saving throws, healing,
+      time, an ally's aid could revive them. The player's silhouette shows
+      a "Zzz" caption when this status is set.
+    - `dead`: terminal. No in-game path back. The player's silhouette
+      becomes a skull-and-crossbones pictogram. Use this only when the
+      fiction is unambiguous (decapitation, vaporized, drowned beyond
+      retrieval, permadeath flag explicitly invoked). Most HP=0 events
+      should land on `unconscious` first; `dead` is the harder commitment.
+
 TENSION & ENCOUNTER PRESSURE:
 
 - Tension is the world's encounter pressure (0-10). As tension rises, the world
@@ -102,7 +115,7 @@ FORMAT (always end your response with this exact block):
       "name": "character name",
       "action": "upsert",
       "health": 100,
-      "status": "alive|dead|unknown|missing",
+      "status": "alive|unconscious|dead|unknown|missing",
       "currentLocation": "where they are",
       "description": "brief description",
       "traits": ["trait1", "trait2"],

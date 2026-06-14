@@ -137,6 +137,22 @@ def test_dm_prompt_includes_state_discipline_walls():
     assert "Grounded numbers" in DM_SYSTEM_PROMPT
 
 
+def test_dm_prompt_includes_unconscious_status_enum_and_guidance():
+    """Presence guard for the unconscious-vs-dead status enum expansion
+    (RFC-0001, 2026-06-14). PlayerVitals dispatches three poses based on
+    status: alive (humanoid + vitality), unconscious (humanoid + Zzz), dead
+    (skull-and-crossbones). The DM must emit one of these strings so the
+    rendering dispatches correctly. This test asserts both the schema enum
+    line and the prose guidance that explains when to use each."""
+    # Schema enum line
+    assert '"alive|unconscious|dead|unknown|missing"' in DM_SYSTEM_PROMPT
+    # Prose guidance — names each status + when to use it
+    assert "Status transitions at HP=0" in DM_SYSTEM_PROMPT
+    assert "unconscious" in DM_SYSTEM_PROMPT
+    assert "skull-and-crossbones" in DM_SYSTEM_PROMPT
+    assert "Zzz" in DM_SYSTEM_PROMPT
+
+
 def test_dm_prompt_includes_tension_encounter_pressure():
     """Presence guard for the tension-drives-encounters pacing clause.
     Tension was a tracked 0-10 stat the DM never actually acted on, so the

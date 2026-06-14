@@ -225,7 +225,7 @@ _Currently empty. New RFCs land below under their lifecycle bucket._
 
 ### Draft
 
-- [RFC 0001 — PlayerVitals vitality-fill model](0001-player-vitals-vitality-fill.md) — _opened 2026-06-13. Inverts the silhouette wash from wound-spreading to vitality-draining; expands the status enum for unconscious vs dead._
+_None._
 
 ### Accepted
 
@@ -233,7 +233,7 @@ _None._
 
 ### Implemented
 
-_None._
+- [RFC 0001 — PlayerVitals vitality-fill model](0001-player-vitals-vitality-fill.md) — _opened 2026-06-13, implemented 2026-06-14. Bottom-up vitality fill (Diablo orb idiom); solid blood, no gradient; status enum expanded to `alive | unconscious | dead | unknown | missing`; skull-and-crossbones pose for dead, humanoid + Zzz caption for unconscious; min-vitality floor of 12 SVG units at HP > 0._
 
 ### Superseded
 

@@ -1,41 +1,31 @@
 import { usePlayerStore } from '../../stores/playerStore';
 import { useWorldStore } from '../../stores/worldStore';
 
-// Player condition readout — an inked humanoid silhouette whose body fills
-// with an amber→blood wash as HP drops, plus a categorical band label and
-// the raw "N/100" number. Mirrors the tension-meter's render-time-derived
-// band pattern from PR #124 so the world-state panel reads consistently:
-// player condition at the top, world state in the middle, tension at the
-// bottom — "you ↔ world" sandwich.
+// Player condition readout — an inked humanoid silhouette that **fills with
+// blood from the feet up** as HP rises (Diablo health-orb idiom; RFC-0001,
+// 2026-06-14). The wash is a single solid blood-red across the visible
+// vitality region — no gradient, no per-band opacity stepping — and the
+// rect's AREA carries the percentage of HP remaining. Two additional
+// statuses are rendered as distinct pictograms: `unconscious` keeps the
+// humanoid silhouette (vitality empty) and adds a "Zzz" caption above the
+// head; `dead` replaces the body entirely with skull-and-crossbones.
 //
 // Data source: the DM emits the player as a character with role='player' +
-// health on every world_update (verified against live sessions). We find
-// them by role rather than name so a renamed character still lands.
+// health + status on every world_update (verified against live sessions).
+// We find them by role rather than name so a renamed character still lands.
 //
 // Fallbacks:
 //  - no player character yet in worldStore (hydration race or a DM that
-//    didn't emit on intro) → synthesize a placeholder from playerStore.
+//    didn't emit on intro) → render an Unknown placeholder.
 //  - missing health → assume 100 (DM-prompt rule: first appearance defaults
-//    to 100 when not specified; never invent a zero from absence).
-//  - NaN / out-of-range → Number.isFinite gate + clamp to [0, 100], same
-//    pattern WorldMetrics uses (gemini-medium fix on PR #124).
+//    to 100; never invent a zero from absence).
+//  - NaN / out-of-range → Number.isFinite + clamp to [0, 100], same pattern
+//    WorldMetrics uses.
 
-// Body geometry per race (Fantasy flagship; other genres' equivalents — Sci-Fi
-// species, Cyberpunk frame, etc. — slot in here too once authored). Each entry
-// is an SVG path that fills the silhouette body (used both as the clip-path
-// region for the damage wash AND as the stroked visible outline). Single
-// source of truth per race means the wash never escapes the outline.
-//
-// **Stub status (2026-06-12):** every race in this map currently points at
-// HUMAN_BODY_PATH. The dispatch is real (PlayerVitals reads player.race and
-// looks up the matching geometry), but the per-race art hasn't been drawn
-// yet — so an elf, a dwarf, and a human all render the same shape today.
-// Authoring real geometry per race is filed in docs/BACKLOG.md "Author
-// race-specific silhouette geometries"; the dispatch here lets that work
-// land race-by-race without re-architecting the component.
-//
-// The shared default is the humanoid Russell sees on the live alpha: covers
-// shoulders → arms hanging at the sides → tapered torso → split legs.
+// Body geometry per race (Fantasy flagship; other genres' equivalents slot
+// in once authored). Every entry currently points at HUMAN_BODY_PATH; per-
+// race art is BACKLOG. The dispatch is real so per-race geometries land
+// race-by-race without re-architecting.
 const HUMAN_BODY_PATH = `
   M 36 36
   C 30 38, 26 42, 24 50
@@ -63,15 +53,8 @@ const HUMAN_BODY_PATH = `
   Z
 `.trim();
 
-// Race → body path. Keys are lowercased so the lookup is case-insensitive
-// against whatever spelling the DM emits ("Elf" vs "elf" vs "ELF"). Add a new
-// race by authoring a path constant above and registering it here; everything
-// else flows through automatically. Unknown races (any string not in this map)
-// fall back to the human silhouette, so a fresh genre that emits "android"
-// or "rigger" doesn't crash — it just renders the default until art lands.
 const RACE_BODIES = {
   human: HUMAN_BODY_PATH,
-  // Fantasy stubs — all human-shaped for now; per-race geometry is BACKLOG.
   elf: HUMAN_BODY_PATH,
   'half-elf': HUMAN_BODY_PATH,
   dwarf: HUMAN_BODY_PATH,
@@ -86,20 +69,22 @@ const RACE_BODIES = {
 function bodyPathFor(race) {
   if (typeof race !== 'string') return HUMAN_BODY_PATH;
   const key = race.trim().toLowerCase();
-  // `hasOwnProperty.call` guard (not `key in RACE_BODIES` or
-  // `RACE_BODIES[key]`) so a race string that matches an Object.prototype
-  // member — 'constructor', 'toString', 'valueOf', '__proto__' — falls back
-  // to human instead of returning the prototype function (which would land
-  // as a non-string `d` attribute on <path>, crashing the render). The DM
-  // emits free-form strings so this isn't hypothetical. (gemini-medium on
-  // PR #129.)
+  // `hasOwnProperty.call` guard so a race string that matches an
+  // Object.prototype member (`'constructor'`, `'toString'`, `'__proto__'`)
+  // falls back to human instead of returning the prototype function
+  // (which would land as a non-string `d` attribute on <path>).
   return Object.prototype.hasOwnProperty.call(RACE_BODIES, key)
     ? RACE_BODIES[key]
     : HUMAN_BODY_PATH;
 }
 
-function bandFor(hp, isDead) {
-  if (isDead) return { label: 'Fallen', text: 'text-blood' };
+// Band labels: derived at render time from (hp, statusStr) so the visible
+// categorical reads consistently with the rendered pose. `status` overrides
+// HP when set — e.g. status='unconscious' wins over HP=20.
+function bandFor(hp, statusStr) {
+  if (statusStr === 'dead') return { label: 'Dead', text: 'text-blood' };
+  if (statusStr === 'unconscious') return { label: 'Unconscious', text: 'text-amber' };
+  if (hp <= 0) return { label: 'Fallen', text: 'text-blood' };
   if (hp <= 9) return { label: 'Near death', text: 'text-blood' };
   if (hp <= 39) return { label: 'Bleeding', text: 'text-blood' };
   if (hp <= 69) return { label: 'Wounded', text: 'text-amber' };
@@ -107,67 +92,92 @@ function bandFor(hp, isDead) {
   return { label: 'Whole', text: 'text-leyline' };
 }
 
-// Wash opacity is stepped per band — controls the INTENSITY of the wash
-// inside the damaged region. The dark codex background eats subtle opacity
-// (Russell 2026-06-12 at HP=90 saw nothing on a smooth (100-hp)/100 curve),
-// so each band has a floor that makes damage unambiguously legible at every
-// level. Fallen is intentionally dimmer than "Near death" — the silhouette
-// opacity also drops, the two together read as "spent" not "bleeding out."
+// Vitality fill height — Diablo orb idiom (RFC-0001, decision 1). Anchored
+// at the bottom of the SVG; grows up as HP rises. At HP=100 the rect fills
+// the full body; at HP=0 it's collapsed; on status flips (unconscious or
+// dead) it's also 0 — the pose change carries the visual story instead.
 //
-// Module-scoped (closes over nothing) so it's not re-allocated per render
-// — gemini-medium on PR #128 suggested an inline ternary, but a hoisted
-// named function reads more clearly than a 6-deep `? :` chain.
-function washOpacityFor(hp, isDead, placeholder) {
+// MIN_VITALITY_HEIGHT floor: at HP=1 a strict proportional value (1.8 SVG
+// units) is invisible; we hold a sliver at the feet so the player can see
+// they have SOMETHING left until HP literally hits 0 or status flips.
+const SVG_HEIGHT = 180;
+const MIN_VITALITY_HEIGHT = 12;
+function vitalityHeightFor(hp, statusStr, placeholder) {
   if (placeholder) return 0;
-  if (isDead) return 0.40;
-  if (hp >= 100) return 0;       // Whole
-  if (hp >= 70) return 0.30;     // Bruised
-  if (hp >= 40) return 0.55;     // Wounded
-  if (hp >= 10) return 0.75;     // Bleeding
-  return 0.90;                    // Near death
+  if (statusStr === 'dead' || statusStr === 'unconscious') return 0;
+  if (hp <= 0) return 0;
+  const proportional = (hp / 100) * SVG_HEIGHT;
+  return Math.max(MIN_VITALITY_HEIGHT, proportional);
 }
 
-// Damage AREA (height in SVG units that the wash covers, from the top down)
-// scales with HP loss so the silhouette visually communicates the PERCENTAGE
-// of damage — not just "you're hurt." (Russell 2026-06-12 at HP=55 wrote
-// "Can't see the 45% hit loss" — the per-band opacity alone covered the
-// whole body uniformly, so HP=55 and HP=15 looked identical visually.) The
-// wound spreads from the head down; at HP=55 the top 45% of the body shows
-// the wash, the bottom 55% stays clean. Combined with the per-band opacity
-// floor: damaged region INTENSITY varies by band, damaged region AREA varies
-// by raw HP. Two visual dimensions communicating two facts (how bad, how
-// much).
-//
-// Minimum visible area at any damaged band so the transition from Whole →
-// Bruised is unmistakable (otherwise HP=99 would draw a 1.8-unit wash that
-// reads as identical to HP=100).
-const SVG_HEIGHT = 180;
-const MIN_DAMAGE_HEIGHT = 12;
-function damageHeightFor(hp, isDead, placeholder) {
-  if (placeholder) return 0;
-  if (isDead) return SVG_HEIGHT;
-  if (hp >= 100) return 0;
-  const proportional = ((100 - hp) / 100) * SVG_HEIGHT;
-  return Math.max(MIN_DAMAGE_HEIGHT, proportional);
+// Blood-palette token. Single solid color across the vitality region — no
+// gradient (RFC-0001 decision 2). Matches the project's blood color
+// elsewhere in the UI.
+const BLOOD = '#8c3a3a';
+
+// Skull-and-crossbones pictogram for status='dead' (RFC-0001 decision 3).
+// Replaces the body silhouette entirely — no head ellipse, no body path, no
+// vitality. Stroke-only to match the codex aesthetic; the eye sockets / nose
+// / teeth use fill=currentColor so they inherit the parent SVG's text color.
+// The skull is filled with the parchment-bg color so the bones don't show
+// through where they pass behind it.
+function SkullAndCrossbones() {
+  return (
+    <g
+      data-testid="vitals-skull-crossbones"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      fill="none"
+      strokeLinejoin="round"
+      strokeLinecap="round"
+    >
+      {/* Crossbones — diagonal X behind the skull */}
+      <line x1="20" y1="62" x2="80" y2="138" />
+      <line x1="80" y1="62" x2="20" y2="138" />
+      <circle cx="20" cy="62" r="5" />
+      <circle cx="80" cy="62" r="5" />
+      <circle cx="20" cy="138" r="5" />
+      <circle cx="80" cy="138" r="5" />
+      {/* Skull dome + jaw — filled with codex parchment so the bones don't
+          bleed through where they pass behind. */}
+      <path
+        d="M 30 80 Q 30 50 50 50 Q 70 50 70 80 L 70 108 L 60 115 L 58 122 L 42 122 L 40 115 L 30 108 Z"
+        fill="#0d0d0f"
+      />
+      {/* Eye sockets */}
+      <ellipse cx="40" cy="80" rx="5" ry="6" fill="currentColor" stroke="none" />
+      <ellipse cx="60" cy="80" rx="5" ry="6" fill="currentColor" stroke="none" />
+      {/* Nose */}
+      <path d="M 47 95 L 50 102 L 53 95 Z" fill="currentColor" stroke="none" />
+      {/* Teeth — short vertical lines along the jaw */}
+      <line x1="44" y1="111" x2="44" y2="120" />
+      <line x1="48" y1="111" x2="48" y2="120" />
+      <line x1="52" y1="111" x2="52" y2="120" />
+      <line x1="56" y1="111" x2="56" y2="120" />
+    </g>
+  );
+}
+
+// Three "Z" glyphs ascending up-and-right from above the head — the
+// universal "sleeping" cartoon convention (RFC-0001 decision 3). Rendered
+// over the standard humanoid silhouette when status='unconscious'. Amber
+// tone matches the band label color for unconscious.
+function ZzzCaption() {
+  return (
+    <g data-testid="vitals-zzz-caption" fill="#c9973a" stroke="none">
+      <text x="66" y="22" fontSize="14" fontFamily="Georgia, serif" fontWeight="bold">Z</text>
+      <text x="77" y="13" fontSize="10" fontFamily="Georgia, serif" fontWeight="bold">z</text>
+      <text x="85" y="6" fontSize="7" fontFamily="Georgia, serif" fontWeight="bold">z</text>
+    </g>
+  );
 }
 
 export function PlayerVitals() {
   const characters = useWorldStore((s) => s.characters);
   const playerName = usePlayerStore((s) => s.characterName);
 
-  // Find the player. Priority order, top to bottom:
-  //   1. role=player AND name=playerName — the unambiguous match. This wins
-  //      even when other role=player records exist, which is the codex-P2
-  //      case from PR #127: the shared/legacy state path can leak multiple
-  //      historical role=player entities into worldStore (the repo's
-  //      data/state/core/entities/ already has several), and a plain
-  //      `find(role=player)` would surface whichever happens to be first,
-  //      potentially the wrong character for the active session.
-  //   2. name match alone — covers the case where the DM emitted a player
-  //      record without setting role.
-  //   3. any role=player — last-resort fallback when playerName isn't set
-  //      yet (early hydration race, or the placeholder path).
-  // Order matters: only descend to (3) when nothing earlier matches.
+  // Find the player. Priority order: (1) role=player AND name=playerName,
+  // (2) name match alone, (3) any role=player.
   let player;
   if (playerName) {
     player = characters.find(
@@ -181,41 +191,37 @@ export function PlayerVitals() {
     player = characters.find((c) => c?.role === 'player');
   }
 
-  // No player in either source → render a placeholder slot so the panel
-  // visual hierarchy is stable across sessions (vs. the entire vitals box
-  // appearing/disappearing). Aria-valuetext announces "Unknown" so screen
-  // readers know the data isn't available rather than reading a default 100.
   const placeholder = !player;
 
+  // Missing health on a known player → 100. NaN / non-finite → 100.
+  // Out-of-range → clamped.
   const rawHp = player?.health;
-  // Missing health on a known player → 100 (DM-prompt rule), not 0. NaN /
-  // non-finite → 100. Out-of-range → clamped. Order matters: the placeholder
-  // case is handled separately so its render doesn't show "100/100 Whole."
   const hpInput = rawHp === undefined ? 100 : rawHp;
   const hp = Number.isFinite(hpInput)
     ? Math.max(0, Math.min(100, hpInput))
     : 100;
 
-  // status comparison is case-insensitive — DM emissions vary on casing
-  // ("Dead", "DEAD", "dead") and a corpse must NOT render as "Wounded" just
-  // because the DM capitalized the word. (Red-team finding 2026-06-12.)
-  const statusStr = typeof player?.status === 'string' ? player.status.trim().toLowerCase() : '';
-  const isDead = !placeholder && (statusStr === 'dead' || hp === 0);
+  // Status normalization — case- and whitespace-tolerant (DM emits "Dead",
+  // "DEAD", " dead ", "Unconscious", "UNCONSCIOUS" etc.). Empty string
+  // means "no status emitted yet."
+  const statusStr =
+    typeof player?.status === 'string' ? player.status.trim().toLowerCase() : '';
+  const isDead = !placeholder && statusStr === 'dead';
+  const isUnconscious = !placeholder && statusStr === 'unconscious';
+
   const band = placeholder
     ? { label: 'Unknown', text: 'text-dust' }
-    : bandFor(hp, isDead);
+    : bandFor(hp, statusStr);
 
-  const washOpacity = washOpacityFor(hp, isDead, placeholder);
-  // Damage area: how MUCH of the body the wash covers (top-down). Combined
-  // with washOpacity above (the wash INTENSITY), the silhouette communicates
-  // both the band severity AND the actual percentage of HP lost.
-  const damageHeight = damageHeightFor(hp, isDead, placeholder);
-  // Race-keyed body geometry — stubbed today (every known race resolves to
-  // the human silhouette). When real per-race art lands, only the path
-  // string in RACE_BODIES needs to change. Reads from player.race when set;
-  // falls back to the human default otherwise.
+  const vitalityHeight = vitalityHeightFor(hp, statusStr, placeholder);
+  const vitalityY = SVG_HEIGHT - vitalityHeight; // anchor at the bottom
   const bodyPath = bodyPathFor(player?.race);
-  const silhouetteOpacity = isDead ? 0.3 : 1;
+
+  // Silhouette dims slightly when dead (the body itself is replaced by the
+  // skull pictogram — the dim applies to the whole pictogram for a "spent"
+  // read). Unconscious keeps full opacity; the Zzz caption + empty body
+  // do the work.
+  const silhouetteOpacity = isDead ? 0.65 : 1;
 
   const ariaValueText = placeholder
     ? 'Unknown'
@@ -224,13 +230,7 @@ export function PlayerVitals() {
   return (
     <div className="border-b border-border pb-4 mb-4">
       <h3 className="text-amber font-cinzel text-sm mb-2">VITALS</h3>
-      {/* Stack vertically on narrow screens — iPhone screenshot 2026-06-12
-          showed the right column (band / HP / name) clipping off the screen
-          edge because the world-state drawer is too tight for a side-by-side
-          layout on mobile. `flex-col sm:flex-row` keeps the desktop look
-          but centers the silhouette over the readout on phones. The text
-          column also gets `text-center sm:text-left` so the labels track
-          alignment with the stacking axis. */}
+      {/* Stack vertically on narrow screens, side-by-side at sm+. */}
       <div className="flex flex-col sm:flex-row items-center gap-3">
         <svg
           viewBox="0 0 100 180"
@@ -238,99 +238,64 @@ export function PlayerVitals() {
           style={{ opacity: silhouetteOpacity, transition: 'opacity 300ms' }}
           role="meter"
           aria-label="Player vitals"
-          // Per WAI-ARIA: when the current value is unknown, aria-valuenow
-          // should be OMITTED, not set to 0 — a screen reader interprets
-          // 0 here as "Fallen / 0 HP," which is exactly the opposite of
-          // what "Unknown" means (gemini-medium on PR #127). Passing
-          // undefined lets React drop the attribute entirely.
           aria-valuenow={placeholder ? undefined : hp}
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuetext={ariaValueText}
         >
-          <defs>
-            <clipPath id="vitals-body-clip">
-              <ellipse cx="50" cy="22" rx="11" ry="12" />
-              <path d={bodyPath} />
-            </clipPath>
-            {/* Damage gradient — solid blood at the core, fading to a
-                still-saturated amber at the body edges (NOT to transparent
-                — the wash should color the whole silhouette body so the
-                damage is visible against the dark codex background). The
-                rect-level `opacity` prop controls overall intensity per
-                band; this gradient just gives the wash a hot-center,
-                inked-bleed shape inside the silhouette. (Russell visual
-                feedback 2026-06-12.) */}
-            {/* `gradientUnits="userSpaceOnUse"` keeps the gradient's
-                hot-center fixed in the SVG coordinate space — without it the
-                default `objectBoundingBox` rescales the gradient to the
-                <rect>'s bounding box, so as `damageHeight` shrinks toward
-                the MIN_DAMAGE_HEIGHT floor (12 units) the gradient squishes
-                into a 100×12 region and the center expands disproportion-
-                ately. Center at (50, 90) = the middle of the SVG body
-                (gemini-medium on PR #131). */}
-            <radialGradient
-              id="vitals-damage"
-              cx="50"
-              cy="90"
-              r="65"
-              gradientUnits="userSpaceOnUse"
-            >
-              <stop offset="0%" stopColor="#8c3a3a" stopOpacity="1" />
-              <stop offset="60%" stopColor="#8c3a3a" stopOpacity="0.95" />
-              <stop offset="100%" stopColor="#c9973a" stopOpacity="0.75" />
-            </radialGradient>
-          </defs>
+          {isDead ? (
+            <SkullAndCrossbones />
+          ) : (
+            <>
+              <defs>
+                <clipPath id="vitals-body-clip">
+                  <ellipse cx="50" cy="22" rx="11" ry="12" />
+                  <path d={bodyPath} />
+                </clipPath>
+              </defs>
 
-          {/* Damage wash — clipped to the body so it never spills outside
-              the silhouette. The rect HEIGHT shrinks/grows with damage
-              (top-down fill: wound spreads from head as HP drops), the
-              rect OPACITY varies by band (intensity within the damaged
-              area). At HP=100 height is 0; at HP=0 / dead it's the full
-              SVG height.
-              **`height` lives in the inline `style` object, not as an XML
-              attribute** — CSS `transition: height` doesn't trigger on SVG
-              presentation attributes in most browsers; only style-driven
-              values animate. (gemini-medium on PR #131.) */}
-          <rect
-            data-testid="vitals-damage-wash"
-            x="0"
-            y="0"
-            width="100"
-            fill="url(#vitals-damage)"
-            opacity={washOpacity}
-            clipPath="url(#vitals-body-clip)"
-            style={{
-              height: damageHeight,
-              transition: 'height 400ms, opacity 400ms',
-            }}
-          />
+              {/* Vitality fill — solid blood, anchored at the bottom,
+                  height + y move together as HP changes. `y` and `height`
+                  live in the inline style object (not as XML attrs) so the
+                  CSS transition actually fires — SVG presentation attributes
+                  don't animate via CSS in Safari iOS. */}
+              <rect
+                data-testid="vitals-vitality-fill"
+                x="0"
+                width="100"
+                fill={BLOOD}
+                clipPath="url(#vitals-body-clip)"
+                style={{
+                  y: vitalityY,
+                  height: vitalityHeight,
+                  transition: 'y 400ms, height 400ms',
+                }}
+              />
 
-          {/* Visible outline — stroke only, same geometry as the clip. */}
-          <g
-            stroke="currentColor"
-            strokeWidth="1.2"
-            fill="none"
-            strokeLinejoin="round"
-            strokeLinecap="round"
-          >
-            <ellipse cx="50" cy="22" rx="11" ry="12" />
-            <path d={bodyPath} />
-          </g>
+              {/* Visible outline — stroke only, same geometry as the clip. */}
+              <g
+                stroke="currentColor"
+                strokeWidth="1.2"
+                fill="none"
+                strokeLinejoin="round"
+                strokeLinecap="round"
+              >
+                <ellipse cx="50" cy="22" rx="11" ry="12" />
+                <path d={bodyPath} />
+              </g>
+
+              {/* Sleep marker — three Z glyphs above the head when
+                  status=unconscious. The silhouette is full-outline (no
+                  vitality fill); the Zzz is what signals the state. */}
+              {isUnconscious && <ZzzCaption />}
+            </>
+          )}
         </svg>
 
         <div className="flex-1 min-w-0 text-center sm:text-left">
-          {/* `whitespace-nowrap` on the band label so "Near death" /
-              "Off-balance" never wrap at narrow widths (~280px panel on a
-              small desktop drawer or a stacked-mobile column with a long
-              character name pushing the column narrow). Red-team finding
-              2026-06-12. */}
           <div className={band.text + ' font-medium text-sm font-cinzel whitespace-nowrap'}>
             {band.label}
           </div>
-          {/* `whitespace-nowrap` on the HP readout so "55/100" never wraps
-              to "55/1" + "00" at narrow widths or under iOS 2x text
-              scaling. Red-team finding 2026-06-12. */}
           <div className="text-dust text-xs mt-0.5 whitespace-nowrap">
             {placeholder ? '—' : `${hp}/100`}
           </div>
