@@ -247,8 +247,48 @@ describe('useWorldHydration', () => {
         useChatStore.getState().messages.some((m) => m.type === 'system' && /Could not load world/.test(m.content)),
       ).toBe(true),
     )
-    // reauth was NOT attempted — 404 is not in the 401-recovery class.
+    // reauth was NOT attempted — 404 is not in the 401-or-403 recovery class.
     expect(apiClient.post).not.toHaveBeenCalled()
+  })
+
+  it('recovers from a 403 by reauthing and retrying — expired-token case (Russell 2026-06-14)', async () => {
+    // The per-world HMAC token has a 7-day TTL by default. A returning
+    // tester whose token aged out hits 403 from the world-token enforce.
+    // Without 403-trigger reauth they're stranded; with it, the same
+    // basic_auth → reauth → retry flow that handles 401 also handles 403.
+    apiClient.get
+      .mockRejectedValueOnce(apiError(403))
+      .mockResolvedValueOnce(WORLD_PAYLOAD)
+    apiClient.post.mockResolvedValueOnce({ worldId: WORLD_ID, token: 'fresh-after-expiry' })
+
+    renderHook(() => useWorldHydration(WORLD_ID))
+    await waitFor(() =>
+      expect(usePlayerStore.getState().sessionId).toBe(WORLD_PAYLOAD.sessionId),
+    )
+
+    // Recovery sequence: GET (403) → POST /reauth → GET (retry).
+    expect(apiClient.post).toHaveBeenCalledWith(`/world/${WORLD_ID}/reauth`, {})
+    expect(apiClient.get).toHaveBeenCalledTimes(2)
+    expect(getWorldToken(WORLD_ID)).toBe('fresh-after-expiry')
+    // No "Could not load world" system message — recovery was transparent.
+    const sysMsgs = useChatStore.getState().messages.filter((m) => m.type === 'system')
+    expect(sysMsgs).toHaveLength(0)
+  })
+
+  it('does not loop on a persistent 403 — reauth runs at most once even when it 403s back', async () => {
+    // GET 403, reauth 403 (basic_auth user isn't this world's creator).
+    // Should surface "Not your world", not retry forever.
+    apiClient.get.mockRejectedValue(apiError(403))
+    apiClient.post.mockRejectedValueOnce(apiError(403))
+
+    renderHook(() => useWorldHydration(WORLD_ID))
+    await waitFor(() =>
+      expect(
+        useChatStore.getState().messages.some((m) => m.type === 'system' && /Not your world/.test(m.content)),
+      ).toBe(true),
+    )
+    expect(apiClient.post).toHaveBeenCalledTimes(1)
+    expect(apiClient.get).toHaveBeenCalledTimes(1)
   })
 
   it('handles a malformed reauth response without TypeError-ing', async () => {
