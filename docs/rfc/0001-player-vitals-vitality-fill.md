@@ -1,7 +1,7 @@
 # RFC 0001 — PlayerVitals vitality-fill model
 
-**Status:** Draft
-**Date:** 2026-06-13
+**Status:** Implemented
+**Date:** 2026-06-13 (drafted); 2026-06-14 (implemented)
 **Author:** Russell Pfister (design decisions); drafted by Claude subagent
 **Implements:** `docs/BACKLOG.md` § "Invert PlayerVitals fill metaphor: vitality-remaining (red), not damage-taken (red)"
 **Supersedes:** —
@@ -154,23 +154,21 @@ flips to `unconscious` / `dead`.
 
 ## Open Questions
 
-These are the only two:
+Both resolved by Russell 2026-06-14:
 
-1. **What do the unconscious and dead poses look like?** A horizontal supine
-   silhouette is the obvious starting point for both; what distinguishes them
-   visually — a slumped-vs-prone curve, an opacity drop, a small visual
-   marker — is undecided. Deferred to a follow-on visual-iteration PR after
-   the dispatch lands (this is the BACKLOG-able art task, mirroring the
-   per-race authoring split). Status colors / band labels for these states
-   also fall here.
+1. **Pose artwork.** ✅ **Resolved.** Dead = skull-and-crossbones pictogram
+   (replaces the body entirely). Unconscious = the standing humanoid
+   silhouette + a "Zzz" caption above the head (the universal sleeping
+   cartoon convention). Band labels: `Dead` (text-blood) + `Unconscious`
+   (text-amber). Both poses are drawn inline in `PlayerVitals.jsx` as
+   `<SkullAndCrossbones>` and `<ZzzCaption>` components; expect visual
+   iteration rounds.
 
-2. **Exact spelling of the unconscious status string the DM emits.** Candidates:
-   `"unconscious"`, `"downed"`, `"incapacitated"`, `"knocked out"`. The
-   case-insensitive `statusStr` normalization already in PlayerVitals handles
-   casing; the question is the canonical lexeme to commit to in the DM prompt
-   + Fact-Extractor schema. Resolving this requires a one-line decision from
-   Russell + an engine-prompt update; the rendering side accepts whatever
-   spelling lands.
+2. **Status enum spelling.** ✅ **Resolved.** `"unconscious"` (clinical /
+   D&D-flavored). DM prompt schema enum expanded to
+   `"alive|unconscious|dead|unknown|missing"`. Case-insensitive
+   normalization (`status.trim().toLowerCase()`) in PlayerVitals tolerates
+   `"Unconscious"`, `"UNCONSCIOUS"`, etc.
 
 ## Acceptance Criteria
 

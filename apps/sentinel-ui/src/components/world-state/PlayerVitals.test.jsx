@@ -160,29 +160,38 @@ describe('PlayerVitals — bands', () => {
     expect(screen.getByText(/0\/100/)).toBeInTheDocument()
   })
 
-  it('renders Fallen when status=dead, regardless of HP value', () => {
+  it('renders Dead (with skull pictogram) when status=dead, regardless of HP value', () => {
     // An explicit death is more authoritative than the number. A live HP
-    // value with status:dead should still surface as Fallen so the silhouette
-    // can't read "Wounded — 20/100" on a corpse.
+    // value with status:dead surfaces as Dead with the skull-and-crossbones
+    // pose (RFC-0001 decision 3), not as Wounded.
     seedPlayer({ health: 20, status: 'dead' })
     render(<PlayerVitals />)
-    expect(screen.getByText(/Fallen/)).toBeInTheDocument()
+    expect(screen.getByText(/^Dead/)).toBeInTheDocument()
+    expect(screen.getByTestId('vitals-skull-crossbones')).toBeInTheDocument()
   })
 
-  it('renders Fallen for capitalized "Dead" / "DEAD" / " dead " — status compare is case-insensitive', () => {
-    // Red-team 2026-06-12: DM emissions vary on casing. The original
-    // `player.status === 'dead'` exact-match would let "Dead" or "DEAD"
-    // fall through to the HP-band branch, so a corpse rendered as Wounded
-    // (or whatever HP-band the live HP value falls into). The case-/
-    // whitespace-tolerant compare prevents that.
+  it('renders Dead for capitalized "Dead" / "DEAD" / " dead " — status compare is case-insensitive', () => {
     for (const status of ['Dead', 'DEAD', ' dead ', 'dEaD']) {
       useWorldStore.setState({
         characters: [{ name: 'Russalo', role: 'player', health: 20, status }],
       })
       const view = render(<PlayerVitals />)
-      expect(screen.getByText(/Fallen/)).toBeInTheDocument()
+      expect(screen.getByText(/^Dead/)).toBeInTheDocument()
+      expect(screen.getByTestId('vitals-skull-crossbones')).toBeInTheDocument()
       view.unmount()
     }
+  })
+
+  it('renders Fallen at HP=0 when status is still alive (transient state)', () => {
+    // HP hit zero but the DM hasn't emitted a terminal status yet — render
+    // Fallen with an empty silhouette (vitality height = 0). The DM is
+    // expected to follow up with status='unconscious' or 'dead' next turn.
+    seedPlayer({ health: 0, status: 'alive' })
+    render(<PlayerVitals />)
+    expect(screen.getByText(/^Fallen/)).toBeInTheDocument()
+    // Body silhouette is still there (not the skull) — this is the
+    // pre-status-flip transient.
+    expect(screen.queryByTestId('vitals-skull-crossbones')).not.toBeInTheDocument()
   })
 })
 
@@ -214,7 +223,9 @@ describe('PlayerVitals — edge cases', () => {
   })
 
   it('handles negative HP by clamping to 0 + rendering Fallen', () => {
-    seedPlayer({ health: -10 })
+    // status='alive' explicit so this hits the HP=0 Fallen branch rather
+    // than the dead-pose or unconscious-pose branches.
+    seedPlayer({ health: -10, status: 'alive' })
     render(<PlayerVitals />)
     expect(screen.getByText(/0\/100/)).toBeInTheDocument()
     expect(screen.getByText(/Fallen/)).toBeInTheDocument()
@@ -338,183 +349,178 @@ describe('PlayerVitals — race-keyed body geometry (stub)', () => {
   })
 })
 
-describe('PlayerVitals — wash visibility per band (Russell 2026-06-12 fix)', () => {
-  // The dark codex background eats subtle opacity, so the wash uses a stepped
-  // per-band floor (not a smooth (100-hp)/100 curve which produced ~9% opacity
-  // at HP=90 — effectively invisible). These tests lock the floor so a
-  // regression silently dimming the wash would fail CI.
-  function washOpacity() {
-    const wash = screen.getByTestId('vitals-damage-wash')
-    return Number(wash.getAttribute('opacity'))
+describe('PlayerVitals — vitality fill (RFC-0001, top-down drain, bottom-anchored)', () => {
+  // The fill is solid blood, height proportional to HP remaining, anchored
+  // at the bottom of the SVG. As HP drops the rect's y rises and its
+  // height shrinks — the "Diablo orb" idiom. Both y and height are set via
+  // inline style (not XML attrs) so CSS transitions fire on Safari iOS.
+  function vitalityHeight() {
+    const rect = screen.getByTestId('vitals-vitality-fill')
+    return parseFloat(rect.style.height || '0')
   }
+  function vitalityY() {
+    const rect = screen.getByTestId('vitals-vitality-fill')
+    return parseFloat(rect.style.y || '0')
+  }
+  const SVG_HEIGHT = 180
+  const MIN_VITALITY = 12
 
-  it('Whole (HP 100) → no wash', () => {
+  it('HP=100 → vitality fills the entire body (height 180, y 0)', () => {
     seedPlayer({ health: 100 })
     render(<PlayerVitals />)
-    expect(washOpacity()).toBe(0)
+    expect(vitalityHeight()).toBe(SVG_HEIGHT)
+    expect(vitalityY()).toBe(0)
   })
 
-  it('Bruised (HP 70-99) → visible wash, opacity ≥ 0.25', () => {
-    seedPlayer({ health: 90 })
+  it('HP=55 → vitality covers the bottom 55%, top 45% is empty outline', () => {
+    seedPlayer({ health: 55 })
     render(<PlayerVitals />)
-    // The exact value the pre-fix code produced at HP=90 was ~0.095;
-    // anything ≥ 0.25 is the new visible-on-dark floor.
-    expect(washOpacity()).toBeGreaterThanOrEqual(0.25)
+    // 55% of 180 = 99; y = 180 - 99 = 81
+    expect(vitalityHeight()).toBeCloseTo(99, 0)
+    expect(vitalityY()).toBeCloseTo(81, 0)
   })
 
-  it('Wounded (HP 40-69) → opacity ≥ 0.50', () => {
+  it('HP=50 → exactly half', () => {
     seedPlayer({ health: 50 })
     render(<PlayerVitals />)
-    expect(washOpacity()).toBeGreaterThanOrEqual(0.50)
+    expect(vitalityHeight()).toBe(90)
+    expect(vitalityY()).toBe(90)
   })
 
-  it('Bleeding (HP 10-39) → opacity ≥ 0.70', () => {
-    seedPlayer({ health: 20 })
-    render(<PlayerVitals />)
-    expect(washOpacity()).toBeGreaterThanOrEqual(0.70)
-  })
-
-  it('Near death (HP 1-9) → opacity ≥ 0.85', () => {
+  it('HP=5 → tiny vitality at the feet (proportional ~9, but floor ~12)', () => {
     seedPlayer({ health: 5 })
     render(<PlayerVitals />)
-    expect(washOpacity()).toBeGreaterThanOrEqual(0.85)
+    expect(vitalityHeight()).toBeGreaterThanOrEqual(MIN_VITALITY)
+    expect(vitalityY()).toBeCloseTo(SVG_HEIGHT - vitalityHeight(), 1)
   })
 
-  it('Fallen (HP 0 or status=dead) → dim red wash, opacity ~0.40', () => {
-    // Death wash is intentionally dimmer than "Near death" — the player is
-    // gone, the silhouette itself drops to 30% opacity so the visual is
-    // "spent" rather than "bleeding out."
-    seedPlayer({ health: 0 })
+  it('HP=1 → minimum visible vitality floor (~12 SVG units, NOT zero)', () => {
+    // The floor guarantees "even at HP=1 the player can see they have
+    // SOMETHING left." A strict proportional value would be 1.8 units —
+    // visually zero — and lie about a still-conscious character.
+    seedPlayer({ health: 1 })
     render(<PlayerVitals />)
-    expect(washOpacity()).toBeGreaterThan(0)
-    expect(washOpacity()).toBeLessThanOrEqual(0.50)
+    expect(vitalityHeight()).toBe(MIN_VITALITY)
   })
 
-  it('placeholder (no player) → no wash', () => {
+  it('HP=0 (status alive) → vitality fully empty (height 0, y at SVG floor)', () => {
+    seedPlayer({ health: 0, status: 'alive' })
+    render(<PlayerVitals />)
+    expect(vitalityHeight()).toBe(0)
+    expect(vitalityY()).toBe(SVG_HEIGHT)
+  })
+
+  it('status=unconscious → vitality empty regardless of HP (silhouette + Zzz instead)', () => {
+    seedPlayer({ health: 50, status: 'unconscious' })
+    render(<PlayerVitals />)
+    expect(vitalityHeight()).toBe(0)
+  })
+
+  it('placeholder (no player) → vitality empty', () => {
     useWorldStore.setState({
       characters: [{ name: 'Kael', role: 'npc', health: 100 }],
     })
     render(<PlayerVitals />)
-    expect(washOpacity()).toBe(0)
+    // The skull-and-crossbones case has no vitality-fill rect at all; the
+    // placeholder case still renders the rect with height 0.
+    expect(vitalityHeight()).toBe(0)
+  })
+
+  it('HP=80 vs HP=20 produce visibly different vitality heights', () => {
+    seedPlayer({ health: 80 })
+    const v1 = render(<PlayerVitals />)
+    const at80 = vitalityHeight()
+    v1.unmount()
+    useWorldStore.setState({
+      characters: [{ name: 'Russalo', role: 'player', health: 20 }],
+    })
+    const v2 = render(<PlayerVitals />)
+    const at20 = vitalityHeight()
+    v2.unmount()
+    expect(at80).toBeGreaterThan(at20)
+    expect(at80 - at20).toBeGreaterThanOrEqual(60)
+  })
+
+  it('uses solid blood fill (no gradient defs in the rendered SVG)', () => {
+    // RFC-0001 decision 2: drop the radial gradient entirely; the AREA of
+    // the fill is now doing the work the per-band opacity stepping was
+    // trying to do.
+    seedPlayer({ health: 50 })
+    render(<PlayerVitals />)
+    const rect = screen.getByTestId('vitals-vitality-fill')
+    expect(rect.getAttribute('fill')).toBe('#8c3a3a')
+    // No <radialGradient> in the SVG — was previously id="vitals-damage"
+    expect(document.querySelector('#vitals-damage')).toBeNull()
   })
 })
 
-describe('PlayerVitals — damage area height (Russell 2026-06-12 "Can\'t see the 45% hit loss")', () => {
-  // The wash AREA (rect height) scales with HP loss, so the silhouette
-  // communicates the actual percentage damage — not just "you're hurt."
-  // Combined with the per-band opacity above: AREA tells you HOW MUCH,
-  // OPACITY tells you HOW BAD. These tests lock the area mapping so a
-  // regression that flattens the visual back to "uniform wash regardless
-  // of HP" would fail CI.
-  function washHeight() {
-    // `height` is set via inline `style` (not an SVG attribute) so CSS
-    // transitions can drive it — read it from style, not from attribute.
-    // (gemini-medium on PR #131.)
-    const wash = screen.getByTestId('vitals-damage-wash')
-    return parseFloat(wash.style.height || '0')
-  }
-  const SVG_HEIGHT = 180
-
-  it('HP=100 (Whole) → damage height is 0', () => {
-    seedPlayer({ health: 100 })
+describe('PlayerVitals — pose dispatch by status (RFC-0001 decision 3)', () => {
+  it('status=alive → renders the humanoid silhouette, no skull, no Zzz', () => {
+    seedPlayer({ health: 60, status: 'alive' })
     render(<PlayerVitals />)
-    expect(washHeight()).toBe(0)
+    expect(screen.queryByTestId('vitals-skull-crossbones')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('vitals-zzz-caption')).not.toBeInTheDocument()
+    expect(screen.getByTestId('vitals-vitality-fill')).toBeInTheDocument()
   })
 
-  it('HP=55 → damage covers ~45% of the body height (the originating bug case)', () => {
-    seedPlayer({ health: 55 })
+  it('status=unconscious → silhouette + Zzz caption; no skull; vitality empty', () => {
+    seedPlayer({ health: 0, status: 'unconscious' })
     render(<PlayerVitals />)
-    // 45% of 180 = 81
-    expect(washHeight()).toBeCloseTo(81, 0)
+    expect(screen.getByTestId('vitals-zzz-caption')).toBeInTheDocument()
+    expect(screen.queryByTestId('vitals-skull-crossbones')).not.toBeInTheDocument()
+    expect(screen.getByText(/Unconscious/)).toBeInTheDocument()
   })
 
-  it('HP=50 → damage covers exactly half', () => {
-    seedPlayer({ health: 50 })
-    render(<PlayerVitals />)
-    expect(washHeight()).toBe(90)
+  it('status=unconscious is case-insensitive (Unconscious / UNCONSCIOUS / " unconscious ")', () => {
+    for (const status of ['Unconscious', 'UNCONSCIOUS', ' unconscious ', 'uNcOnScIoUs']) {
+      useWorldStore.setState({
+        characters: [{ name: 'Russalo', role: 'player', health: 0, status }],
+      })
+      const view = render(<PlayerVitals />)
+      expect(screen.getByTestId('vitals-zzz-caption')).toBeInTheDocument()
+      expect(screen.getByText(/Unconscious/)).toBeInTheDocument()
+      view.unmount()
+    }
   })
 
-  it('HP=5 → damage covers ~95% of the body', () => {
-    seedPlayer({ health: 5 })
+  it('status=dead → skull-and-crossbones replaces the body entirely', () => {
+    seedPlayer({ health: 0, status: 'dead' })
     render(<PlayerVitals />)
-    // 95% of 180 = 171
-    expect(washHeight()).toBeCloseTo(171, 0)
+    expect(screen.getByTestId('vitals-skull-crossbones')).toBeInTheDocument()
+    // No vitality fill, no Zzz caption, no body silhouette path — the
+    // skull pictogram is the whole visual.
+    expect(screen.queryByTestId('vitals-vitality-fill')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('vitals-zzz-caption')).not.toBeInTheDocument()
+    expect(screen.getByText(/^Dead/)).toBeInTheDocument()
   })
 
-  it('HP=0 → damage covers the full body', () => {
-    seedPlayer({ health: 0 })
+  it('unconscious WINS over a positive HP — explicit status > the number', () => {
+    // If the DM emits unconscious with a non-zero HP (mid-fight, the
+    // narration explicitly knocked them out), the pose follows the status,
+    // not the residual HP.
+    seedPlayer({ health: 30, status: 'unconscious' })
     render(<PlayerVitals />)
-    expect(washHeight()).toBe(SVG_HEIGHT)
+    expect(screen.getByTestId('vitals-zzz-caption')).toBeInTheDocument()
+    expect(screen.getByText(/Unconscious/)).toBeInTheDocument()
   })
+})
 
-  it('status=dead with HP>0 → damage still covers full body (death is more authoritative than the number)', () => {
-    seedPlayer({ health: 20, status: 'dead' })
-    render(<PlayerVitals />)
-    expect(washHeight()).toBe(SVG_HEIGHT)
-  })
-
-  it('HP=99 → minimum visible damage area (~12 SVG units) so Bruised isn\'t identical to Whole', () => {
-    // (100-99)/100 * 180 = 1.8 units — would be invisible without a floor.
-    // With MIN_DAMAGE_HEIGHT=12, the silhouette shows a small but legible
-    // wash at the head — communicates "you took a hit" unambiguously.
-    seedPlayer({ health: 99 })
-    render(<PlayerVitals />)
-    expect(washHeight()).toBeGreaterThanOrEqual(12)
-    expect(washHeight()).toBeLessThanOrEqual(20)
-  })
-
-  it('placeholder (no player) → damage height 0 (Unknown doesn\'t fake damage)', () => {
-    useWorldStore.setState({
-      characters: [{ name: 'Kael', role: 'npc', health: 100 }],
-    })
-    render(<PlayerVitals />)
-    expect(washHeight()).toBe(0)
-  })
-
+describe('PlayerVitals — layout invariants', () => {
   it('SVG height class is responsive (h-20 on mobile, sm:h-24 on desktop)', () => {
-    // Red-team 2026-06-12: SVG `h-24` (96px) is too tall for iPhone SE
-    // viewport (320px). Responsive shrink at mobile (`h-20` = 80px) plus
-    // the desktop default (`sm:h-24`) keeps the silhouette compact on
-    // phones without sacrificing desktop presence.
     seedPlayer({ health: 100 })
     render(<PlayerVitals />)
     const svg = screen.getByRole('meter')
-    // SVGElement.className is an SVGAnimatedString (not a plain string) —
-    // read the attribute via getAttribute() instead. (Caught in test runner.)
     const cls = svg.getAttribute('class') || ''
     expect(cls).toMatch(/\bh-20\b/)
     expect(cls).toMatch(/\bsm:h-24\b/)
   })
 
   it('band label and HP readout have whitespace-nowrap (never wrap on narrow widths)', () => {
-    // Red-team 2026-06-12: "55/100" was wrapping to "55/1" + "00" at narrow
-    // widths or under iOS 2x text scaling; "Near death" / "Off-balance"
-    // could truncate similarly. The fix is `whitespace-nowrap` on both.
     seedPlayer({ health: 5 })
     render(<PlayerVitals />)
     const band = screen.getByText(/Near death/)
     const hp = screen.getByText(/5\/100/)
     expect(band.className).toMatch(/\bwhitespace-nowrap\b/)
     expect(hp.className).toMatch(/\bwhitespace-nowrap\b/)
-  })
-
-  it('HP=55 and HP=15 produce visibly different damage heights (the regression this fix addresses)', () => {
-    // The pre-fix bug: per-band opacity covered the whole body, so HP=55
-    // and HP=15 looked identical visually. Post-fix, HP=15 should show
-    // dramatically more area than HP=55.
-    seedPlayer({ health: 55 })
-    const view1 = render(<PlayerVitals />)
-    const at55 = washHeight()
-    view1.unmount()
-
-    useWorldStore.setState({
-      characters: [{ name: 'Russalo', role: 'player', health: 15 }],
-    })
-    const view2 = render(<PlayerVitals />)
-    const at15 = washHeight()
-    view2.unmount()
-
-    expect(at15).toBeGreaterThan(at55)
-    expect(at15 - at55).toBeGreaterThanOrEqual(60) // 40-percentage-point gap = 72 SVG units
   })
 })
