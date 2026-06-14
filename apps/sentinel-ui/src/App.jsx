@@ -4,6 +4,7 @@ import WorldCreation from './pages/WorldCreation';
 import WorldList from './pages/WorldList';
 import DataBrowser from './pages/DataBrowser';
 import Feedback from './pages/Feedback';
+import AdminMessages from './pages/AdminMessages';
 import './index.css';
 
 // Router base mirrors the Vite build's base. import.meta.env.BASE_URL is set
@@ -24,6 +25,11 @@ export default function App() {
           required so testers can report inability to enter a session. See
           docs/ALPHA_FEEDBACK.md for the operational triage flow. */}
       <Route path="/feedback" component={Feedback} />
+      {/* System-messages admin (RFC 0002) — tailnet-only. The Caddyfile
+          404s `/api/admin/*` on the public edge, so the page itself loads
+          on the public bundle but every API call from it fails unless you
+          reach the backend over tailnet. Topology IS the credential. */}
+      <Route path="/admin/messages" component={AdminMessages} />
       {/* The game lives at a world's own URL (ADR 0002 Slice 4) so it's
           shareable and survives a refresh — AppShell hydrates from the
           worldId param. */}

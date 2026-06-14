@@ -1,12 +1,23 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { SettingsDrawer } from './SettingsDrawer';
 import { useUIStore, FONT_SIZE_DEFAULT } from '../../stores/uiStore';
 
+vi.mock('../../api/systemMessages', () => ({
+  listMessages: vi.fn(),
+}));
+import { listMessages } from '../../api/systemMessages';
+
 beforeEach(() => {
-  useUIStore.setState({ settingsOpen: false, fontSize: FONT_SIZE_DEFAULT });
+  useUIStore.setState({
+    settingsOpen: false,
+    fontSize: FONT_SIZE_DEFAULT,
+    messagesLastSeenAt: null,
+  });
   localStorage.removeItem('sentinel.uiPrefs');
+  listMessages.mockReset();
+  listMessages.mockResolvedValue([]);
 });
 
 describe('SettingsDrawer', () => {
@@ -159,5 +170,59 @@ describe('SettingsDrawer', () => {
     expect(document.activeElement).toBe(closeBtn);
     await userEvent.keyboard('{Shift>}{Tab}{/Shift}');
     expect(document.activeElement).toBe(plusBtn);
+  });
+});
+
+describe('SettingsDrawer — Messages section (RFC 0002)', () => {
+  it('renders the Messages header', () => {
+    useUIStore.setState({ settingsOpen: true });
+    render(<SettingsDrawer />);
+    expect(screen.getByText('Messages')).toBeInTheDocument();
+  });
+
+  it('shows "No messages." when the feed is empty', async () => {
+    listMessages.mockResolvedValue([]);
+    useUIStore.setState({ settingsOpen: true });
+    render(<SettingsDrawer />);
+    await waitFor(() => {
+      expect(screen.getByText('No messages.')).toBeInTheDocument();
+    });
+  });
+
+  it('renders message titles from the feed', async () => {
+    listMessages.mockResolvedValue([
+      { id: 'a', title: 'Patch tonight', body: 'See you 5pm', category: 'maintenance', pinned: false, published_at: '2026-06-14T20:00:00Z' },
+      { id: 'b', title: 'Hello cohort', body: 'Welcome', category: 'info', pinned: false, published_at: '2026-06-13T20:00:00Z' },
+    ]);
+    useUIStore.setState({ settingsOpen: true });
+    render(<SettingsDrawer />);
+    await waitFor(() => {
+      expect(screen.getByText('Patch tonight')).toBeInTheDocument();
+    });
+    expect(screen.getByText('Hello cohort')).toBeInTheDocument();
+  });
+
+  it('marks messages seen when drawer opens', async () => {
+    expect(useUIStore.getState().messagesLastSeenAt).toBeNull();
+    useUIStore.setState({ settingsOpen: true });
+    render(<SettingsDrawer />);
+    await waitFor(() => {
+      expect(useUIStore.getState().messagesLastSeenAt).not.toBeNull();
+    });
+  });
+
+  it('shows an error when the feed fetch fails', async () => {
+    listMessages.mockRejectedValue(new Error('boom'));
+    useUIStore.setState({ settingsOpen: true });
+    render(<SettingsDrawer />);
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(/boom/);
+    });
+  });
+
+  it('does NOT fetch the feed when the drawer is closed', () => {
+    useUIStore.setState({ settingsOpen: false });
+    render(<SettingsDrawer />);
+    expect(listMessages).not.toHaveBeenCalled();
   });
 });

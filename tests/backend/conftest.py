@@ -78,7 +78,16 @@ def app(
     """
     from fastapi import FastAPI
 
-    from backend.routes import admin, feedback, health, session, stream, training, world
+    from backend.routes import (
+        admin,
+        feedback,
+        health,
+        session,
+        stream,
+        system_messages,
+        training,
+        world,
+    )
 
     import engine
     import engine.agents.dm as dm_module
@@ -172,6 +181,7 @@ def app(
     app.include_router(world.router)
     app.include_router(admin.router)
     app.include_router(feedback.router)
+    app.include_router(system_messages.router)
     return app
 
 

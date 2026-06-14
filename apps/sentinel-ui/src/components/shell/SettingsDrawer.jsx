@@ -9,9 +9,11 @@
 // (e.g., a deep-link to "/?settings" later). Today only the TopBar gear
 // triggers it.
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { X, AArrowDown, AArrowUp } from 'lucide-react';
 import { useUIStore, FONT_SIZES } from '../../stores/uiStore';
+import { listMessages } from '../../api/systemMessages';
+import { MessageCard } from './MessageCard';
 
 const FONT_SIZE_LABELS = {
   small: 'Small',
@@ -25,7 +27,34 @@ export function SettingsDrawer() {
   const closeSettings = useUIStore((s) => s.closeSettings);
   const fontSize = useUIStore((s) => s.fontSize);
   const stepFontSize = useUIStore((s) => s.stepFontSize);
+  const markMessagesSeen = useUIStore((s) => s.markMessagesSeen);
   const drawerRef = useRef(null);
+  const [messages, setMessages] = useState([]);
+  const [messagesError, setMessagesError] = useState(null);
+
+  // Fetch the message feed when the drawer opens, and mark-seen at the same
+  // moment so the gear dot clears. We don't auto-refresh while open — testers
+  // re-open the drawer to see new ones; new alpha cadence is "operator posts,
+  // tester sees on next open" which is exactly the right granularity for a
+  // closed cohort.
+  useEffect(() => {
+    if (!settingsOpen) return;
+    let cancelled = false;
+    listMessages()
+      .then((msgs) => {
+        if (cancelled) return;
+        setMessages(msgs);
+        setMessagesError(null);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setMessagesError(err?.message || 'failed to load messages');
+      });
+    markMessagesSeen();
+    return () => {
+      cancelled = true;
+    };
+  }, [settingsOpen, markMessagesSeen]);
 
   // Focus management when drawer opens: capture previously-focused element
   // (the gear-icon button by default), move focus into the drawer container,
@@ -166,6 +195,28 @@ export function SettingsDrawer() {
               Applies to the DM narrative text. Chrome and UI controls stay at
               their default size for legibility.
             </p>
+          </section>
+
+          {/* System messages (RFC 0002) — operator-to-cohort feed.
+              Fetched fresh on every drawer open; pinned-first, then
+              newest-first. Marking-seen happens via the open effect above. */}
+          <section className="flex flex-col gap-2 mt-6">
+            <div className="text-sm text-dust">Messages</div>
+            {messagesError ? (
+              <p className="text-xs text-rose-400" role="alert">
+                Couldn't load messages: {messagesError}
+              </p>
+            ) : messages.length === 0 ? (
+              <p className="text-xs text-ether italic">
+                No messages.
+              </p>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {messages.map((m) => (
+                  <MessageCard key={m.id} message={m} />
+                ))}
+              </div>
+            )}
           </section>
 
           {/* Placeholder for future settings — theme, density, audio, etc.

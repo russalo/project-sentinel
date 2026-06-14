@@ -31,6 +31,16 @@ export const apiClient = {
     return res.json();
   },
 
+  async patch(endpoint, body, { headers } = {}) {
+    const res = await fetch(`${API_BASE}${endpoint}`, {
+      method: 'PATCH',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw makeApiError(res.status);
+    return res.json();
+  },
+
   async delete(endpoint, { headers } = {}) {
     const res = await fetch(`${API_BASE}${endpoint}`, { method: 'DELETE', headers });
     if (!res.ok) throw makeApiError(res.status);
