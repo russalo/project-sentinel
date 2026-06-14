@@ -6,40 +6,58 @@ import { usePersonaStore } from '../stores/personaStore';
 import { useWorldStore } from '../stores/worldStore';
 import { useChatStore, stripWorldUpdate } from '../stores/chatStore';
 
-// Fetch the world payload, recovering from a 401 by calling /reauth once and
-// retrying with the fresh token. Factored out so the hydration body below
-// stays readable — the actual recovery logic lives here:
+// Fetch the world payload, recovering from a 401 (missing token) OR 403
+// (expired / invalid token) by calling /reauth once and retrying with the
+// fresh token. Factored out so the hydration body below stays readable —
+// the actual recovery logic lives here:
 //
 //   1. Try GET /world/{id} with whatever token we have.
-//   2. On 401 (stale/missing token), call reauth(worldId). reauth carries
+//   2. On 401 (no token in localStorage) OR 403 (token present but expired
+//      / wrong secret / wrong-shape), call reauth(worldId). reauth carries
 //      the browser's already-cached basic_auth header; the backend confirms
 //      the user is the world's creator and re-mints a fresh token.
 //   3. Retry GET /world/{id} with the fresh token.
-//   4. If reauth itself 401s (no basic_auth reached the backend — dev /
-//      unenforced topology) or 403s (this isn't your world), surface the
-//      original 401 by re-throwing — the caller's "[Could not load world]"
-//      message is the right user-facing outcome.
+//   4. If reauth itself fails: 403 from reauth means basic_auth user isn't
+//      this world's creator — surface a clear "Not your world." Other
+//      reauth failures (401 = no basic_auth reached the backend; 502 =
+//      network or response-shape failure) bubble as-is so the user-facing
+//      error reflects the actual cause, not the original GET status.
+//
+// Why 401 + 403, not just 401: the per-world HMAC tokens have a 7-day TTL
+// by default. A returning tester whose token expired (or whose secret has
+// rotated, or whose token wire-shape became invalid via a backend upgrade)
+// gets 403 from `enforce_world_token`. Without 403-trigger reauth, that
+// tester is stranded with a "Could not load world: API error: 403" message
+// instead of auto-recovering via basic_auth re-mint. Russell reported this
+// 2026-06-14 after his 6.9-day-old token aged out.
+const REAUTH_TRIGGER_STATUSES = new Set([401, 403]);
+
 async function fetchWorldWithReauth(worldId) {
   try {
     return await apiClient.get(`/world/${worldId}`, {
       headers: worldTokenHeader(worldId),
     });
   } catch (err) {
-    if (err?.status !== 401) throw err;
-    // Stale or missing token. Try the recovery dance — at most once, so a
-    // genuinely-broken auth path doesn't loop forever.
+    if (!REAUTH_TRIGGER_STATUSES.has(err?.status)) throw err;
+    // Stale, missing, or expired token. Try the recovery dance — at most
+    // once, so a genuinely-broken auth path doesn't loop forever.
     try {
       await reauth(worldId);
     } catch (reauthErr) {
-      // reauth failed — bubble a clear error. If basic_auth was the issue
-      // the original 401 was already correct; if reauth 403'd the user is
-      // not the creator, which we surface so the player sees something.
+      // reauth failed — bubble the error that actually surfaced. 403 from
+      // reauth specifically means the basic_auth user isn't this world's
+      // creator (a genuine ownership mismatch, not recoverable) — translate
+      // to a clear "Not your world." All other reauth errors (401 = no
+      // basic_auth header reached the backend; 502 = network / response
+      // shape failure; etc.) bubble as-is so the user-facing error message
+      // reflects the actual cause, not the original GET status that
+      // triggered the recovery attempt. (gemini-medium on PR #138.)
       if (reauthErr?.status === 403) {
         const e = new Error('Not your world');
         e.status = 403;
         throw e;
       }
-      throw err; // bubble the original 401
+      throw reauthErr;
     }
     return await apiClient.get(`/world/${worldId}`, {
       headers: worldTokenHeader(worldId),
