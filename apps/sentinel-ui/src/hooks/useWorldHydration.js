@@ -17,10 +17,11 @@ import { useChatStore, stripWorldUpdate } from '../stores/chatStore';
 //      the browser's already-cached basic_auth header; the backend confirms
 //      the user is the world's creator and re-mints a fresh token.
 //   3. Retry GET /world/{id} with the fresh token.
-//   4. If reauth itself 401s (no basic_auth reached the backend — dev /
-//      unenforced topology) or 403s (this isn't your world), surface a
-//      clear "Not your world" — the caller's "[Could not load world]"
-//      message is the right user-facing outcome.
+//   4. If reauth itself fails: 403 from reauth means basic_auth user isn't
+//      this world's creator — surface a clear "Not your world." Other
+//      reauth failures (401 = no basic_auth reached the backend; 502 =
+//      network or response-shape failure) bubble as-is so the user-facing
+//      error reflects the actual cause, not the original GET status.
 //
 // Why 401 + 403, not just 401: the per-world HMAC tokens have a 7-day TTL
 // by default. A returning tester whose token expired (or whose secret has
@@ -43,16 +44,20 @@ async function fetchWorldWithReauth(worldId) {
     try {
       await reauth(worldId);
     } catch (reauthErr) {
-      // reauth failed — bubble a clear error. 403 from reauth means the
-      // basic_auth user isn't this world's creator (a genuine ownership
-      // mismatch, not recoverable). Other reauth errors fall through to
-      // the original error.
+      // reauth failed — bubble the error that actually surfaced. 403 from
+      // reauth specifically means the basic_auth user isn't this world's
+      // creator (a genuine ownership mismatch, not recoverable) — translate
+      // to a clear "Not your world." All other reauth errors (401 = no
+      // basic_auth header reached the backend; 502 = network / response
+      // shape failure; etc.) bubble as-is so the user-facing error message
+      // reflects the actual cause, not the original GET status that
+      // triggered the recovery attempt. (gemini-medium on PR #138.)
       if (reauthErr?.status === 403) {
         const e = new Error('Not your world');
         e.status = 403;
         throw e;
       }
-      throw err; // bubble the original 401/403
+      throw reauthErr;
     }
     return await apiClient.get(`/world/${worldId}`, {
       headers: worldTokenHeader(worldId),

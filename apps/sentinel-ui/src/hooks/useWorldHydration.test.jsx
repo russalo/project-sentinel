@@ -291,6 +291,28 @@ describe('useWorldHydration', () => {
     expect(apiClient.get).toHaveBeenCalledTimes(1)
   })
 
+  it('surfaces the REAUTH failure, not the original GET status, when they differ (gemini-medium on PR #138)', async () => {
+    // GET /world returns 403 (token expired), reauth returns 401 (no
+    // basic_auth header reached the backend — e.g. dev/unenforced
+    // topology, or the gate stripped the header). Pre-fix behavior would
+    // surface "API error: 403" — misleading, the 403 was just the trigger;
+    // the real failure is the 401 from reauth. Post-fix surfaces 401 so
+    // the user-facing error reflects what actually broke.
+    apiClient.get.mockRejectedValue(apiError(403))
+    apiClient.post.mockRejectedValueOnce(apiError(401))
+
+    renderHook(() => useWorldHydration(WORLD_ID))
+    await waitFor(() =>
+      expect(
+        useChatStore.getState().messages.some((m) => m.type === 'system' && /API error: 401/.test(m.content)),
+      ).toBe(true),
+    )
+    // And NOT the misleading 403 message.
+    expect(
+      useChatStore.getState().messages.some((m) => m.type === 'system' && /API error: 403/.test(m.content)),
+    ).toBe(false)
+  })
+
   it('handles a malformed reauth response without TypeError-ing', async () => {
     // reauth() defensively validates `data` is a non-null object before
     // accessing `.token` (gemini-medium on PR #125). A proxy returning HTML
