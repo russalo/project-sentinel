@@ -234,6 +234,7 @@ _None._
 ### Implemented
 
 - [RFC 0001 — PlayerVitals vitality-fill model](0001-player-vitals-vitality-fill.md) — _opened 2026-06-13, implemented 2026-06-14. Bottom-up vitality fill (Diablo orb idiom); solid blood, no gradient; status enum expanded to `alive | unconscious | dead | unknown | missing`; skull-and-crossbones pose for dead, humanoid + Zzz caption for unconscious; min-vitality floor of 12 SVG units at HP > 0._
+- [RFC 0002 — System messages](0002-system-messages.md) — _opened 2026-06-14, implemented 2026-06-14. Operator-to-cohort broadcast channel; player surface in Settings drawer with gear-dot unread indicator; tailnet-only admin UI at `/admin/messages` (no in-band auth — Caddy topology IS the credential); soft delete + pin + optional expiry; minimal markdown body (*italic*, **bold**, [link](url))._
 
 ### Superseded
 

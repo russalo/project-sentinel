@@ -2,8 +2,13 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { useUIStore, FONT_SIZES, FONT_SIZE_DEFAULT, FONT_SIZE_CLASS } from './uiStore';
 
 beforeEach(() => {
-  // Reset fontSize between tests (other slices are ephemeral / not load-bearing here)
-  useUIStore.setState({ fontSize: FONT_SIZE_DEFAULT, settingsOpen: false });
+  // Reset persisted/load-bearing state between tests; ephemeral slices reset
+  // implicitly via fresh renders.
+  useUIStore.setState({
+    fontSize: FONT_SIZE_DEFAULT,
+    settingsOpen: false,
+    messagesLastSeenAt: null,
+  });
   // Clear the persist key so a previous test's persisted value doesn't bleed in
   localStorage.removeItem('sentinel.uiPrefs');
 });
@@ -85,10 +90,52 @@ describe('useUIStore — fontSize', () => {
     useUIStore.getState().toggleLeftPanel();
     useUIStore.getState().setFontSize('large');
     const parsed = JSON.parse(localStorage.getItem('sentinel.uiPrefs'));
-    // Only fontSize should be in the persisted state per partialize whitelist
-    expect(Object.keys(parsed.state)).toEqual(['fontSize']);
+    // Only the whitelisted player prefs should be in the persisted state.
+    // messagesLastSeenAt is persisted (RFC 0002 unread tracking), fontSize is
+    // persisted; everything else is ephemeral.
+    expect(Object.keys(parsed.state).sort()).toEqual(
+      ['fontSize', 'messagesLastSeenAt'].sort(),
+    );
     expect(parsed.state.settingsOpen).toBeUndefined();
     expect(parsed.state.leftPanelCollapsed).toBeUndefined();
+  });
+});
+
+describe('useUIStore — messagesLastSeenAt (RFC 0002 unread tracking)', () => {
+  it('defaults to null', () => {
+    expect(useUIStore.getState().messagesLastSeenAt).toBeNull();
+  });
+
+  it('markMessagesSeen sets an ISO timestamp', () => {
+    useUIStore.getState().markMessagesSeen();
+    const v = useUIStore.getState().messagesLastSeenAt;
+    expect(typeof v).toBe('string');
+    // Should parse as a valid date
+    expect(Number.isNaN(new Date(v).getTime())).toBe(false);
+  });
+
+  it('markMessagesSeen advances on each call', async () => {
+    useUIStore.getState().markMessagesSeen();
+    const first = useUIStore.getState().messagesLastSeenAt;
+    // Spin one tick so Date.now() advances
+    await new Promise((r) => setTimeout(r, 5));
+    useUIStore.getState().markMessagesSeen();
+    const second = useUIStore.getState().messagesLastSeenAt;
+    expect(new Date(second).getTime()).toBeGreaterThanOrEqual(
+      new Date(first).getTime(),
+    );
+  });
+
+  it('persists messagesLastSeenAt to localStorage', () => {
+    useUIStore.getState().markMessagesSeen();
+    const parsed = JSON.parse(localStorage.getItem('sentinel.uiPrefs'));
+    expect(parsed.state.messagesLastSeenAt).toBeTruthy();
+  });
+
+  it('persisted store version is 2 (bumped for messagesLastSeenAt)', () => {
+    useUIStore.getState().setFontSize('large');
+    const parsed = JSON.parse(localStorage.getItem('sentinel.uiPrefs'));
+    expect(parsed.version).toBe(2);
   });
 });
 

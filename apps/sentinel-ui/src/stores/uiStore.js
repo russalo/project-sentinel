@@ -75,6 +75,15 @@ export const useUIStore = create(
           const next = Math.max(0, Math.min(FONT_SIZES.length - 1, i + delta));
           return { fontSize: FONT_SIZES[next] };
         }),
+
+      // System-messages (RFC 0002) unread tracking — browser-side per
+      // Russell's call. We store an ISO timestamp of the last time the
+      // tester opened the Messages section; the TopBar gear dot lights
+      // when any active message has `published_at > messagesLastSeenAt`.
+      // Persisted so refresh doesn't re-light the dot.
+      messagesLastSeenAt: null,
+      markMessagesSeen: () =>
+        set({ messagesLastSeenAt: new Date().toISOString() }),
     }),
     {
       name: 'sentinel.uiPrefs',
@@ -82,10 +91,13 @@ export const useUIStore = create(
       // Persist only the explicit player-prefs. Ephemeral UI state
       // (panel collapse, focusMode, mobilePanelOpen, settingsOpen,
       // selectedEntity, activeTab) is intentionally NOT persisted.
-      partialize: (state) => ({ fontSize: state.fontSize }),
-      // Version bump if/when the persisted shape changes — Zustand's
-      // migration hook handles it. Today: nothing to migrate.
-      version: 1,
+      partialize: (state) => ({
+        fontSize: state.fontSize,
+        messagesLastSeenAt: state.messagesLastSeenAt,
+      }),
+      // Version bump when the persisted shape changes — Zustand's
+      // migration hook handles it. v2 added messagesLastSeenAt (RFC 0002).
+      version: 2,
     },
   ),
 );

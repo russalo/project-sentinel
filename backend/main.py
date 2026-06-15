@@ -31,7 +31,16 @@ from .concurrency import StreamSlotLimiter
 from .config import Settings
 from .mcp_agreement import verify_world_mode_agreement
 from .ratelimit import RateLimiter
-from .routes import admin, feedback, health, session, stream, training, world
+from .routes import (
+    admin,
+    feedback,
+    health,
+    session,
+    stream,
+    system_messages,
+    training,
+    world,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +123,7 @@ def create_app() -> FastAPI:
     app.include_router(world.router)
     app.include_router(admin.router)
     app.include_router(feedback.router)
+    app.include_router(system_messages.router)
 
     return app
 

@@ -100,6 +100,32 @@ def test_admin_status_not_exposed_on_edge(caddyfile):
     assert "reverse_proxy" not in status_block.group(1)
 
 
+def test_admin_system_messages_inherit_admin_block(caddyfile):
+    # RFC-0002 system-messages admin endpoints (POST/PATCH/DELETE under
+    # `/api/admin/system-messages*`) are tailnet-only by design — the
+    # admin-side UI lives at `/admin/messages` on the tailnet dev site,
+    # the cohort surface only ever GETs `/api/system-messages`. Tailnet
+    # routing IS the credential per the RFC.
+    #
+    # Defense-in-depth: the wildcard `/api/admin*` handle (asserted above)
+    # already covers system-messages. This test fails informatively if a
+    # future Caddyfile edit adds a more-specific `handle /api/admin/system-…`
+    # block that reverse-proxies them — which would punch a tester-visible
+    # hole around the wildcard exclusion.
+    matches = re.findall(
+        r"handle\s+/api/admin/system-messages\S*\s*\{([^}]*)\}", caddyfile
+    )
+    for body in matches:
+        assert "reverse_proxy" not in body, (
+            "admin system-messages must not be reverse-proxied at the edge"
+        )
+    # And the wildcard catch-all is still present (covered by the prior
+    # test, restated here so this test fails informatively if removed).
+    assert re.search(r"handle\s+/api/admin\*", caddyfile), (
+        "missing `handle /api/admin*` block — admin endpoints would leak"
+    )
+
+
 def test_bare_alpha_prefix_redirects_to_trailing_slash(caddyfile):
     # `handle_path /alpha/*` matches `/alpha/` and `/alpha/...` but NOT bare
     # `/alpha` (no trailing slash) — a tester typing sentinel.russalo.com/alpha

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { usePersonaStore } from '../../stores/personaStore';
 import { usePlayerStore } from '../../stores/playerStore';
 import { useUIStore } from '../../stores/uiStore';
@@ -7,6 +7,7 @@ import { Menu, Share2, Users, BookOpen, Database, MessageSquare, Settings as Set
 import { PersonaSheet } from '../persona/PersonaSheet';
 import { SeedShareModal } from '../seed/SeedShareModal';
 import { StatusIndicator } from './StatusIndicator';
+import { listMessages } from '../../api/systemMessages';
 
 // NOTE: seedString is still a placeholder — world-seed persistence/sharing
 // isn't built yet (see docs/BACKLOG.md § "World Identity & Multi-Session").
@@ -15,8 +16,42 @@ export function TopBar({ seedString = 'ABC-DEF-GHI-JKL' }) {
   const { personaName, mood, isLocked, availableMoods } = usePersonaStore();
   const worldName = usePlayerStore((s) => s.worldName) || 'The Shattered Expanse';
   const { focusMode, openMobilePanel, openSettings } = useUIStore();
+  const messagesLastSeenAt = useUIStore((s) => s.messagesLastSeenAt);
   const [personaSheetOpen, setPersonaSheetOpen] = useState(false);
   const [seedModalOpen, setSeedModalOpen] = useState(false);
+  const [hasUnreadMessages, setHasUnreadMessages] = useState(false);
+
+  // Light the gear dot if any active message was published after the
+  // tester's last drawer-open. Fetched once on mount; the SettingsDrawer
+  // re-fetches + marks-seen on its own when opened. A failed fetch
+  // silently leaves the dot off — failing closed is fine for an
+  // ambient nudge.
+  useEffect(() => {
+    let cancelled = false;
+    listMessages()
+      .then((msgs) => {
+        if (cancelled) return;
+        if (!msgs || msgs.length === 0) {
+          setHasUnreadMessages(false);
+          return;
+        }
+        if (!messagesLastSeenAt) {
+          setHasUnreadMessages(true);
+          return;
+        }
+        const seenAt = new Date(messagesLastSeenAt).getTime();
+        const unread = msgs.some(
+          (m) => new Date(m.published_at).getTime() > seenAt,
+        );
+        setHasUnreadMessages(unread);
+      })
+      .catch(() => {
+        // failing closed — no dot on network/API failure
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [messagesLastSeenAt]);
 
   return (
     <>
@@ -78,14 +113,23 @@ export function TopBar({ seedString = 'ABC-DEF-GHI-JKL' }) {
           {/* Settings drawer — player-adjustable prefs (font size today; theme /
               density / audio later as testers ask). Opens via uiStore; the
               drawer itself is rendered in AppShell so it overlays the whole
-              page rather than just the TopBar's bounding box. */}
+              page rather than just the TopBar's bounding box.
+              An unread system-message (RFC 0002) lights an amber dot on the
+              gear so the tester notices without us nagging them with a banner. */}
           <button
             onClick={openSettings}
-            className="text-dust hover:text-amber transition-colors"
-            aria-label="Settings"
-            title="Settings"
+            className="relative text-dust hover:text-amber transition-colors"
+            aria-label={hasUnreadMessages ? 'Settings (unread messages)' : 'Settings'}
+            title={hasUnreadMessages ? 'Settings — unread messages' : 'Settings'}
           >
             <SettingsIcon size={18} />
+            {hasUnreadMessages ? (
+              <span
+                data-testid="settings-unread-dot"
+                aria-hidden="true"
+                className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-amber ring-2 ring-codex"
+              />
+            ) : null}
           </button>
 
           {/* Training-data browser */}
