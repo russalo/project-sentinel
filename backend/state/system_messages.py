@@ -191,7 +191,9 @@ def list_active(data_dir: Path) -> list[SystemMessage]:
     # Stable sort: primary by pinned (True first), secondary by
     # published_at desc. Python's sort is stable, so apply secondary first.
     active.sort(key=lambda m: m.published_at, reverse=True)
-    active.sort(key=lambda m: not m.pinned)  # False sorts before True; pinned=True wants to come first → invert
+    active.sort(
+        key=lambda m: not m.pinned
+    )  # False sorts before True; pinned=True wants to come first → invert
     return active
 
 
@@ -212,9 +214,7 @@ def create(
     gets a 400 instead of a silent no-op-feeling-create.
     """
     if category not in VALID_CATEGORIES:
-        raise ValueError(
-            f"category {category!r} not in {sorted(VALID_CATEGORIES)}"
-        )
+        raise ValueError(f"category {category!r} not in {sorted(VALID_CATEGORIES)}")
     message = SystemMessage(
         id=str(uuid.uuid4()),
         published_at=_now_iso(),
@@ -253,9 +253,7 @@ def update(
     if existing is None:
         return None
     if category is not None and category not in VALID_CATEGORIES:
-        raise ValueError(
-            f"category {category!r} not in {sorted(VALID_CATEGORIES)}"
-        )
+        raise ValueError(f"category {category!r} not in {sorted(VALID_CATEGORIES)}")
     if title is not None:
         existing.title = title
     if body is not None:

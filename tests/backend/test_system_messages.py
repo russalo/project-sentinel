@@ -43,7 +43,9 @@ def test_create_then_read_roundtrip(tmp_data_dir):
 
 def test_create_persists_to_per_message_json_file(tmp_data_dir):
     msg = sm_state.create(tmp_data_dir, title="t", body="b")
-    expected_path = tmp_data_dir / "state" / "core" / "system_messages" / f"{msg.id}.json"
+    expected_path = (
+        tmp_data_dir / "state" / "core" / "system_messages" / f"{msg.id}.json"
+    )
     assert expected_path.exists()
     raw = json.loads(expected_path.read_text())
     assert raw["id"] == msg.id
@@ -104,7 +106,9 @@ def test_list_active_handles_z_suffix_expiry(tmp_data_dir):
     The old lexicographic compare failed this — ``.`` (46) < ``Z`` (90) so
     a fractional ``+00:00`` "now" appears less than a ``Z`` "then" and the
     message survives past expiry."""
-    sm_state.create(tmp_data_dir, title="z-expired", body="b", expires_at="2000-01-01T00:00:00Z")
+    sm_state.create(
+        tmp_data_dir, title="z-expired", body="b", expires_at="2000-01-01T00:00:00Z"
+    )
     active = sm_state.list_active(tmp_data_dir)
     assert active == []
 
@@ -115,8 +119,10 @@ def test_list_active_handles_fractional_seconds_expiry(tmp_data_dir):
     expires_at coming back from the API needs to compare correctly."""
     past_fractional = "2000-01-01T00:00:00.123456+00:00"
     future_fractional = (
-        datetime.now(timezone.utc) + timedelta(hours=1)
-    ).isoformat().replace("+00:00", ".999999+00:00")
+        (datetime.now(timezone.utc) + timedelta(hours=1))
+        .isoformat()
+        .replace("+00:00", ".999999+00:00")
+    )
     sm_state.create(tmp_data_dir, title="expired", body="b", expires_at=past_fractional)
     keep = sm_state.create(
         tmp_data_dir, title="future-frac", body="b", expires_at=future_fractional
@@ -139,9 +145,13 @@ def test_list_active_sorts_pinned_first_then_newest(tmp_data_dir):
     each group, newest first."""
     m1 = sm_state.create(tmp_data_dir, title="m1-oldest", body="b")
     m2 = sm_state.create(tmp_data_dir, title="m2-mid", body="b")
-    m3_pinned = sm_state.create(tmp_data_dir, title="m3-pinned-oldest", body="b", pinned=True)
+    m3_pinned = sm_state.create(
+        tmp_data_dir, title="m3-pinned-oldest", body="b", pinned=True
+    )
     m4 = sm_state.create(tmp_data_dir, title="m4-newest", body="b")
-    m5_pinned = sm_state.create(tmp_data_dir, title="m5-pinned-newest", body="b", pinned=True)
+    m5_pinned = sm_state.create(
+        tmp_data_dir, title="m5-pinned-newest", body="b", pinned=True
+    )
     active = sm_state.list_active(tmp_data_dir)
     # Expected order: pinned newest first (m5, m3), then unpinned newest
     # first (m4, m2, m1).
@@ -170,7 +180,10 @@ def test_update_can_clear_expires_at(tmp_data_dir):
 
 
 def test_update_returns_none_for_unknown_id(tmp_data_dir):
-    assert sm_state.update(tmp_data_dir, "00000000-0000-0000-0000-000000000000", title="x") is None
+    assert (
+        sm_state.update(tmp_data_dir, "00000000-0000-0000-0000-000000000000", title="x")
+        is None
+    )
 
 
 def test_update_rejects_unknown_category(tmp_data_dir):
@@ -191,7 +204,10 @@ def test_soft_delete_sets_deleted_at_and_hides_from_active(tmp_data_dir):
 
 
 def test_soft_delete_returns_none_for_unknown(tmp_data_dir):
-    assert sm_state.soft_delete(tmp_data_dir, "00000000-0000-0000-0000-000000000000") is None
+    assert (
+        sm_state.soft_delete(tmp_data_dir, "00000000-0000-0000-0000-000000000000")
+        is None
+    )
 
 
 # ── HTTP routes ─────────────────────────────────────────────────────
@@ -206,7 +222,11 @@ def test_get_messages_empty_initially(client):
 def test_post_then_get_roundtrip(client):
     r = client.post(
         "/api/admin/system-messages",
-        json={"title": "Maintenance", "body": "Down 5pm PDT", "category": "maintenance"},
+        json={
+            "title": "Maintenance",
+            "body": "Down 5pm PDT",
+            "category": "maintenance",
+        },
     )
     assert r.status_code == 200
     created = r.json()
@@ -283,8 +303,12 @@ def test_delete_404_on_unknown(client):
 
 def test_admin_list_surfaces_deleted_and_expired(client):
     """Admin-side list (separate from the public feed) sees everything."""
-    r1 = client.post("/api/admin/system-messages", json={"title": "active", "body": "b"})
-    r2 = client.post("/api/admin/system-messages", json={"title": "deleted", "body": "b"})
+    r1 = client.post(
+        "/api/admin/system-messages", json={"title": "active", "body": "b"}
+    )
+    r2 = client.post(
+        "/api/admin/system-messages", json={"title": "deleted", "body": "b"}
+    )
     client.delete(f"/api/admin/system-messages/{r2.json()['id']}")
     past = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
     r3 = client.post(
@@ -301,9 +325,16 @@ def test_get_feed_sorts_pinned_first_then_newest(client):
     """End-to-end through the HTTP layer: verify the sort order matches
     what the storage layer produces."""
     # Create a sequence so timestamps differ; pin some
-    a = client.post("/api/admin/system-messages", json={"title": "a-oldest", "body": "b"}).json()
-    b = client.post("/api/admin/system-messages", json={"title": "b-mid-pinned", "body": "b", "pinned": True}).json()
-    c = client.post("/api/admin/system-messages", json={"title": "c-newest", "body": "b"}).json()
+    a = client.post(
+        "/api/admin/system-messages", json={"title": "a-oldest", "body": "b"}
+    ).json()
+    b = client.post(
+        "/api/admin/system-messages",
+        json={"title": "b-mid-pinned", "body": "b", "pinned": True},
+    ).json()
+    c = client.post(
+        "/api/admin/system-messages", json={"title": "c-newest", "body": "b"}
+    ).json()
 
     r = client.get("/api/system-messages")
     msgs = r.json()["messages"]
