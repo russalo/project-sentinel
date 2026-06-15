@@ -98,6 +98,42 @@ def test_list_active_filters_expired(tmp_data_dir):
     assert len(active) == 2
 
 
+def test_list_active_handles_z_suffix_expiry(tmp_data_dir):
+    """An ``expires_at`` ending in ``Z`` (a common ISO variant the AdminUI
+    or a curl-wielding operator might produce) must still filter correctly.
+    The old lexicographic compare failed this — ``.`` (46) < ``Z`` (90) so
+    a fractional ``+00:00`` "now" appears less than a ``Z`` "then" and the
+    message survives past expiry."""
+    sm_state.create(tmp_data_dir, title="z-expired", body="b", expires_at="2000-01-01T00:00:00Z")
+    active = sm_state.list_active(tmp_data_dir)
+    assert active == []
+
+
+def test_list_active_handles_fractional_seconds_expiry(tmp_data_dir):
+    """Fractional-second timestamps mustn't trip the parser. Server-side
+    ``_now_iso`` produces ``+00:00`` suffix with microseconds; a fractional
+    expires_at coming back from the API needs to compare correctly."""
+    past_fractional = "2000-01-01T00:00:00.123456+00:00"
+    future_fractional = (
+        datetime.now(timezone.utc) + timedelta(hours=1)
+    ).isoformat().replace("+00:00", ".999999+00:00")
+    sm_state.create(tmp_data_dir, title="expired", body="b", expires_at=past_fractional)
+    keep = sm_state.create(
+        tmp_data_dir, title="future-frac", body="b", expires_at=future_fractional
+    )
+    active = sm_state.list_active(tmp_data_dir)
+    assert [m.id for m in active] == [keep.id]
+
+
+def test_list_active_keeps_malformed_expiry(tmp_data_dir):
+    """Unparseable ``expires_at`` is treated as never-expiring so a typo
+    can't silently hide an operator message. ``_is_expired`` returning
+    False on parse failure is the documented escape hatch."""
+    sm_state.create(tmp_data_dir, title="garbled", body="b", expires_at="not-a-date")
+    active = sm_state.list_active(tmp_data_dir)
+    assert len(active) == 1
+
+
 def test_list_active_sorts_pinned_first_then_newest(tmp_data_dir):
     """Pinned messages come first regardless of published_at; within
     each group, newest first."""
@@ -196,11 +232,14 @@ def test_post_validates_required_fields(client):
 
 
 def test_post_validates_category(client):
+    # ``category`` is typed as ``Literal[...]`` in the Pydantic request
+    # model, so an unknown value fails schema validation at the route
+    # boundary (422) — never reaching the state-layer ValueError → 400.
     r = client.post(
         "/api/admin/system-messages",
         json={"title": "t", "body": "b", "category": "bogus"},
     )
-    assert r.status_code == 400
+    assert r.status_code == 422
 
 
 def test_patch_partial_update(client):

@@ -92,6 +92,33 @@ describe('AdminMessages — compose', () => {
     expect(call.body).toBe('See you');
     expect(call.category).toBe('maintenance');
     expect(call.pinned).toBe(true);
+    expect(call.expires_at).toBeNull();
+  });
+
+  it('converts a local datetime-local value to a UTC ISO string on submit', async () => {
+    createMessage.mockResolvedValue({ id: 'new' });
+    listAllMessages.mockResolvedValue([]);
+    render(<AdminMessages />);
+    await screen.findByText('No messages yet.');
+
+    await userEvent.type(screen.getByLabelText(/Title/i), 't');
+    await userEvent.type(screen.getByLabelText(/Body/i), 'b');
+    const localInput = screen.getByLabelText(/Expires at/i);
+    // `2026-06-15T17:00` in whatever the test runner's local TZ is. The
+    // exact UTC stamp depends on TZ, but the value must:
+    //   - be a string
+    //   - end in `Z` (toISOString format)
+    //   - parse back to the same Date the input represents
+    await userEvent.type(localInput, '2026-06-15T17:00');
+    await userEvent.click(screen.getByRole('button', { name: 'Post' }));
+
+    await waitFor(() => expect(createMessage).toHaveBeenCalled());
+    const sent = createMessage.mock.calls[0][0].expires_at;
+    expect(typeof sent).toBe('string');
+    expect(sent.endsWith('Z')).toBe(true);
+    // Round-trip — parsing the ISO and the local form must agree on the
+    // same instant.
+    expect(new Date(sent).getTime()).toBe(new Date('2026-06-15T17:00').getTime());
   });
 });
 

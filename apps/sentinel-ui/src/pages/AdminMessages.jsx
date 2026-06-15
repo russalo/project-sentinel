@@ -38,6 +38,36 @@ function isExpired(message) {
   return t < Date.now();
 }
 
+// `<input type="datetime-local">` produces and consumes a LOCAL wall-clock
+// string `YYYY-MM-DDTHH:mm`. The API stores UTC ISO. These two helpers do
+// the round trip:
+//
+//   - `localInputToUtcIso(localStr)`: operator picks "5:00 PM" in PDT
+//     (`"2026-06-15T17:00"`); we send `"2026-06-16T00:00:00.000Z"`.
+//     Without this the backend filters on the wrong wall clock.
+//   - `utcIsoToLocalInput(isoStr)`: the API returns
+//     `"2026-06-16T00:00:00+00:00"`; the input wants
+//     `"2026-06-15T17:00"` (in the operator's zone) so the edit form
+//     renders the value they set, not an empty field.
+function localInputToUtcIso(localStr) {
+  if (!localStr) return null;
+  // `new Date("YYYY-MM-DDTHH:mm")` parses as local time per the HTML spec.
+  const d = new Date(localStr);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
+function utcIsoToLocalInput(isoStr) {
+  if (!isoStr) return '';
+  const d = new Date(isoStr);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  return (
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
+    `T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  );
+}
+
 export default function AdminMessages() {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -74,7 +104,7 @@ export default function AdminMessages() {
         body: draft.body,
         category: draft.category,
         pinned: draft.pinned,
-        expires_at: draft.expires_at ? draft.expires_at : null,
+        expires_at: localInputToUtcIso(draft.expires_at),
       });
       setDraft(emptyDraft());
       await refresh();
@@ -111,7 +141,7 @@ export default function AdminMessages() {
       body: message.body,
       category: message.category,
       pinned: message.pinned,
-      expires_at: message.expires_at || '',
+      expires_at: utcIsoToLocalInput(message.expires_at),
     });
   }
 
@@ -128,8 +158,9 @@ export default function AdminMessages() {
         category: editDraft.category,
         pinned: editDraft.pinned,
       };
-      if (editDraft.expires_at) {
-        patch.expires_at = editDraft.expires_at;
+      const utc = localInputToUtcIso(editDraft.expires_at);
+      if (utc) {
+        patch.expires_at = utc;
       } else if (message.expires_at) {
         patch.clear_expires_at = true;
       }

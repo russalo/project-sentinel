@@ -17,12 +17,17 @@ tailnet membership is the credential.
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
 from ..state import system_messages as sm_state
+
+# Category enum stays in sync with ``sm_state.VALID_CATEGORIES``.
+# Pydantic's ``Literal`` rejects unknown values at the schema gate with a
+# 422 — saves the state layer from raising ValueError on a 400.
+MessageCategory = Literal["info", "warning", "release", "maintenance"]
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +40,7 @@ router = APIRouter(prefix="/api", tags=["system-messages"])
 class CreateMessageRequest(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     body: str = Field(min_length=1, max_length=4000)
-    category: str = "info"
+    category: MessageCategory = "info"
     pinned: bool = False
     expires_at: Optional[str] = None
 
@@ -48,7 +53,7 @@ class UpdateMessageRequest(BaseModel):
 
     title: Optional[str] = Field(default=None, min_length=1, max_length=200)
     body: Optional[str] = Field(default=None, min_length=1, max_length=4000)
-    category: Optional[str] = None
+    category: Optional[MessageCategory] = None
     pinned: Optional[bool] = None
     expires_at: Optional[str] = None
     clear_expires_at: bool = False

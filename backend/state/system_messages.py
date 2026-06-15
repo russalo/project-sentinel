@@ -32,7 +32,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -107,15 +107,37 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _is_expired(message: SystemMessage, now_iso: str) -> bool:
+def _parse_iso(value: str) -> Optional[datetime]:
+    """Parse an ISO-8601 timestamp into a timezone-aware UTC ``datetime``.
+    Returns None for unparseable input. Accepts the ``Z`` suffix
+    (which ``datetime.fromisoformat`` only accepts on 3.11+; we normalize
+    it to ``+00:00`` for safety). Naive datetimes are assumed UTC."""
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def _is_expired(message: SystemMessage, now: datetime) -> bool:
+    """Compare ``expires_at`` against ``now`` as parsed datetimes — not
+    lexicographic strings. The string compare path was fragile across
+    suffix variants (``Z`` vs ``+00:00``) and fractional seconds:
+    ``"2026-06-14T20:00:00.123456+00:00" >= "2026-06-14T20:00:00Z"``
+    evaluates False because ``.`` (46) < ``Z`` (90)."""
     if not message.expires_at:
         return False
-    # ISO-8601 strings compare lexicographically as long as they're both
-    # in the same UTC offset format. Both `now_iso` (from
-    # ``datetime.now(timezone.utc).isoformat()``) and any well-formed
-    # `expires_at` from the API have the ``+00:00`` suffix, so the
-    # string comparison is sound.
-    return now_iso >= message.expires_at
+    expiry = _parse_iso(message.expires_at)
+    if expiry is None:
+        # Unparseable expires_at — treat as never-expiring so a malformed
+        # timestamp can't silently hide a message. The admin UI surfaces
+        # the raw string for operator review either way.
+        return False
+    return now >= expiry
 
 
 def read(data_dir: Path, message_id: str) -> Optional[SystemMessage]:
@@ -160,7 +182,7 @@ def list_all(data_dir: Path) -> list[SystemMessage]:
 def list_active(data_dir: Path) -> list[SystemMessage]:
     """The cohort-facing feed: filters out soft-deleted + expired,
     sorts pinned-first then by ``published_at`` descending."""
-    now = _now_iso()
+    now = datetime.now(timezone.utc)
     active = [
         m
         for m in list_all(data_dir)
