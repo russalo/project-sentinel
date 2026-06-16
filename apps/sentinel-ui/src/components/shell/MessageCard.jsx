@@ -1,91 +1,18 @@
 // MessageCard — single system-message card rendered in the Settings drawer's
 // Messages section (RFC 0002). Title + timestamp + minimal-markdown body.
 //
-// Markdown surface is intentionally tiny (Russell 2026-06-14): *italic*,
-// **bold**, and [label](url). Anything richer is out of scope; the operator
-// can fall through to plain text for everything else. We don't reuse
-// NarrativeText.jsx because that parser is also handling <action> tags and
-// trailing-punctuation coalescing — different problem.
+// Markdown rendering is delegated to the shared helper at
+// `utils/minimalMarkdown.js` (extracted for RFC 0003 — tester guide). Body
+// stays line-oriented: each non-blank line of the message body is its own
+// `<p>` rendered via the inline-only path (`renderMinimalMarkdown`). The
+// guide page is the only consumer of the block-level renderer; messages
+// stay flat to keep the drawer card compact.
 
-// Order matters: longest emphasis first so **bold** doesn't get mis-snatched
-// as two *italic* runs. Links are matched separately and split before
-// emphasis processing, so a `*word*` inside a link label still renders italic.
-const LINK_RE = /\[([^\]\n]+)\]\(([^)\s]+)\)/g;
-const EMPHASIS_RE = /(\*\*\*[^*\n]+?\*\*\*|\*\*[^*\n]+?\*\*|\*[^*\n]+?\*)/g;
+import { renderMinimalMarkdown } from '../../utils/minimalMarkdown';
 
-// Allowlist link schemes — http/https/mailto only. Anything else
-// (`javascript:`, `data:`, `file:`) renders as the label text without an
-// anchor so a malicious operator can't smuggle script into a tester's browser.
-const SAFE_URL_RE = /^(https?:\/\/|mailto:)/i;
-
-function renderEmphasis(content, keyPrefix) {
-  if (!content || !content.includes('*')) return content;
-  const parts = content.split(EMPHASIS_RE);
-  return parts.map((p, i) => {
-    const k = `${keyPrefix}-em-${i}`;
-    if (p.length > 6 && p.startsWith('***') && p.endsWith('***')) {
-      return (
-        <strong key={k} className="font-bold">
-          <em className="italic">{p.slice(3, -3)}</em>
-        </strong>
-      );
-    }
-    if (p.length > 4 && p.startsWith('**') && p.endsWith('**')) {
-      return <strong key={k} className="font-bold">{p.slice(2, -2)}</strong>;
-    }
-    if (p.length > 2 && p.startsWith('*') && p.endsWith('*')) {
-      return <em key={k} className="italic">{p.slice(1, -1)}</em>;
-    }
-    return p;
-  });
-}
-
-// Split a string into alternating text + link segments, then run emphasis
-// rendering on the text segments and on the link labels. Output is a flat
-// array of React nodes.
-export function renderMinimalMarkdown(text) {
-  if (typeof text !== 'string' || text.length === 0) return [];
-  const out = [];
-  let lastIdx = 0;
-  let match;
-  let segIdx = 0;
-  LINK_RE.lastIndex = 0;
-  while ((match = LINK_RE.exec(text)) !== null) {
-    const [full, label, url] = match;
-    const before = text.slice(lastIdx, match.index);
-    if (before) {
-      out.push(
-        <span key={`t-${segIdx++}`}>{renderEmphasis(before, `t${segIdx}`)}</span>,
-      );
-    }
-    if (SAFE_URL_RE.test(url)) {
-      out.push(
-        <a
-          key={`l-${segIdx++}`}
-          href={url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-amber underline decoration-dotted decoration-amber/60 underline-offset-2 hover:text-amber/80 hover:decoration-amber"
-        >
-          {renderEmphasis(label, `l${segIdx}`)}
-        </a>,
-      );
-    } else {
-      // Unsafe URL scheme — render the label as plain text, drop the link.
-      out.push(
-        <span key={`u-${segIdx++}`}>{renderEmphasis(label, `u${segIdx}`)}</span>,
-      );
-    }
-    lastIdx = match.index + full.length;
-  }
-  const tail = text.slice(lastIdx);
-  if (tail) {
-    out.push(
-      <span key={`t-${segIdx++}`}>{renderEmphasis(tail, `t${segIdx}`)}</span>,
-    );
-  }
-  return out;
-}
+// Re-export so existing MessageCard.test.jsx callers (which test
+// `renderMinimalMarkdown` directly through this module) continue to work.
+export { renderMinimalMarkdown };
 
 const CATEGORY_LABEL = {
   info: 'Info',
