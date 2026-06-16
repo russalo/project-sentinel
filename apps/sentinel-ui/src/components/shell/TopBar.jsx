@@ -3,7 +3,7 @@ import { usePersonaStore } from '../../stores/personaStore';
 import { usePlayerStore } from '../../stores/playerStore';
 import { useUIStore } from '../../stores/uiStore';
 import { Link } from 'wouter';
-import { Menu, Share2, Users, BookOpen, Database, MessageSquare, Settings as SettingsIcon } from 'lucide-react';
+import { Menu, Share2, Users, BookOpen, Database, MessageSquare, HelpCircle, Settings as SettingsIcon } from 'lucide-react';
 import { PersonaSheet } from '../persona/PersonaSheet';
 import { SeedShareModal } from '../seed/SeedShareModal';
 import { StatusIndicator } from './StatusIndicator';
@@ -108,6 +108,18 @@ export function TopBar({ seedString = 'ABC-DEF-GHI-JKL' }) {
             title="Send feedback"
           >
             <MessageSquare size={18} />
+          </Link>
+
+          {/* Tester guide (RFC 0003) — in-app onboarding doc. If the icon
+              cluster gets crowded, this entry can migrate into the settings
+              drawer alongside Messages; the /guide route stays put. */}
+          <Link
+            href="/guide"
+            className="text-dust hover:text-amber transition-colors"
+            aria-label="Tester guide"
+            title="Tester guide"
+          >
+            <HelpCircle size={18} />
           </Link>
 
           {/* Settings drawer — player-adjustable prefs (font size today; theme /

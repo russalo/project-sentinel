@@ -24,6 +24,17 @@ import react from '@vitejs/plugin-react'
 export default defineConfig(({ mode }) => ({
   base: mode === 'alpha' ? '/alpha/' : '/',
   plugins: [react()],
+  // Allow `?raw` imports from outside `apps/sentinel-ui/`. RFC 0003's Guide
+  // page imports `../../../../docs/alpha/TESTER_GUIDE.md?raw` so the doc is
+  // edited once in `docs/alpha/` and bundled into the SPA at build time
+  // (no copy step). Vite's default `fs.allow` is the workspace root, but
+  // we set it explicitly so `pnpm dev` from the repo root, the app dir,
+  // or anywhere else all resolve the same way.
+  server: {
+    fs: {
+      allow: ['..', '../..'],
+    },
+  },
   // Explicit JSX automatic runtime. Production source files don't
   // import React (the @vitejs/plugin-react auto-runtime injects the
   // JSX factory), and we want test files to behave the same. Without

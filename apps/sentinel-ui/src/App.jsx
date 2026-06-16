@@ -5,6 +5,7 @@ import WorldList from './pages/WorldList';
 import DataBrowser from './pages/DataBrowser';
 import Feedback from './pages/Feedback';
 import AdminMessages from './pages/AdminMessages';
+import Guide from './pages/Guide';
 import './index.css';
 
 // Router base mirrors the Vite build's base. import.meta.env.BASE_URL is set
@@ -25,6 +26,10 @@ export default function App() {
           required so testers can report inability to enter a session. See
           docs/ALPHA_FEEDBACK.md for the operational triage flow. */}
       <Route path="/feedback" component={Feedback} />
+      {/* Tester guide (RFC 0003) — onboarding doc rendered from
+          docs/alpha/TESTER_GUIDE.md. Same gate as the rest of the app;
+          accessible via the HelpCircle icon in the TopBar. */}
+      <Route path="/guide" component={Guide} />
       {/* System-messages admin (RFC 0002) — tailnet-only. The Caddyfile
           404s `/api/admin/*` on the public edge, so the page itself loads
           on the public bundle but every API call from it fails unless you
