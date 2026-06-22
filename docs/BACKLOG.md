@@ -645,13 +645,6 @@ turn-finalization code path and share the same visual primitives.
 
 **Relation to the Entity Sweeper item in "Engine Package":** Items #2 and #3 here (suggested actions, exits) are things the DM mentions in prose but doesn't always emit as state — the same pattern as the cloak case that motivated the Entity Sweeper. The Sweeper's second-pass extraction model could generate these as a fallback when the DM forgets. Item #1 (turn-delta feedback) is orthogonal — pure frontend derivation, no extraction needed.
 
-- [ ] **`minimalMarkdown.jsx` renderer hardening — three medium-severity edge cases from PR #141 bot review.** All in `apps/sentinel-ui/src/utils/minimalMarkdown.jsx`; the current tester guide doesn't exercise any of them, so urgency is low. Bundle into one small renderer-hardening PR when the file is next touched for another reason (e.g. adding fenced code blocks, or a third minimal-markdown surface beyond `MessageCard` + `Guide`). All three together are ~40–60 lines plus tests.
-      - **TOC links don't run heading text through `renderInline`.** If a `##` heading uses `` `code` `` or `*italic*` markdown, the TOC link renders the literal markdown source instead of the formatted version. Fix: pass `h.content` through `renderInline` inside the `case 'toc'` branch. Today's tester guide has no styled headings, so it's invisible.
-      - **Empty-slug fallback.** A heading consisting only of punctuation/whitespace (e.g. `## !!!`) slugifies to `''`, producing `<h2 id="">` and a TOC link to `#`. Fix: when `slugify()` returns an empty string, fall back to `heading-<n>` keyed by position.
-      - **Slug collision with literal heading text.** If the doc has `## Section` (slug `section`) followed by a literal `## Section 1` heading that the dedup logic would also slug as `section-1`, the IDs collide. Fix: maintain a global `Set` of already-assigned slugs (not just a `Map` keyed by base) and increment until unique.
-
-      _Discovered: 2026-06-22 | Context: gemini-code-assist medium-severity comments on PR #141 (RFC-0004 tester guide screenshots + renderer extensions). Bundle the three fixes into one renderer-hardening PR when next touching the file._
-
 ---
 
 ## Developer Experience

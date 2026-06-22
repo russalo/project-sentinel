@@ -236,6 +236,30 @@ export function renderInline(text) {
 // MessageCard. Kept so existing imports continue to work.
 export const renderMinimalMarkdown = renderInline;
 
+// Like `renderInline` but renders ONLY inline emphasis + code spans —
+// not links or images. Used inside contexts that are already inside an
+// `<a>` (the TOC), where nesting another `<a>` would produce invalid
+// HTML that browsers may early-close. Link labels and image alt text
+// are flattened to plain text so the styling shows but the navigation
+// stays sane. (gemini HIGH + codex P2 on PR #142.)
+export function renderInlineNoLinks(text) {
+  if (typeof text !== 'string' || text.length === 0) return [];
+  // Strip image markdown to its alt text, then link markdown to its
+  // label text. Both passes happen on the source string so the
+  // emphasis/code rendering only sees plain text and inline markers.
+  const stripped = text
+    .replace(IMAGE_RE, (_m, alt) => alt || '')
+    .replace(LINK_RE, (_m, label) => label);
+  // `renderCodeAndEmphasis` handles `` `code` `` and `*emphasis*` /
+  // `**bold**` / `***bold-italic***`; nothing in its output can be
+  // an `<a>`.
+  const nodes = renderCodeAndEmphasis(stripped, 'tnl');
+  // Normalize: renderCodeAndEmphasis returns either a string or an
+  // array of React nodes. Wrap the string case so the caller can
+  // always render this directly.
+  return Array.isArray(nodes) ? nodes : [nodes];
+}
+
 // Block-level styles.
 const H1_CLASS = 'font-cinzel text-2xl text-amber mt-6 mb-3 first:mt-0';
 const H2_CLASS = 'font-cinzel text-xl text-amber mt-5 mb-2 first:mt-0';
@@ -323,7 +347,17 @@ function collectListBlock(lines, startI, markerRe) {
 function tokenize(text) {
   const lines = text.replace(/\r\n/g, '\n').split('\n');
   const blocks = [];
-  const seenSlugs = new Map();
+  // Global set of every slug we've already emitted. Used to guarantee
+  // unique heading IDs even when a base slug + dedup suffix would
+  // collide with a literal heading-text slug (e.g. `## Section` then
+  // `## Section`  → slugs `section`, `section-1`; followed by a literal
+  // `## Section 1` heading that would also slug to `section-1`). The
+  // suffix counter increments until the result isn't in this set.
+  const assignedSlugs = new Set();
+  // Per-position counter for headings whose text slugifies to empty
+  // (pure-punctuation or whitespace-only). Falls back to `heading-N`
+  // so the rendered `<h?>` still has a stable, valid id.
+  let emptySlugCounter = 0;
   let i = 0;
   while (i < lines.length) {
     const line = lines[i];
@@ -341,10 +375,20 @@ function tokenize(text) {
       (line.match(H2_RE) && { level: 2, text: line.match(H2_RE)[1].trim() }) ||
       (line.match(H1_RE) && { level: 1, text: line.match(H1_RE)[1].trim() });
     if (headingMatch) {
-      const baseSlug = slugify(headingMatch.text);
-      const count = seenSlugs.get(baseSlug) || 0;
-      const slug = count === 0 ? baseSlug : `${baseSlug}-${count}`;
-      seenSlugs.set(baseSlug, count + 1);
+      let baseSlug = slugify(headingMatch.text);
+      if (!baseSlug) {
+        emptySlugCounter += 1;
+        baseSlug = `heading-${emptySlugCounter}`;
+      }
+      // Find the first suffix variant not already in use. `section` →
+      // try `section`; if taken try `section-1`, `section-2`, …
+      let slug = baseSlug;
+      let suffix = 1;
+      while (assignedSlugs.has(slug)) {
+        slug = `${baseSlug}-${suffix}`;
+        suffix += 1;
+      }
+      assignedSlugs.add(slug);
       blocks.push({
         type: `h${headingMatch.level}`,
         content: headingMatch.text,
@@ -462,7 +506,13 @@ export function renderMarkdown(text) {
                     href={`#${h.slug}`}
                     className="text-amber hover:text-amber/80 underline decoration-dotted decoration-amber/60 underline-offset-2"
                   >
-                    {h.content}
+                    {/* `renderInlineNoLinks` so emphasis + code in a
+                        heading render styled inside the TOC link, but
+                        any embedded link markdown flattens to its
+                        label text — nested `<a>` would be invalid
+                        HTML and browsers may early-close the outer
+                        anchor. (gemini HIGH + codex P2 on PR #142.) */}
+                    {renderInlineNoLinks(h.content)}
                   </a>
                 </li>
               ))}
