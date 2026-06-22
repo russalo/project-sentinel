@@ -63,6 +63,7 @@ export function PanelRouter() {
         {TABS.map(tab => (
           <button
             key={tab.id}
+            data-testid={`panel-tab-${tab.id}`}
             onClick={() => setActiveTab(tab.id)}
             className={`px-3 py-1 text-xs rounded transition-colors ${
               activeTab === tab.id

@@ -100,3 +100,13 @@ export const useChatStore = create((set) => ({
   setSuggestedActions: (actions) => set({ suggestedActions: Array.isArray(actions) ? actions : [] }),
   clearSuggestedActions: () => set({ suggestedActions: [] }),
 }));
+
+// Dev-only handle so the screenshot tooling (scripts/src/screenshot-guide.mjs)
+// can pre-populate the per-turn `suggestedActions` for the game-screen capture
+// — the field is ephemeral (cleared every turn) and isn't reachable from
+// outside without a live SSE turn. Tree-shaken out of production builds by
+// Vite when `import.meta.env.DEV` is false.
+if (typeof window !== 'undefined' && import.meta.env.DEV) {
+  window.__sentinelStores = window.__sentinelStores || {};
+  window.__sentinelStores.chat = useChatStore;
+}

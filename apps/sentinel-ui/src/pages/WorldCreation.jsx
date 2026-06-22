@@ -247,7 +247,7 @@ export default function WorldCreation() {
         {/* Form */}
         <div className="flex-1 overflow-y-auto space-y-6 pr-4">
           {/* World Identity */}
-          <div>
+          <div data-testid="creation-world-name">
             <label className="block text-amber font-cinzel text-sm mb-2">WORLD NAME</label>
             <input
               type="text"
@@ -260,7 +260,7 @@ export default function WorldCreation() {
 
           {/* Character */}
           <div className="grid grid-cols-2 gap-4">
-            <div>
+            <div data-testid="creation-character-name">
               <label className="block text-amber font-cinzel text-sm mb-2">CHARACTER NAME</label>
               <input
                 type="text"
@@ -270,7 +270,7 @@ export default function WorldCreation() {
                 className="w-full bg-void border border-border rounded px-3 py-2 text-ink placeholder-dust focus:outline-none focus:border-amber transition-colors"
               />
             </div>
-            <div>
+            <div data-testid="creation-character-class">
               <label className="block text-amber font-cinzel text-sm mb-2">CLASS</label>
               <input
                 type="text"
@@ -283,51 +283,66 @@ export default function WorldCreation() {
           </div>
 
           {/* Genre & Tone */}
-          <GenreSelector value={creation.genre} onChange={creation.setGenre} genres={GENRES} />
-          {creation.genre && <ToneSelector value={creation.tone} onChange={creation.setTone} tones={TONES} />}
+          <div data-testid="creation-genre">
+            <GenreSelector value={creation.genre} onChange={creation.setGenre} genres={GENRES} />
+          </div>
+          {creation.genre && (
+            <div data-testid="creation-tone">
+              <ToneSelector value={creation.tone} onChange={creation.setTone} tones={TONES} />
+            </div>
+          )}
 
           {/* Starting Region */}
           {creation.genre && (
-            <RegionSelector
-              value={creation.startingRegion}
-              onChange={creation.setStartingRegion}
-              regions={REGIONS[creation.genre] || []}
-            />
+            <div data-testid="creation-region">
+              <RegionSelector
+                value={creation.startingRegion}
+                onChange={creation.setStartingRegion}
+                regions={REGIONS[creation.genre] || []}
+              />
+            </div>
           )}
 
           {/* Persona */}
           {creation.genre && (
-            <PersonaSelector
-              value={creation.personaId}
-              onChange={(id) => {
-                const persona = MOCK_PERSONAS.find(p => p.id === id);
-                creation.setPersona(id, persona?.moods?.[0] || 'neutral');
-              }}
-              personas={MOCK_PERSONAS.filter(p => p.compatibleGenres.includes(creation.genre))}
-            />
+            <div data-testid="creation-persona">
+              <PersonaSelector
+                value={creation.personaId}
+                onChange={(id) => {
+                  const persona = MOCK_PERSONAS.find(p => p.id === id);
+                  creation.setPersona(id, persona?.moods?.[0] || 'neutral');
+                }}
+                personas={MOCK_PERSONAS.filter(p => p.compatibleGenres.includes(creation.genre))}
+              />
+            </div>
           )}
 
           {/* Mood */}
           {creation.personaId && (
-            <MoodSelector
-              value={creation.mood}
-              onChange={creation.setMood}
-              moods={MOCK_PERSONAS.find(p => p.id === creation.personaId)?.moods || []}
-            />
+            <div data-testid="creation-mood">
+              <MoodSelector
+                value={creation.mood}
+                onChange={creation.setMood}
+                moods={MOCK_PERSONAS.find(p => p.id === creation.personaId)?.moods || []}
+              />
+            </div>
           )}
 
           {/* Modifiers */}
-          <WorldModifiers
-            sandbox={creation.sandbox}
-            permadeath={creation.permadeath}
-            onChange={(s, p) => creation.setModifiers(s, p)}
-          />
+          <div data-testid="creation-modifiers">
+            <WorldModifiers
+              sandbox={creation.sandbox}
+              permadeath={creation.permadeath}
+              onChange={(s, p) => creation.setModifiers(s, p)}
+            />
+          </div>
 
           {/* Begin Button */}
           {startError && (
             <p className="text-red-400 text-sm">{startError}</p>
           )}
           <button
+            data-testid="creation-begin"
             onClick={handleBegin}
             disabled={!canBegin || isStarting}
             className="w-full py-3 bg-amber text-void rounded font-medium hover:bg-amber/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors mt-8"
@@ -337,7 +352,7 @@ export default function WorldCreation() {
         </div>
 
         {/* Seed Preview */}
-        <div className="w-80 sticky top-6 h-fit">
+        <div data-testid="creation-seed-preview" className="w-80 sticky top-6 h-fit">
           <LiveSeedPreview preview={creation.seedPreview} seed={creation.abbreviatedSeed} isGenerating={isGenerating} />
         </div>
       </div>

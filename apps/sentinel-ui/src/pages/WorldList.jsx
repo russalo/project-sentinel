@@ -133,7 +133,7 @@ export default function WorldList() {
         )}
 
         {worlds !== null && !error && worlds.length > 0 && (
-          <ul className="space-y-2">
+          <ul className="space-y-2" data-testid="worlds-list">
             {worlds
               .filter((w) => w && typeof w === 'object' && w.worldId)
               .map((w) => (

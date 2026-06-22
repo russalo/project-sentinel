@@ -21,8 +21,8 @@ export function WorldMetrics({ day, tension }) {
   return (
     <div className="border-t border-border pt-4 mt-4">
       <div className="text-xs text-dust space-y-3">
-        <div><span className="text-amber">Day</span> {day} of 365</div>
-        <div>
+        <div data-testid="world-metrics-day"><span className="text-amber">Day</span> {day} of 365</div>
+        <div data-testid="world-metrics-tension">
           <div className="flex items-center justify-between mb-1">
             <span className="text-amber">Tension</span>
             <span className={tone.text + ' font-medium'}>
