@@ -43,6 +43,7 @@ export function CommandBar() {
       >
         <div className="flex-1 flex gap-2">
           <input
+            data-testid="command-bar-input"
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -52,6 +53,7 @@ export function CommandBar() {
             className="flex-1 bg-void border border-border rounded px-3 py-2.5 text-base md:text-sm text-ink placeholder-dust focus:outline-none focus:border-amber transition-colors disabled:opacity-50"
           />
           <button
+            data-testid="command-bar-send"
             onClick={handleSubmit}
             disabled={isStreaming || !sessionId}
             className="px-4 py-2.5 bg-amber text-void rounded hover:bg-amber/90 transition-colors flex items-center gap-2 disabled:opacity-50"

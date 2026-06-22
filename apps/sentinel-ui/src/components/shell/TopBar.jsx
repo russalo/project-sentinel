@@ -65,8 +65,8 @@ export function TopBar({ seedString = 'ABC-DEF-GHI-JKL' }) {
           >
             <Users size={20} />
           </button>
-          <h1 className="font-cinzel text-xl lg:text-2xl text-amber">⚔ SENTINEL</h1>
-          <div className="hidden sm:block text-sm text-dust">{worldName}</div>
+          <h1 className="font-cinzel text-xl lg:text-2xl text-amber" data-testid="topbar-logo">⚔ SENTINEL</h1>
+          <div className="hidden sm:block text-sm text-dust" data-testid="topbar-world-name">{worldName}</div>
         </div>
 
         <div className="flex items-center gap-3 lg:gap-6">
@@ -163,6 +163,7 @@ export function TopBar({ seedString = 'ABC-DEF-GHI-JKL' }) {
 
           {/* Persona + mood */}
           <button
+            data-testid="topbar-persona"
             onClick={() => setPersonaSheetOpen(true)}
             className="text-sm hover:text-amber transition-colors"
           >
