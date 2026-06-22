@@ -342,6 +342,47 @@ describe('renderMarkdown — block-level', () => {
     expect(links[1].querySelector('code')?.textContent).toBe('worldId');
   });
 
+  it('{{toc}} flattens link markdown in heading text to plain label (PR #142 bot fix)', () => {
+    // A `##` heading containing inline link markdown would nest <a>
+    // inside the TOC anchor — invalid HTML. The renderer strips the
+    // link to its label so styling (emphasis/code) survives but
+    // navigation stays single-level.
+    const md = [
+      '{{toc}}',
+      '',
+      '## See [docs](https://example.com)',
+      '',
+      'body',
+    ].join('\n');
+    const div = renderInDom(renderMarkdown(md));
+    const tocAnchor = div.querySelector('nav a');
+    expect(tocAnchor).not.toBeNull();
+    // The TOC anchor must NOT contain another <a>.
+    expect(tocAnchor.querySelector('a')).toBeNull();
+    // Label text survives.
+    expect(tocAnchor.textContent).toContain('docs');
+    // The heading itself still renders the link normally (only the TOC
+    // is flattened).
+    const headingAnchor = div.querySelector('h2 a');
+    expect(headingAnchor?.getAttribute('href')).toBe('https://example.com');
+  });
+
+  it('{{toc}} flattens image markdown in heading text to alt text', () => {
+    const md = [
+      '{{toc}}',
+      '',
+      '## See ![diagram](guide/x.png) here',
+      '',
+      'body',
+    ].join('\n');
+    const div = renderInDom(renderMarkdown(md));
+    const tocAnchor = div.querySelector('nav a');
+    // No <img> inside the TOC link.
+    expect(tocAnchor.querySelector('img')).toBeNull();
+    // Alt text survives.
+    expect(tocAnchor.textContent).toContain('diagram');
+  });
+
   it('empty-slug fallback (PR #141 bot fix): pure-punctuation headings get `heading-N` ids', () => {
     const md = ['## !!!', '', '## ???', '', '## Real heading'].join('\n');
     const div = renderInDom(renderMarkdown(md));

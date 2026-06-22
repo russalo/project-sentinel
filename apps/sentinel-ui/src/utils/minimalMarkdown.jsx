@@ -236,6 +236,30 @@ export function renderInline(text) {
 // MessageCard. Kept so existing imports continue to work.
 export const renderMinimalMarkdown = renderInline;
 
+// Like `renderInline` but renders ONLY inline emphasis + code spans —
+// not links or images. Used inside contexts that are already inside an
+// `<a>` (the TOC), where nesting another `<a>` would produce invalid
+// HTML that browsers may early-close. Link labels and image alt text
+// are flattened to plain text so the styling shows but the navigation
+// stays sane. (gemini HIGH + codex P2 on PR #142.)
+export function renderInlineNoLinks(text) {
+  if (typeof text !== 'string' || text.length === 0) return [];
+  // Strip image markdown to its alt text, then link markdown to its
+  // label text. Both passes happen on the source string so the
+  // emphasis/code rendering only sees plain text and inline markers.
+  const stripped = text
+    .replace(IMAGE_RE, (_m, alt) => alt || '')
+    .replace(LINK_RE, (_m, label) => label);
+  // `renderCodeAndEmphasis` handles `` `code` `` and `*emphasis*` /
+  // `**bold**` / `***bold-italic***`; nothing in its output can be
+  // an `<a>`.
+  const nodes = renderCodeAndEmphasis(stripped, 'tnl');
+  // Normalize: renderCodeAndEmphasis returns either a string or an
+  // array of React nodes. Wrap the string case so the caller can
+  // always render this directly.
+  return Array.isArray(nodes) ? nodes : [nodes];
+}
+
 // Block-level styles.
 const H1_CLASS = 'font-cinzel text-2xl text-amber mt-6 mb-3 first:mt-0';
 const H2_CLASS = 'font-cinzel text-xl text-amber mt-5 mb-2 first:mt-0';
@@ -482,11 +506,13 @@ export function renderMarkdown(text) {
                     href={`#${h.slug}`}
                     className="text-amber hover:text-amber/80 underline decoration-dotted decoration-amber/60 underline-offset-2"
                   >
-                    {/* Pass through renderInline so a heading like
-                        `## **Important** notes` or `## The `worldId`
-                        field` renders styled in the TOC link, not as
-                        literal markdown source. */}
-                    {renderInline(h.content)}
+                    {/* `renderInlineNoLinks` so emphasis + code in a
+                        heading render styled inside the TOC link, but
+                        any embedded link markdown flattens to its
+                        label text — nested `<a>` would be invalid
+                        HTML and browsers may early-close the outer
+                        anchor. (gemini HIGH + codex P2 on PR #142.) */}
+                    {renderInlineNoLinks(h.content)}
                   </a>
                 </li>
               ))}
