@@ -323,7 +323,17 @@ function collectListBlock(lines, startI, markerRe) {
 function tokenize(text) {
   const lines = text.replace(/\r\n/g, '\n').split('\n');
   const blocks = [];
-  const seenSlugs = new Map();
+  // Global set of every slug we've already emitted. Used to guarantee
+  // unique heading IDs even when a base slug + dedup suffix would
+  // collide with a literal heading-text slug (e.g. `## Section` then
+  // `## Section`  → slugs `section`, `section-1`; followed by a literal
+  // `## Section 1` heading that would also slug to `section-1`). The
+  // suffix counter increments until the result isn't in this set.
+  const assignedSlugs = new Set();
+  // Per-position counter for headings whose text slugifies to empty
+  // (pure-punctuation or whitespace-only). Falls back to `heading-N`
+  // so the rendered `<h?>` still has a stable, valid id.
+  let emptySlugCounter = 0;
   let i = 0;
   while (i < lines.length) {
     const line = lines[i];
@@ -341,10 +351,20 @@ function tokenize(text) {
       (line.match(H2_RE) && { level: 2, text: line.match(H2_RE)[1].trim() }) ||
       (line.match(H1_RE) && { level: 1, text: line.match(H1_RE)[1].trim() });
     if (headingMatch) {
-      const baseSlug = slugify(headingMatch.text);
-      const count = seenSlugs.get(baseSlug) || 0;
-      const slug = count === 0 ? baseSlug : `${baseSlug}-${count}`;
-      seenSlugs.set(baseSlug, count + 1);
+      let baseSlug = slugify(headingMatch.text);
+      if (!baseSlug) {
+        emptySlugCounter += 1;
+        baseSlug = `heading-${emptySlugCounter}`;
+      }
+      // Find the first suffix variant not already in use. `section` →
+      // try `section`; if taken try `section-1`, `section-2`, …
+      let slug = baseSlug;
+      let suffix = 1;
+      while (assignedSlugs.has(slug)) {
+        slug = `${baseSlug}-${suffix}`;
+        suffix += 1;
+      }
+      assignedSlugs.add(slug);
       blocks.push({
         type: `h${headingMatch.level}`,
         content: headingMatch.text,
@@ -462,7 +482,11 @@ export function renderMarkdown(text) {
                     href={`#${h.slug}`}
                     className="text-amber hover:text-amber/80 underline decoration-dotted decoration-amber/60 underline-offset-2"
                   >
-                    {h.content}
+                    {/* Pass through renderInline so a heading like
+                        `## **Important** notes` or `## The `worldId`
+                        field` renders styled in the TOC link, not as
+                        literal markdown source. */}
+                    {renderInline(h.content)}
                   </a>
                 </li>
               ))}

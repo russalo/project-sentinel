@@ -322,6 +322,53 @@ describe('renderMarkdown — block-level', () => {
     expect(div.querySelector('nav')).toBeNull();
   });
 
+  it('{{toc}} renders inline markdown in heading text (PR #141 bot fix)', () => {
+    const md = [
+      '{{toc}}',
+      '',
+      '## The **important** thing',
+      '',
+      'body',
+      '',
+      '## The `worldId` field',
+      '',
+      'body',
+    ].join('\n');
+    const div = renderInDom(renderMarkdown(md));
+    const links = div.querySelectorAll('nav a');
+    // First link's heading has **bold** → expect <strong>.
+    expect(links[0].querySelector('strong')?.textContent).toBe('important');
+    // Second link's heading has `code` → expect <code>.
+    expect(links[1].querySelector('code')?.textContent).toBe('worldId');
+  });
+
+  it('empty-slug fallback (PR #141 bot fix): pure-punctuation headings get `heading-N` ids', () => {
+    const md = ['## !!!', '', '## ???', '', '## Real heading'].join('\n');
+    const div = renderInDom(renderMarkdown(md));
+    const h2s = div.querySelectorAll('h2');
+    expect(h2s[0].getAttribute('id')).toBe('heading-1');
+    expect(h2s[1].getAttribute('id')).toBe('heading-2');
+    expect(h2s[2].getAttribute('id')).toBe('real-heading');
+  });
+
+  it('slug-collision-with-literal-text (PR #141 bot fix): dedup increments until unique', () => {
+    // Three headings: the first two collide on the natural slug
+    // (`section`), so the second becomes `section-1`. The third's
+    // literal text ALSO slugifies to `section-1` — with the old
+    // Map-keyed-on-base logic it would collide; the Set-keyed-on-
+    // every-emitted-slug logic increments to `section-1-1`.
+    const md = ['## Section', '', '## Section', '', '## Section 1'].join('\n');
+    const div = renderInDom(renderMarkdown(md));
+    const ids = Array.from(div.querySelectorAll('h2')).map((h) => h.getAttribute('id'));
+    // All three IDs are unique.
+    expect(new Set(ids).size).toBe(3);
+    expect(ids[0]).toBe('section');
+    expect(ids[1]).toBe('section-1');
+    // The literal "Section 1" heading must NOT reuse the same id as the
+    // second "Section".
+    expect(ids[2]).not.toBe('section-1');
+  });
+
   it('renders ![alt](path) at block level (image on its own line)', () => {
     const div = renderInDom(renderMarkdown('![World creation form](guide/creation.png)'));
     const img = div.querySelector('img');
