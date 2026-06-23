@@ -58,7 +58,7 @@ import re
 from typing import Any, Iterator
 
 from ..llm import build_client
-from ..prompts.dm import DM_SYSTEM_PROMPT
+from ..modules import build_dm_prompt
 from ..types import Config, DMTurnInput, DMTurnResult, IntroInput, WorldContext
 
 # Strip a trailing <world_update>...</world_update> block from raw DM
@@ -289,7 +289,10 @@ def _build_messages(ctx: WorldContext, player_action: str) -> list[dict]:
     )
 
     return [
-        {"role": "system", "content": DM_SYSTEM_PROMPT},
+        # ADR-0005: the system prompt is assembled from the world's active
+        # module set. With the default (base-only) set this is byte-identical
+        # to the former DM_SYSTEM_PROMPT constant.
+        {"role": "system", "content": build_dm_prompt(ctx.modules)},
         {
             "role": "user",
             "content": context_block + "\nPLAYER ACTION: " + player_action,
@@ -356,7 +359,8 @@ def _build_intro_messages(intro: IntroInput) -> list[dict]:
     )
 
     return [
-        {"role": "system", "content": DM_SYSTEM_PROMPT},
+        # ADR-0005: assemble from the intro's module set (default base-only).
+        {"role": "system", "content": build_dm_prompt(intro.modules)},
         {"role": "user", "content": user_content},
     ]
 

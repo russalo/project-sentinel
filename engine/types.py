@@ -51,6 +51,12 @@ class WorldContext:
     factions: list[dict[str, Any]] = field(default_factory=list)
     items: list[dict[str, Any]] = field(default_factory=list)
     recent_turns: list[dict[str, Any]] = field(default_factory=list)
+    # ADR-0005 / RFC-0005: the world's active module set
+    # ``{subsystem: module_name}``. ``None`` → the engine assembles the
+    # DM prompt from the default (base-only) module set, identical to
+    # pre-RFC-0005 behavior. The backend populates this from the world's
+    # ``state.json`` ``modules`` field (lazy-defaulted when absent).
+    modules: dict[str, str] | None = None
 
 
 @dataclass
@@ -126,6 +132,11 @@ class IntroInput:
     persona_prompt: str | None = None
     mood_prompt: str | None = None
     region_prompt: str | None = None
+
+    # ADR-0005 / RFC-0005: the world's active module set for the intro
+    # turn. ``None`` → default (base-only) module set, identical to
+    # pre-RFC-0005 behavior.
+    modules: dict[str, str] | None = None
 
 
 @dataclass

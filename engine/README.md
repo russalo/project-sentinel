@@ -75,8 +75,27 @@ Implemented:
   future FastAPI adapter) can consume it. Both functions accept
   optional `client=` injection for test mocking, matching the
   dispatcher's pattern.
-- `engine.prompts.dm.DM_SYSTEM_PROMPT` — ported verbatim from the
-  legacy `backend/api/dm_ai.py` (since retired)
+- `engine.modules.*` — **subsystem modules (ADR-0005 / RFC-0005).**
+  The roleplay engine is a registry of swappable per-subsystem modules;
+  each world binds a module set, and the DM system prompt is *assembled*
+  from those modules' prompt fragments via
+  `engine.modules.build_dm_prompt(modules)`. Core modules ship under
+  `engine/modules/<subsystem>/<impl>/` (a `manifest.toml` + a `prompt.md`
+  fragment); the loader scans them, the registry caches them, and
+  `assembly.py` composes them in `CANONICAL_SUBSYSTEM_ORDER`. RFC-0005
+  ships one module — `core/base-v1` — carrying the invariant DM
+  personality + STATE DISCIPLINE rules (the former hand-authored
+  `DM_SYSTEM_PROMPT`). Mechanic modules (resolution, classes, combat,
+  magic, progression) land in RFC-0006+. To author a module: drop a
+  `manifest.toml` + `prompt.md` under `engine/modules/<subsystem>/<slug>/`
+  and add it to a world's `modules` map; the base module is the worked
+  example.
+- `engine.prompts.dm.DM_SYSTEM_PROMPT` — a back-compat constant, now
+  `build_dm_prompt()` for the default (base-only) module set,
+  byte-identical to the former hand-authored string (originally ported
+  verbatim from the legacy `backend/api/dm_ai.py`, since retired). New
+  callers with a world's module map should call
+  `engine.modules.build_dm_prompt(modules)` directly.
 
 Still stubbed:
 

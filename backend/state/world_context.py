@@ -85,12 +85,25 @@ def load_world_context(
     """
     core = data_dir / _CORE
 
-    world_raw = _read_json_or_none(data_dir / _WORLD_FILE) or {}
+    # `or {}` catches missing/empty; the isinstance guard additionally
+    # catches a well-formed-but-non-dict state.json (a JSON list, string,
+    # or number) so the `.get(...)` calls below can't AttributeError on a
+    # corrupted/hand-edited world file. (gemini-high on PR #144.)
+    _world_loaded = _read_json_or_none(data_dir / _WORLD_FILE)
+    world_raw = _world_loaded if isinstance(_world_loaded, dict) else {}
 
     characters = _read_json_dir(core / "entities")
     locations = _read_json_dir(core / "locations")
     factions = _read_json_dir(core / "factions")
     items = _read_json_dir(core / "items")
+
+    # ADR-0005 / RFC-0005: a world's active module set lives in its
+    # state.json ``modules`` map. Pass it through verbatim; the engine
+    # lazy-defaults to the base-only set when it's absent (legacy worlds
+    # created before the field existed), so a missing map is not written
+    # back — it simply resolves to the core default at prompt-assembly time.
+    modules_raw = world_raw.get("modules")
+    modules = modules_raw if isinstance(modules_raw, dict) else None
 
     return engine.WorldContext(
         world_name=world_raw.get("worldName", "Unknown Realm"),
@@ -104,4 +117,5 @@ def load_world_context(
         factions=factions,
         items=items,
         recent_turns=recent_turns or [],
+        modules=modules,
     )
