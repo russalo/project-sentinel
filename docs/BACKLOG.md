@@ -560,6 +560,9 @@ preset pipeline (`data/lore/core/presets/genres/`) already wants to work.
 
 ## Frontend / Turn UX
 
+- [ ] **Persist + rehydrate a pending d100 check across refresh (RFC-0006 follow-up).** `check_request` is surfaced only from a live SSE stream (`useDMStream`), not from world hydration (`useWorldHydration`). If the DM requests a check and the player refreshes before clicking Roll, the roll affordance is gone on reload — the player has to re-send their action and the DM re-requests. Fix: persist the pending check on the world/session record when the DM emits it, and have `useWorldHydration` surface it (set `chatStore.checkRequest`) on resume. Needs the turn/world record to carry the last `check_request` + frontend hydration to read it. Low-frequency edge, recoverable today, so deferred from RFC-0006 Slice 2.
+      _Discovered: 2026-06-23 | Context: codex P2 on PR #146 (RFC-0006 d100 roll loop). Also pairs with the `module_data.character_sheet` schema-enforcement seam (OQ1) as the two RFC-0006 deferred pieces._
+
 Turn-finalization and in-turn exploration UX both surfaced as clear
 gaps during the 2026-04-14 smoke test. The FastAPI backend correctly
 streams tokens, updates state files through fs-manager, commits via

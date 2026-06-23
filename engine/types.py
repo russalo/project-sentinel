@@ -66,6 +66,13 @@ class DMTurnInput:
     session_id: str
     player_action: str
     world_context: WorldContext
+    # ADR-0005 resolution module (RFC-0006 Slice 2): when the player is
+    # resolving a previously-requested check, the frontend's d100 roll
+    # result rides here as ``{stat, rolled, bonus, total, target, margin,
+    # open_ended}``. None on an ordinary turn. The DM agent renders it as
+    # a structured ROLL RESULT block in the prompt so the DM resolves from
+    # the margin (never re-rolls, never invents the number).
+    roll: dict[str, object] | None = None
 
 
 @dataclass

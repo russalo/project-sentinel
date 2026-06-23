@@ -98,7 +98,9 @@ def run_turn(
     if client is None:
         client = build_client(config)
 
-    messages = _build_messages(turn_input.world_context, turn_input.player_action)
+    messages = _build_messages(
+        turn_input.world_context, turn_input.player_action, turn_input.roll
+    )
 
     response = client.chat.completions.create(
         model=config.dm_model,
@@ -154,7 +156,9 @@ def stream_turn(
     if client is None:
         client = build_client(config)
 
-    messages = _build_messages(turn_input.world_context, turn_input.player_action)
+    messages = _build_messages(
+        turn_input.world_context, turn_input.player_action, turn_input.roll
+    )
 
     stream = client.chat.completions.create(
         model=config.dm_model,
@@ -232,14 +236,18 @@ def _strip_world_update(raw: str) -> str:
     return _WORLD_UPDATE_BLOCK.sub("", raw).strip()
 
 
-def _build_messages(ctx: WorldContext, player_action: str) -> list[dict]:
+def _build_messages(
+    ctx: WorldContext, player_action: str, roll: dict | None = None
+) -> list[dict]:
     """Assemble the OpenAI ``messages`` array for a DM turn.
 
     Ported from the Django ``backend/api/dm_ai.py``'s ``build_messages``
     but operates on the engine's ``WorldContext`` dataclass rather than
     a plain dict. Produces a two-message list: the DM system prompt
     followed by a single user message containing the current world
-    context block plus the player's action.
+    context block plus the player's action. When ``roll`` is supplied
+    (ADR-0005 resolution module), a structured ROLL RESULT block is
+    appended so the DM resolves from the margin.
     """
     chars = (
         ", ".join(
@@ -288,16 +296,35 @@ def _build_messages(ctx: WorldContext, player_action: str) -> list[dict]:
         f"RECENT TURNS:\n{recent}\n"
     )
 
+    user_content = (
+        context_block + "\nPLAYER ACTION: " + player_action + _roll_block(roll)
+    )
+
     return [
         # ADR-0005: the system prompt is assembled from the world's active
         # module set. With the default (base-only) set this is byte-identical
         # to the former DM_SYSTEM_PROMPT constant.
         {"role": "system", "content": build_dm_prompt(ctx.modules)},
-        {
-            "role": "user",
-            "content": context_block + "\nPLAYER ACTION: " + player_action,
-        },
+        {"role": "user", "content": user_content},
     ]
+
+
+def _roll_block(roll: dict | None) -> str:
+    """Render a resolution-module ROLL RESULT block for the user message,
+    or "" when the turn carries no roll (ADR-0005 / RFC-0006). Structured,
+    labeled fields — the DM resolves from the margin and never re-rolls or
+    invents the number. Tolerant of missing keys (a malformed roll degrades
+    to whatever fields are present rather than raising)."""
+    if not isinstance(roll, dict) or not roll:
+        return ""
+    fields = ("stat", "rolled", "bonus", "total", "target", "margin", "open_ended")
+    lines = [f"- {k}: {roll[k]}" for k in fields if k in roll]
+    if not lines:
+        return ""
+    return (
+        "\n\nROLL RESULT (resolve the action from this; do not re-roll):\n"
+        + "\n".join(lines)
+    )
 
 
 _INTRO_SEED_FALLBACK = "Create a classic dark fantasy setting with mystery and danger."

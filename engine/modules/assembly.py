@@ -21,10 +21,11 @@ from .loader import load_module
 # fallback when a world has no explicit `modules` map (legacy worlds
 # created before the field existed). Grows as RFCs add subsystems:
 #   RFC-0005: base
-#   RFC-0006 Slice 1: character_sheet (four stats; no rolls yet)
-#   RFC-0006 Slice 2: resolution (the d100 roll loop) — NOT YET
+#   RFC-0006 Slice 1: character_sheet (four stats)
+#   RFC-0006 Slice 2: resolution (the d100 roll loop)
 DEFAULT_MODULES: dict[str, str] = {
     "base": "core/base-v1",
+    "resolution": "core/d100-open-v1",
     "character_sheet": "core/four-stat-v1",
 }
 

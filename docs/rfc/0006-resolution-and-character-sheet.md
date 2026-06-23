@@ -1,6 +1,6 @@
 # RFC 0006 — Resolution + character-sheet modules
 
-**Status:** Accepted (Slice 1 of 2 implemented)
+**Status:** Implemented (both slices)
 **Date:** 2026-06-23
 **Author:** Russell Pfister; Claude Code (origin-core session)
 **Implements:** ADR-0005 (subsystem modularity), second slice — the first
@@ -24,10 +24,15 @@ live turns):
   resolution stays narrative, so nothing strands. Safe on live worlds
   (adds stat-tracking; the existing flat `health` field + PlayerVitals
   are untouched). RFC status: **Accepted**.
-- **Slice 2 (next) — the roll loop.** `core/d100-open-v1` + the
-  `check_request` field + frontend roller/reveal + `resolution` joins
-  `DEFAULT_MODULES` + the schema-enforcement seam. Flips RFC status to
-  **Implemented**.
+- **Slice 2 (landed) — the roll loop.** `core/d100-open-v1` + the
+  `check_request` field (rides the world_update hint) + the `roll` field
+  on the turn (`RollResult` → `DMTurnInput.roll` → a structured ROLL
+  RESULT prompt block) + the frontend roller/reveal (`utils/roll.js`,
+  `CheckRequestRail`, `useDMStream.sendRoll`) + `resolution` joins
+  `DEFAULT_MODULES`. **Sentinel now rolls dice on every world.**
+  Schema *enforcement* (fs-manager validating `module_data.character_sheet`)
+  remains the one deferred piece — its own focused seam (OQ1); the
+  character-sheet schema ships as the authored contract.
 
 ---
 
@@ -275,6 +280,18 @@ Two consequences this RFC must handle:
 - [ ] WorldCreation stat allocation (OQ4).
 - [ ] RFC 0006 lands Implemented in the same PR(s); README indexes
       updated.
+
+## Known limitations (v0.1)
+
+- **Refresh mid-check loses the pending roll.** `check_request` is
+  surfaced only from a live SSE stream, not from world hydration. If the
+  DM requests a check and the player refreshes before rolling, the roll
+  affordance is gone on reload (the player re-sends their action; the DM
+  re-requests). Persisting the pending check on the world/session +
+  rehydrating it needs backend work — deferred (codex P2 on PR #146; see
+  BACKLOG). Low-frequency edge; recoverable.
+- **Schema enforcement of `module_data.character_sheet`** is not yet
+  wired in fs-manager (OQ1) — the schema ships as the authored contract.
 
 ## Out of Scope
 

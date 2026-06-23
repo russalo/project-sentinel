@@ -1,0 +1,20 @@
+# d100 open-ended resolution (ADR-0005 subsystem `resolution`;
+# Fantasy-flagship v0.1, ratified 2026-06-23). The DM requests a check
+# (stat + target); the frontend rolls d100 client-side; the DM resolves
+# from the margin. Prompt-fragment-only — no module_data of its own; it
+# reads stats from the character_sheet module + consumes the frontend's
+# roll. RFC-0006 Slice 2.
+
+name = "core/d100-open-v1"
+version = "1.0.0"
+subsystem = "resolution"
+interface_version = "1.0"
+
+prompt_fragment = "prompt.md"
+
+schema_fragment = ""
+preset_paths = []
+# Resolution reads stats the character_sheet module defines, so it only
+# makes sense alongside one. (Advisory today; the loader does not yet
+# enforce `requires`.)
+requires = ["core/four-stat-v1"]
