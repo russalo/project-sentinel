@@ -1,6 +1,6 @@
 # RFC 0006 — Resolution + character-sheet modules
 
-**Status:** Accepted (Slice 1 of 2 implemented)
+**Status:** Implemented (both slices)
 **Date:** 2026-06-23
 **Author:** Russell Pfister; Claude Code (origin-core session)
 **Implements:** ADR-0005 (subsystem modularity), second slice — the first
@@ -24,10 +24,15 @@ live turns):
   resolution stays narrative, so nothing strands. Safe on live worlds
   (adds stat-tracking; the existing flat `health` field + PlayerVitals
   are untouched). RFC status: **Accepted**.
-- **Slice 2 (next) — the roll loop.** `core/d100-open-v1` + the
-  `check_request` field + frontend roller/reveal + `resolution` joins
-  `DEFAULT_MODULES` + the schema-enforcement seam. Flips RFC status to
-  **Implemented**.
+- **Slice 2 (landed) — the roll loop.** `core/d100-open-v1` + the
+  `check_request` field (rides the world_update hint) + the `roll` field
+  on the turn (`RollResult` → `DMTurnInput.roll` → a structured ROLL
+  RESULT prompt block) + the frontend roller/reveal (`utils/roll.js`,
+  `CheckRequestRail`, `useDMStream.sendRoll`) + `resolution` joins
+  `DEFAULT_MODULES`. **Sentinel now rolls dice on every world.**
+  Schema *enforcement* (fs-manager validating `module_data.character_sheet`)
+  remains the one deferred piece — its own focused seam (OQ1); the
+  character-sheet schema ships as the authored contract.
 
 ---
 

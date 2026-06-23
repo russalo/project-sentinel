@@ -99,6 +99,21 @@ export const useChatStore = create((set) => ({
   suggestedActions: [],
   setSuggestedActions: (actions) => set({ suggestedActions: Array.isArray(actions) ? actions : [] }),
   clearSuggestedActions: () => set({ suggestedActions: [] }),
+
+  // DM-requested d100 check for the current turn (ADR-0005 resolution
+  // module / RFC-0006). Populated by useDMStream when the `world_update`
+  // event carries `check_request: {stat, target, label, prompt}` — the
+  // DM is asking the player to roll instead of resolving the action. The
+  // CheckRequestRail renders the Roll affordance; on roll, useDMStream
+  // resends the turn carrying the result. Cleared at the start of each
+  // turn (parallel to suggestedActions) so a stale request can't linger.
+  checkRequest: null,
+  setCheckRequest: (req) =>
+    set({
+      checkRequest:
+        req && typeof req === 'object' && typeof req.stat === 'string' ? req : null,
+    }),
+  clearCheckRequest: () => set({ checkRequest: null }),
 }));
 
 // Dev-only handle so the screenshot tooling (scripts/src/screenshot-guide.mjs)

@@ -55,14 +55,15 @@ def test_base_fragment_byte_identical_to_pre_rfc0005():
     assert load_module("core/base-v1").prompt_fragment_text == frozen
 
 
-def test_default_assembles_base_then_character_sheet():
-    """RFC-0006 Slice 1: the default prompt is base + character_sheet, in
-    canonical order (base leads), joined by a blank line. Derives the
-    expectation from the fragments themselves so it's not brittle to
-    prose edits — it pins the ASSEMBLY, not the content."""
+def test_default_assembles_base_resolution_character_sheet():
+    """RFC-0006 Slice 2: the default prompt is base + resolution +
+    character_sheet, in canonical order, joined by blank lines. Derives
+    the expectation from the fragments themselves so it's not brittle to
+    prose edits — it pins the ASSEMBLY ORDER, not the content."""
     base = load_module("core/base-v1").prompt_fragment_text
+    resolution = load_module("core/d100-open-v1").prompt_fragment_text
     sheet = load_module("core/four-stat-v1").prompt_fragment_text
-    assert build_dm_prompt() == f"{base}\n\n{sheet}"
+    assert build_dm_prompt() == f"{base}\n\n{resolution}\n\n{sheet}"
 
 
 def test_dm_system_prompt_constant_matches_assembly():
@@ -158,13 +159,22 @@ def test_base_is_first_in_canonical_order():
     assert CANONICAL_SUBSYSTEM_ORDER[0] == "base"
 
 
-def test_default_modules_is_base_plus_character_sheet():
-    # RFC-0006 Slice 1: the default set grew from base-only to include the
-    # four-stat character sheet. Resolution joins in Slice 2.
+def test_default_modules_is_base_resolution_character_sheet():
+    # RFC-0006 Slice 2: resolution joined the default set — Sentinel is now
+    # a d100 RPG on every world.
     assert DEFAULT_MODULES == {
         "base": "core/base-v1",
+        "resolution": "core/d100-open-v1",
         "character_sheet": "core/four-stat-v1",
     }
+
+
+def test_resolution_module_loads():
+    loaded = load_module("core/d100-open-v1")
+    assert loaded.manifest.subsystem == "resolution"
+    assert loaded.manifest.requires == ("core/four-stat-v1",)
+    assert "check_request" in loaded.prompt_fragment_text
+    assert "ROLL RESULT" in loaded.prompt_fragment_text
 
 
 def test_character_sheet_module_loads():

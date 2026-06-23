@@ -190,6 +190,45 @@ def test_build_messages_includes_world_state_in_user_message():
     assert "I order a drink." in user_content
 
 
+def test_build_messages_omits_roll_block_when_no_roll():
+    # ADR-0005 resolution module: an ordinary turn (no roll) carries no
+    # ROLL RESULT block.
+    ctx = _make_turn_input().world_context
+    messages = _build_messages(ctx, "I look around.")
+    assert "ROLL RESULT" not in messages[1]["content"]
+
+
+def test_build_messages_appends_roll_block_when_roll_present():
+    # On a resolve turn the structured roll is rendered as a ROLL RESULT
+    # block so the DM resolves from the margin (never re-rolls).
+    ctx = _make_turn_input().world_context
+    roll = {
+        "stat": "body",
+        "rolled": 47,
+        "bonus": 30,
+        "total": 77,
+        "target": 80,
+        "margin": -3,
+        "open_ended": None,
+    }
+    messages = _build_messages(ctx, "Force the portcullis.", roll)
+    user_content = messages[1]["content"]
+    assert "ROLL RESULT" in user_content
+    assert "margin: -3" in user_content
+    assert "total: 77" in user_content
+    assert "stat: body" in user_content
+
+
+def test_build_messages_roll_block_tolerates_partial_roll():
+    # A roll dict missing some keys degrades to whatever's present, no crash.
+    ctx = _make_turn_input().world_context
+    messages = _build_messages(ctx, "Try it.", {"total": 50, "margin": -10})
+    assert "ROLL RESULT" in messages[1]["content"]
+    # An empty dict yields no block.
+    messages2 = _build_messages(ctx, "Try it.", {})
+    assert "ROLL RESULT" not in messages2[1]["content"]
+
+
 def test_build_messages_renders_none_yet_for_empty_collections():
     ctx = WorldContext(
         world_name="Empty",
