@@ -46,6 +46,7 @@ export function CheckRequestRail() {
   const checkRequest = useChatStore((s) => s.checkRequest);
   const addMessage = useChatStore((s) => s.addMessage);
   const isStreaming = useChatStore((s) => s.isStreaming);
+  const setIsStreaming = useChatStore((s) => s.setIsStreaming);
   const characters = useWorldStore((s) => s.characters);
   const playerName = usePlayerStore((s) => s.characterName);
   const sessionId = usePlayerStore((s) => s.sessionId);
@@ -70,6 +71,11 @@ export function CheckRequestRail() {
 
   const handleRoll = () => {
     if (revealed || isStreaming) return;
+    // Lock the turn immediately so the command input (which gates on
+    // isStreaming) can't race a competing action during the reveal pause
+    // before sendRoll fires. runTurn re-asserts this and clears it in its
+    // finally. (codex P2 on PR #146.)
+    setIsStreaming(true);
     const statValue = playerStatValue(characters, playerName, stat);
     const result = computeRoll({ stat, statValue, target });
     setRevealed(result);

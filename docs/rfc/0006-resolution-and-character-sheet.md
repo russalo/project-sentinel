@@ -281,6 +281,18 @@ Two consequences this RFC must handle:
 - [ ] RFC 0006 lands Implemented in the same PR(s); README indexes
       updated.
 
+## Known limitations (v0.1)
+
+- **Refresh mid-check loses the pending roll.** `check_request` is
+  surfaced only from a live SSE stream, not from world hydration. If the
+  DM requests a check and the player refreshes before rolling, the roll
+  affordance is gone on reload (the player re-sends their action; the DM
+  re-requests). Persisting the pending check on the world/session +
+  rehydrating it needs backend work — deferred (codex P2 on PR #146; see
+  BACKLOG). Low-frequency edge; recoverable.
+- **Schema enforcement of `module_data.character_sheet`** is not yet
+  wired in fs-manager (OQ1) — the schema ships as the authored contract.
+
 ## Out of Scope
 
 - **Combat** (attack rolls, damage, death) — RFC-0007. This RFC defines

@@ -108,11 +108,33 @@ export const useChatStore = create((set) => ({
   // resends the turn carrying the result. Cleared at the start of each
   // turn (parallel to suggestedActions) so a stale request can't linger.
   checkRequest: null,
-  setCheckRequest: (req) =>
+  // Validate a DM-emitted check_request before surfacing it. A malformed
+  // request (non-recognized stat, non-integer target) would produce a NaN
+  // margin / broken roll, so reject it outright — better the DM resolves
+  // narratively than the player faces an un-rollable check. (gemini-high
+  // on PR #146; the malformed-LLM-output hunt pattern.)
+  setCheckRequest: (req) => {
+    const VALID_STATS = ['body', 'mind', 'heart', 'will'];
+    if (
+      !req ||
+      typeof req !== 'object' ||
+      !VALID_STATS.includes(req.stat) ||
+      !Number.isInteger(req.target) ||
+      req.target <= 0
+    ) {
+      set({ checkRequest: null });
+      return;
+    }
+    // Coerce the optional display strings; never trust their type.
     set({
-      checkRequest:
-        req && typeof req === 'object' && typeof req.stat === 'string' ? req : null,
-    }),
+      checkRequest: {
+        stat: req.stat,
+        target: req.target,
+        label: typeof req.label === 'string' ? req.label : '',
+        prompt: typeof req.prompt === 'string' ? req.prompt : '',
+      },
+    });
+  },
   clearCheckRequest: () => set({ checkRequest: null }),
 }));
 
