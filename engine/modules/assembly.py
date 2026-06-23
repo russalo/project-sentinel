@@ -19,10 +19,13 @@ from .loader import load_module
 
 # The core default module set — what a vanilla world runs, and the
 # fallback when a world has no explicit `modules` map (legacy worlds
-# created before the field existed). RFC-0005 ships only `base`;
-# later RFCs extend this as they add subsystems.
+# created before the field existed). Grows as RFCs add subsystems:
+#   RFC-0005: base
+#   RFC-0006 Slice 1: character_sheet (four stats; no rolls yet)
+#   RFC-0006 Slice 2: resolution (the d100 roll loop) — NOT YET
 DEFAULT_MODULES: dict[str, str] = {
     "base": "core/base-v1",
+    "character_sheet": "core/four-stat-v1",
 }
 
 # Deterministic assembly order. A module fills its subsystem's slot; the

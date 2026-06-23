@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinel.local/schemas/modules/character_sheet/four-stat-v1.json",
+  "title": "Four-stat character sheet (module_data.character_sheet)",
+  "description": "Schema for a character entity's module_data.character_sheet sub-object under the core/four-stat-v1 module (ADR-0005 / RFC-0006). The four stats are the v0.1 floor; hp/defense/magic_pool are derived fields populated by the combat (RFC-0007) and magic (RFC-0008) modules and are optional here.",
+  "type": "object",
+  "properties": {
+    "stats": {
+      "type": "object",
+      "description": "The four attributes, scored 1-10. The relevant stat contributes (stat x 5) to a d100 check (the resolution module).",
+      "properties": {
+        "body": { "type": "integer", "minimum": 1, "maximum": 10, "description": "Physical action, combat, athletics, endurance." },
+        "mind": { "type": "integer", "minimum": 1, "maximum": 10, "description": "Reasoning, recall, perception, knowledge." },
+        "heart": { "type": "integer", "minimum": 1, "maximum": 10, "description": "Social, empathy, persuasion, intuition." },
+        "will": { "type": "integer", "minimum": 1, "maximum": 10, "description": "Willpower, magic casting, resisting fear / charm." }
+      },
+      "required": ["body", "mind", "heart", "will"],
+      "additionalProperties": false
+    },
+    "hp": {
+      "type": "object",
+      "description": "Derived: max = body x class_HP_factor. Populated by the combat module (RFC-0007). Distinct from the legacy flat `health` field until combat migrates to it.",
+      "properties": {
+        "current": { "type": "integer", "minimum": 0 },
+        "max": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["current", "max"],
+      "additionalProperties": false
+    },
+    "defense": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Derived: 40 + (body x 3) + armor_bonus. The d100 target an attacker must beat. Populated by the combat module (RFC-0007)."
+    },
+    "magic_pool": {
+      "type": "object",
+      "description": "Derived: max = will x 2. Spent per spell by the magic module (RFC-0008). Only meaningful for casters.",
+      "properties": {
+        "current": { "type": "integer", "minimum": 0 },
+        "max": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["current", "max"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["stats"],
+  "additionalProperties": false
+}
