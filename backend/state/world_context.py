@@ -85,7 +85,12 @@ def load_world_context(
     """
     core = data_dir / _CORE
 
-    world_raw = _read_json_or_none(data_dir / _WORLD_FILE) or {}
+    # `or {}` catches missing/empty; the isinstance guard additionally
+    # catches a well-formed-but-non-dict state.json (a JSON list, string,
+    # or number) so the `.get(...)` calls below can't AttributeError on a
+    # corrupted/hand-edited world file. (gemini-high on PR #144.)
+    _world_loaded = _read_json_or_none(data_dir / _WORLD_FILE)
+    world_raw = _world_loaded if isinstance(_world_loaded, dict) else {}
 
     characters = _read_json_dir(core / "entities")
     locations = _read_json_dir(core / "locations")

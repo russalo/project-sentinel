@@ -63,8 +63,17 @@ def build_dm_prompt(modules: dict[str, str] | None = None) -> str:
         present in ``modules`` but absent from the canonical order are
         ignored (with no crash) — a forward-compat guard so an unknown
         subsystem key can't break assembly.
+
+    The world's ``modules`` map is layered ON TOP of ``DEFAULT_MODULES``
+    rather than replacing it: a world that names some subsystems but omits
+    others (notably ``base`` — the invariant DM personality, which must
+    always be present per ADR-0005) still gets the core defaults for the
+    omitted slots. A world overrides a subsystem only by naming it
+    explicitly. A non-dict ``modules`` (malformed config) falls back to
+    the defaults rather than crashing. (codex P2 + gemini-medium, PR #144.)
     """
-    active = modules or DEFAULT_MODULES
+    overrides = modules if isinstance(modules, dict) else {}
+    active = {**DEFAULT_MODULES, **overrides}
     fragments: list[str] = []
     for subsystem in CANONICAL_SUBSYSTEM_ORDER:
         module_name = active.get(subsystem)

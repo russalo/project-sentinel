@@ -40,14 +40,23 @@ class LoadedModule:
 
 
 def discover_modules() -> dict[str, Path]:
-    """Scan the core modules tree, return ``{module_name: manifest_path}``.
+    """Return ``{module_name: manifest_path}`` for all core modules.
 
-    Walks ``engine/modules/*/*/manifest.toml``. The two glob levels are
-    ``<subsystem>/<impl>``. Skips this package's own non-module dirs
-    (they have no nested ``*/manifest.toml`` so they don't match).
-    Raises ManifestError if two manifests declare the same module name
-    (an authoring mistake we want loud, not last-wins).
+    Walks ``engine/modules/*/*/manifest.toml`` (the two glob levels are
+    ``<subsystem>/<impl>``); package dirs without a nested
+    ``*/manifest.toml`` don't match. Raises ManifestError if two
+    manifests declare the same module name (an authoring mistake we want
+    loud, not last-wins).
+
+    The scan result is cached on the registry — repeated calls (e.g. one
+    per module on a cold multi-module load) reuse the map rather than
+    re-walking the tree (gemini-medium on PR #144). ``registry.clear()``
+    forces a fresh scan.
     """
+    cached = registry.get_discovery()
+    if cached is not None:
+        return cached
+
     found: dict[str, Path] = {}
     for manifest_path in sorted(_CORE_MODULES_ROOT.glob("*/*/manifest.toml")):
         manifest = ModuleManifest.from_toml_file(manifest_path)
@@ -57,6 +66,7 @@ def discover_modules() -> dict[str, Path]:
                 f"{found[manifest.name]} and {manifest_path}"
             )
         found[manifest.name] = manifest_path
+    registry.set_discovery(found)
     return found
 
 

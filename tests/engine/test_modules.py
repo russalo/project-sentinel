@@ -155,3 +155,35 @@ def test_unknown_subsystem_key_is_ignored_not_crashed():
     # must not break assembly (forward-compat guard) — it's simply skipped.
     result = build_dm_prompt({"base": "core/base-v1", "made_up_subsystem": "x/y-v1"})
     assert result == build_dm_prompt()
+
+
+def test_base_always_present_when_modules_omits_it():
+    # A world that names some subsystems but omits `base` must still get the
+    # invariant base prompt — DEFAULT_MODULES is layered under the override,
+    # not replaced (codex P2 on PR #144). With only `base` shipped today, a
+    # map that omits it but names an unshipped subsystem still assembles to
+    # the base prompt.
+    result = build_dm_prompt({"made_up_subsystem": "x/y-v1"})
+    assert result == build_dm_prompt()
+
+
+def test_non_dict_modules_falls_back_to_default():
+    # A malformed (non-dict) modules value must not crash assembly — it
+    # falls back to the default set (gemini-medium on PR #144).
+    default = build_dm_prompt()
+    assert build_dm_prompt(["not", "a", "dict"]) == default
+    assert build_dm_prompt("nonsense") == default
+    assert build_dm_prompt(42) == default
+
+
+def test_discovery_is_cached_on_registry():
+    # discover_modules caches its scan on the registry so repeated calls
+    # don't re-walk the tree (gemini-medium on PR #144).
+    registry.clear()
+    assert registry.get_discovery() is None
+    first = discover_modules()
+    assert registry.get_discovery() is not None
+    second = discover_modules()
+    assert first == second
+    registry.clear()
+    assert registry.get_discovery() is None

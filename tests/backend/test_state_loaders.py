@@ -76,6 +76,37 @@ def test_load_world_context_reads_world_and_collections(tmp_data_dir: Path):
     assert ctx.recent_turns[0]["playerAction"] == "enter plaza"
 
 
+def test_load_world_context_reads_modules_field(tmp_data_dir: Path):
+    # ADR-0005 / RFC-0005: a world's `modules` map is threaded into the
+    # WorldContext so the DM prompt assembles per-world.
+    core = tmp_data_dir / "state" / "core"
+    (core / "world" / "state.json").write_text(
+        json.dumps({"worldName": "Modular", "modules": {"base": "core/base-v1"}})
+    )
+    ctx = load_world_context(tmp_data_dir)
+    assert ctx.modules == {"base": "core/base-v1"}
+
+
+def test_load_world_context_missing_modules_is_none(tmp_data_dir: Path):
+    # A world with no `modules` field (legacy) → None; the engine lazy-
+    # defaults to the base-only set at prompt-assembly time.
+    core = tmp_data_dir / "state" / "core"
+    (core / "world" / "state.json").write_text(json.dumps({"worldName": "Legacy"}))
+    ctx = load_world_context(tmp_data_dir)
+    assert ctx.modules is None
+
+
+def test_load_world_context_non_dict_state_json_is_safe(tmp_data_dir: Path):
+    # gemini-high on PR #144: a well-formed-but-non-dict state.json (a JSON
+    # list / string / number) must not crash the .get(...) reads — it falls
+    # back to defaults, same as a missing file.
+    core = tmp_data_dir / "state" / "core"
+    (core / "world" / "state.json").write_text(json.dumps(["not", "a", "dict"]))
+    ctx = load_world_context(tmp_data_dir)
+    assert ctx.world_name == "Unknown Realm"  # default
+    assert ctx.modules is None
+
+
 def test_load_world_context_skips_malformed_json_files(tmp_data_dir: Path):
     core = tmp_data_dir / "state" / "core"
     (core / "entities" / "good.json").write_text(json.dumps({"name": "Good"}))
