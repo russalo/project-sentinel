@@ -239,6 +239,10 @@ _None._
 - [RFC 0004 — Tester guide screenshots + renderer extensions](0004-tester-guide-screenshots.md) — _opened 2026-06-16, implemented 2026-06-22. Annotated per-screen screenshots (Playwright pipeline) with lettered overlays keyed to the doc; renderer extended with `![alt](path)` images, heading anchor IDs, in-page `[label](#anchor)` links, `{{toc}}` marker, ordered lists, wrapped-list continuations; PR #140 bot findings closed (odd-index defensive check on emphasis + code spans)._
 - [RFC 0005 — Module infrastructure foundation](0005-module-infrastructure.md) — _opened + implemented 2026-06-23. First slice of [ADR 0005](../adr/0005-subsystem-modularity.md) subsystem modularity: manifest format + loader + registry + module-composed DM-prompt assembly, shipping `core/base-v1` (the former `DM_SYSTEM_PROMPT` verbatim). Zero gameplay change — assembled default prompt is byte-identical to the pre-RFC string (frozen + equivalence-tested). `world.modules` lazy-defaulted; `module_data.<subsystem>` namespacing convention established._
 
+### Accepted
+
+- [RFC 0006 — Resolution + character-sheet modules](0006-resolution-and-character-sheet.md) — _opened 2026-06-23; Slice 1 (stats foundation) implemented 2026-06-23. First mechanic modules under [ADR 0005](../adr/0005-subsystem-modularity.md): d100 open-ended resolution (`stat×5`, targets 40/60/80/100, margin-driven, open-ended 96-00/01-05) + four-stat 1–10 character sheet (Body/Mind/Heart/Will). Slice 1 ships `core/four-stat-v1` (stats tracked + grounded in fiction, no rolls yet, no live-gameplay strand); Slice 2 ships `core/d100-open-v1` + the DM-requested two-step roll loop + the click-to-roll reveal UI, flipping status to Implemented._
+
 ### Superseded
 
 _None._

@@ -1,0 +1,22 @@
+# Four-stat character sheet — Body / Mind / Heart / Will, scored 1–10
+# (ADR-0005 subsystem `character_sheet`; Fantasy-flagship v0.1, ratified
+# 2026-06-23). RFC-0006 Slice 1 establishes the four stats; the derived
+# hp / defense / magic_pool fields are defined in the schema for
+# forward-compat but come online with the combat (RFC-0007) and magic
+# (RFC-0008) modules.
+
+name = "core/four-stat-v1"
+version = "1.0.0"
+subsystem = "character_sheet"
+interface_version = "1.0"
+
+prompt_fragment = "prompt.md"
+
+# The schema for module_data.character_sheet. Declared here as the
+# authored contract; fs-manager enforcement is wired in a later slice
+# (the entity-schema enforcement seam, RFC-0006 OQ1) — until then stats
+# are tracked like any other entity field, same posture as pre-RFC-0006.
+schema_fragment = "schema.json"
+
+preset_paths = []
+requires = []

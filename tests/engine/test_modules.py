@@ -1,9 +1,13 @@
-"""Tests for the subsystem-module infrastructure (ADR-0005 / RFC-0005).
+"""Tests for the subsystem-module infrastructure (ADR-0005 / RFC-0005,
+RFC-0006).
 
-Covers the manifest model, the loader + registry, the DM-prompt
-assembly, and the central safety property of RFC-0005: the assembled
-prompt for the default (base-only) module set is byte-identical to the
-pre-RFC-0005 ``DM_SYSTEM_PROMPT`` (frozen in a fixture).
+Covers the manifest model, the loader + registry, and the DM-prompt
+assembly. Two durable invariants:
+  - migration integrity: the base module's fragment is still byte-
+    identical to the pre-RFC-0005 ``DM_SYSTEM_PROMPT`` (frozen fixture);
+  - assembly composition: the default prompt is the active modules'
+    fragments composed in canonical order (base + character_sheet as of
+    RFC-0006 Slice 1).
 """
 
 from __future__ import annotations
@@ -38,15 +42,27 @@ def _cold_registry():
     registry.clear()
 
 
-# ── Equivalence: the central RFC-0005 safety property ───────────────
+# ── Base-migration integrity + assembly composition ─────────────────
 
 
-def test_default_prompt_is_byte_identical_to_pre_rfc0005():
-    """build_dm_prompt() for the default module set must equal the frozen
-    pre-RFC-0005 DM_SYSTEM_PROMPT exactly. If this fails, the base module
-    migration changed prompt behavior — investigate, don't re-baseline."""
+def test_base_fragment_byte_identical_to_pre_rfc0005():
+    """The base module's prompt fragment must still equal the frozen
+    pre-RFC-0005 DM_SYSTEM_PROMPT exactly — the RFC-0005 migration moved
+    that content verbatim and nothing since should have altered it. (This
+    is the durable migration-integrity check; build_dm_prompt() itself now
+    composes more than base, so we check the base fragment directly.)"""
     frozen = _FIXTURE.read_text(encoding="utf-8")
-    assert build_dm_prompt() == frozen
+    assert load_module("core/base-v1").prompt_fragment_text == frozen
+
+
+def test_default_assembles_base_then_character_sheet():
+    """RFC-0006 Slice 1: the default prompt is base + character_sheet, in
+    canonical order (base leads), joined by a blank line. Derives the
+    expectation from the fragments themselves so it's not brittle to
+    prose edits — it pins the ASSEMBLY, not the content."""
+    base = load_module("core/base-v1").prompt_fragment_text
+    sheet = load_module("core/four-stat-v1").prompt_fragment_text
+    assert build_dm_prompt() == f"{base}\n\n{sheet}"
 
 
 def test_dm_system_prompt_constant_matches_assembly():
@@ -55,10 +71,6 @@ def test_dm_system_prompt_constant_matches_assembly():
     from engine.prompts.dm import DM_SYSTEM_PROMPT
 
     assert DM_SYSTEM_PROMPT == build_dm_prompt()
-
-
-def test_explicit_base_set_equals_default():
-    assert build_dm_prompt({"base": "core/base-v1"}) == build_dm_prompt()
 
 
 def test_none_and_empty_modules_fall_back_to_default():
@@ -146,8 +158,44 @@ def test_base_is_first_in_canonical_order():
     assert CANONICAL_SUBSYSTEM_ORDER[0] == "base"
 
 
-def test_default_modules_is_base_only():
-    assert DEFAULT_MODULES == {"base": "core/base-v1"}
+def test_default_modules_is_base_plus_character_sheet():
+    # RFC-0006 Slice 1: the default set grew from base-only to include the
+    # four-stat character sheet. Resolution joins in Slice 2.
+    assert DEFAULT_MODULES == {
+        "base": "core/base-v1",
+        "character_sheet": "core/four-stat-v1",
+    }
+
+
+def test_character_sheet_module_loads():
+    loaded = load_module("core/four-stat-v1")
+    assert loaded.manifest.subsystem == "character_sheet"
+    assert loaded.manifest.schema_fragment == "schema.json"
+    assert "Body" in loaded.prompt_fragment_text
+    assert "module_data" in loaded.prompt_fragment_text
+
+
+def test_character_sheet_schema_fragment_is_valid_json_schema():
+    # The declared schema fragment must parse as JSON + be a usable schema
+    # (validates a good sheet, rejects an out-of-range stat). Enforcement
+    # wiring is a later slice, but the authored contract must be sound now.
+    import json as _json
+
+    import jsonschema
+
+    from engine.modules.loader import discover_modules as _discover
+
+    manifest_path = _discover()["core/four-stat-v1"]
+    schema_path = manifest_path.parent / "schema.json"
+    schema = _json.loads(schema_path.read_text(encoding="utf-8"))
+    jsonschema.Draft202012Validator.check_schema(schema)
+    validator = jsonschema.Draft202012Validator(schema)
+    good = {"stats": {"body": 7, "mind": 5, "heart": 4, "will": 8}}
+    assert list(validator.iter_errors(good)) == []
+    bad = {"stats": {"body": 11, "mind": 5, "heart": 4, "will": 8}}
+    assert list(validator.iter_errors(bad))  # body out of 1-10 range
+    missing = {"stats": {"body": 7, "mind": 5, "heart": 4}}
+    assert list(validator.iter_errors(missing))  # will required
 
 
 def test_unknown_subsystem_key_is_ignored_not_crashed():
@@ -160,7 +208,7 @@ def test_unknown_subsystem_key_is_ignored_not_crashed():
 def test_base_always_present_when_modules_omits_it():
     # A world that names some subsystems but omits `base` must still get the
     # invariant base prompt — DEFAULT_MODULES is layered under the override,
-    # not replaced (codex P2 on PR #144). With only `base` shipped today, a
+    # not replaced (codex P2 on PR #144). A world map that omits base but
     # map that omits it but names an unshipped subsystem still assembles to
     # the base prompt.
     result = build_dm_prompt({"made_up_subsystem": "x/y-v1"})
