@@ -94,6 +94,25 @@ class NewSessionResponse(_CamelModel):
 # ── POST /api/stream ─────────────────────────────────────────────────
 
 
+class RollResult(_CamelModel):
+    """A d100 check result (ADR-0005 resolution module / RFC-0006).
+
+    Rolled client-side (real randomness, not LLM bias) and sent on the
+    *resolve* turn so the DM resolves the action from the margin. The
+    frontend sends camelCase (``openEnded``); ``model_dump()`` yields the
+    snake-case keys the engine's ROLL RESULT block reads.
+    """
+
+    stat: str
+    rolled: int = Field(ge=1, le=100)
+    bonus: int
+    total: int
+    target: int
+    margin: int
+    # "high" (open-ended surge), "low" (fumble spiral), or None.
+    open_ended: str | None = None
+
+
 class StreamRequest(_CamelModel):
     action: str
     session_id: str
@@ -104,6 +123,10 @@ class StreamRequest(_CamelModel):
     # /w/<world_id> frontend routing carries it in the URL, and it's useful for
     # telemetry. (ADR 0002 Slice 3.)
     world_id: str | None = None
+    # ADR-0005 resolution module (RFC-0006 Slice 2): present on a *resolve*
+    # turn — the d100 result for a check the DM previously requested. None on
+    # an ordinary turn.
+    roll: RollResult | None = None
 
 
 # ── GET /healthz ─────────────────────────────────────────────────────

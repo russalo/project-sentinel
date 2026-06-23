@@ -264,6 +264,10 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
         session_id=body.session_id,
         player_action=body.action,
         world_context=world_context,
+        # ADR-0005 resolution module (RFC-0006): on a resolve turn the body
+        # carries the d100 roll; model_dump() yields the snake-case keys the
+        # engine's ROLL RESULT block reads. None on an ordinary turn.
+        roll=body.roll.model_dump() if body.roll is not None else None,
     )
 
     next_turn_number = (session.turns[-1]["turn_number"] + 1) if session.turns else 1
