@@ -92,6 +92,14 @@ def load_world_context(
     factions = _read_json_dir(core / "factions")
     items = _read_json_dir(core / "items")
 
+    # ADR-0005 / RFC-0005: a world's active module set lives in its
+    # state.json ``modules`` map. Pass it through verbatim; the engine
+    # lazy-defaults to the base-only set when it's absent (legacy worlds
+    # created before the field existed), so a missing map is not written
+    # back — it simply resolves to the core default at prompt-assembly time.
+    modules_raw = world_raw.get("modules")
+    modules = modules_raw if isinstance(modules_raw, dict) else None
+
     return engine.WorldContext(
         world_name=world_raw.get("worldName", "Unknown Realm"),
         current_era=world_raw.get("currentEra", "The Age of Fracture"),
@@ -104,4 +112,5 @@ def load_world_context(
         factions=factions,
         items=items,
         recent_turns=recent_turns or [],
+        modules=modules,
     )

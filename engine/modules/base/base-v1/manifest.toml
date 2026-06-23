@@ -1,0 +1,18 @@
+# Base module — the invariant DM personality + STATE DISCIPLINE rules.
+# Present in every world regardless of which mechanic modules are active
+# (ADR-0005). RFC-0005 migrated the former engine.prompts.dm.DM_SYSTEM_PROMPT
+# into this module's prompt fragment verbatim; no gameplay change.
+
+name = "core/base-v1"
+version = "1.0.0"
+subsystem = "base"
+interface_version = "1.0"
+
+# DM-prompt contribution, relative to this manifest's directory. The
+# assembly (engine/modules/assembly.py) leads with this fragment.
+prompt_fragment = "prompt.md"
+
+# base adds no module_data fields and ships no authored content.
+schema_fragment = ""
+preset_paths = []
+requires = []
