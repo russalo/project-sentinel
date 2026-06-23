@@ -73,9 +73,7 @@ def load_module(name: str) -> LoadedModule:
     manifests = discover_modules()
     manifest_path = manifests.get(name)
     if manifest_path is None:
-        raise ManifestError(
-            f"unknown module {name!r}; discovered: {sorted(manifests)}"
-        )
+        raise ManifestError(f"unknown module {name!r}; discovered: {sorted(manifests)}")
 
     manifest = ModuleManifest.from_toml_file(manifest_path)
     manifest_dir = manifest_path.parent
