@@ -11,12 +11,18 @@ import { LevelUpCard } from './LevelUpCard';
 // pills NEVER auto-submit — the player still reviews / edits before sending.
 // See BACKLOG-#474 + project_canon_modules_framing memory for the spec.
 export function CommandBar() {
-  const { input, setInput, addMessage, isStreaming } = useChatStore();
+  const { input, setInput, addMessage, isStreaming, rollPending } = useChatStore();
   const { sessionId } = usePlayerStore();
   const { sendAction } = useDMStream();
 
+  // `rollPending` locks the bar while a rolled-but-unresolved check is on
+  // screen, so a revealed roll can't be silently discarded by typing past it
+  // (the player resolves via CheckRequestRail's Resolve button). Lifts on
+  // Resolve / next turn. See chatStore.rollPending.
+  const locked = isStreaming || rollPending;
+
   const handleSubmit = () => {
-    if (!input.trim() || isStreaming) return;
+    if (!input.trim() || locked) return;
     const action = input.trim();
     setInput('');
     addMessage({
@@ -52,14 +58,20 @@ export function CommandBar() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={sessionId ? 'What do you do?' : 'Start a new world to begin...'}
-            disabled={isStreaming || !sessionId}
+            placeholder={
+              !sessionId
+                ? 'Start a new world to begin...'
+                : rollPending
+                  ? 'Resolve the roll to continue...'
+                  : 'What do you do?'
+            }
+            disabled={locked || !sessionId}
             className="flex-1 bg-void border border-border rounded px-3 py-2.5 text-base md:text-sm text-ink placeholder-dust focus:outline-none focus:border-amber transition-colors disabled:opacity-50"
           />
           <button
             data-testid="command-bar-send"
             onClick={handleSubmit}
-            disabled={isStreaming || !sessionId}
+            disabled={locked || !sessionId}
             className="px-4 py-2.5 bg-amber text-void rounded hover:bg-amber/90 transition-colors flex items-center gap-2 disabled:opacity-50"
           >
             <Send size={16} />

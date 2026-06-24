@@ -7,12 +7,21 @@ import { useChatStore } from '../../stores/chatStore';
 export function StatusIndicator() {
   const isStreaming = useChatStore((s) => s.isStreaming);
   const streamError = useChatStore((s) => s.streamError);
+  const rollPending = useChatStore((s) => s.rollPending);
 
+  // `rollPending` (a rolled-but-unresolved check awaiting the player's tap)
+  // is NOT streaming — the DM isn't working, we're waiting on the player —
+  // so it gets a distinct, steady (non-pulsing) state rather than reading
+  // "Streaming…". Ordered below streamError but above isStreaming so an
+  // in-flight error still wins; isStreaming only goes true once the player
+  // resolves, by which point rollPending has cleared.
   const { dot, label } = streamError
     ? { dot: 'bg-blood', label: 'Connection error' }
     : isStreaming
       ? { dot: 'bg-amber animate-pulse-slow', label: 'Streaming…' }
-      : { dot: 'bg-leyline', label: 'Ready' };
+      : rollPending
+        ? { dot: 'bg-amber', label: 'Roll ready — resolve to continue' }
+        : { dot: 'bg-leyline', label: 'Ready' };
 
   return (
     <div

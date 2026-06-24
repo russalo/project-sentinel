@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { useChatStore } from './chatStore';
 
 beforeEach(() => {
-  useChatStore.setState({ checkRequest: null, levelUp: null });
+  useChatStore.setState({ checkRequest: null, levelUp: null, rollPending: false });
 });
 
 describe('chatStore.setCheckRequest — malformed-LLM-output hardening (PR #146)', () => {
@@ -72,6 +72,26 @@ describe('chatStore.setCheckRequest — malformed-LLM-output hardening (PR #146)
   it('clearCheckRequest resets to null', () => {
     useChatStore.getState().setCheckRequest({ stat: 'will', target: 100 });
     useChatStore.getState().clearCheckRequest();
+    expect(useChatStore.getState().checkRequest).toBeNull();
+  });
+});
+
+describe('chatStore.rollPending — player-paced roll lock (PR #151 follow-up)', () => {
+  it('defaults to false', () => {
+    expect(useChatStore.getState().rollPending).toBe(false);
+  });
+
+  it('setRollPending coerces to a boolean', () => {
+    useChatStore.getState().setRollPending(true);
+    expect(useChatStore.getState().rollPending).toBe(true);
+    useChatStore.getState().setRollPending(0);
+    expect(useChatStore.getState().rollPending).toBe(false);
+  });
+
+  it('clearCheckRequest lifts the roll lock (so it can never get stuck)', () => {
+    useChatStore.getState().setRollPending(true);
+    useChatStore.getState().clearCheckRequest();
+    expect(useChatStore.getState().rollPending).toBe(false);
     expect(useChatStore.getState().checkRequest).toBeNull();
   });
 });
