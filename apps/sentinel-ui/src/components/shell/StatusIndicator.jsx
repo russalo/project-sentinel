@@ -7,7 +7,7 @@ import { useChatStore } from '../../stores/chatStore';
 export function StatusIndicator() {
   const isStreaming = useChatStore((s) => s.isStreaming);
   const streamError = useChatStore((s) => s.streamError);
-  const rollPending = useChatStore((s) => s.rollPending);
+  const rollPending = useChatStore((s) => s.rollResult) != null;
 
   // `rollPending` (a rolled-but-unresolved check awaiting the player's tap)
   // is NOT streaming — the DM isn't working, we're waiting on the player —

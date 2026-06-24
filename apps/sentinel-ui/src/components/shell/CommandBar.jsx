@@ -11,14 +11,15 @@ import { LevelUpCard } from './LevelUpCard';
 // pills NEVER auto-submit — the player still reviews / edits before sending.
 // See BACKLOG-#474 + project_canon_modules_framing memory for the spec.
 export function CommandBar() {
-  const { input, setInput, addMessage, isStreaming, rollPending } = useChatStore();
+  const { input, setInput, addMessage, isStreaming, rollResult } = useChatStore();
   const { sessionId } = usePlayerStore();
   const { sendAction } = useDMStream();
 
-  // `rollPending` locks the bar while a rolled-but-unresolved check is on
-  // screen, so a revealed roll can't be silently discarded by typing past it
-  // (the player resolves via CheckRequestRail's Resolve button). Lifts on
-  // Resolve / next turn. See chatStore.rollPending.
+  // A rolled-but-unresolved check (rollResult set) locks the bar, so a revealed
+  // roll can't be silently discarded by typing past it (the player resolves via
+  // CheckRequestRail's Resolve button). Lifts on Resolve / next turn. See
+  // chatStore.rollResult.
+  const rollPending = rollResult != null;
   const locked = isStreaming || rollPending;
 
   const handleSubmit = () => {
