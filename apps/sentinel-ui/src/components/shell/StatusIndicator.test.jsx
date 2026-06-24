@@ -10,7 +10,7 @@ import { StatusIndicator } from './StatusIndicator'
 import { useChatStore } from '../../stores/chatStore'
 
 beforeEach(() => {
-  useChatStore.setState({ isStreaming: false, streamError: false })
+  useChatStore.setState({ isStreaming: false, streamError: false, rollPending: false })
 })
 
 describe('StatusIndicator', () => {
@@ -29,6 +29,20 @@ describe('StatusIndicator', () => {
     useChatStore.setState({ streamError: true })
     render(<StatusIndicator />)
     expect(screen.getByText('Connection error')).toBeInTheDocument()
+  })
+
+  it('shows "resolve to continue" while a rolled check awaits resolution', () => {
+    useChatStore.setState({ rollPending: true })
+    render(<StatusIndicator />)
+    expect(screen.getByText('Roll ready — resolve to continue')).toBeInTheDocument()
+    // Not the misleading "Streaming…" — the DM isn't working yet.
+    expect(screen.queryByText('Streaming…')).toBeNull()
+  })
+
+  it('streaming wins over a stale rollPending', () => {
+    useChatStore.setState({ rollPending: true, isStreaming: true })
+    render(<StatusIndicator />)
+    expect(screen.getByText('Streaming…')).toBeInTheDocument()
   })
 
   it('never shows the old hardcoded "Connected"', () => {

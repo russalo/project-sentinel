@@ -20,7 +20,7 @@ export const useChatStore = create((set) => ({
   addMessage: (message) => set((state) => ({
     messages: [...state.messages, { id: newId(), ...message }],
   })),
-  clearMessages: () => set({ messages: [], systemLog: [], unreadSystemLog: 0, activeView: 'narrative', streamBuffer: '', streamError: false }),
+  clearMessages: () => set({ messages: [], systemLog: [], unreadSystemLog: 0, activeView: 'narrative', streamBuffer: '', streamError: false, rollPending: false }),
 
   // System log — one entry per turn, persists across the session
   systemLog: [],
@@ -139,7 +139,21 @@ export const useChatStore = create((set) => ({
       },
     });
   },
-  clearCheckRequest: () => set({ checkRequest: null }),
+  clearCheckRequest: () => set({ checkRequest: null, rollPending: false }),
+
+  // Whether the player has rolled a DM-requested check and is now reading
+  // the result, awaiting their tap on Resolve (ADR-0005 resolution module /
+  // RFC-0006). The roll reveal is PLAYER-PACED (PR #151) — set true on Roll
+  // (CheckRequestRail.handleRoll), it locks the command bar (CommandBar) so a
+  // revealed roll can't be silently discarded by typing a different action,
+  // and drives a distinct "resolve to continue" StatusIndicator state. It is
+  // a genuinely different state from `isStreaming` (the DM isn't working yet
+  // — we're waiting on the player), so it gets its own flag rather than
+  // overloading isStreaming (which would falsely read "Streaming…"). Cleared
+  // by clearCheckRequest — which runTurn calls at the top of every turn, so
+  // resolving (or starting any new turn) lifts the lock automatically.
+  rollPending: false,
+  setRollPending: (v) => set({ rollPending: Boolean(v) }),
 
   // DM-proposed level-up for the current turn (ADR-0005 progression module
   // / RFC-0009). Populated by useDMStream when the `world_update` event

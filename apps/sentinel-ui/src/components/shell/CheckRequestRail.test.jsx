@@ -20,7 +20,7 @@ function stubD100(...values) {
 beforeEach(() => {
   sendRoll.mockReset();
   vi.restoreAllMocks();
-  useChatStore.setState({ checkRequest: null, isStreaming: false, messages: [] });
+  useChatStore.setState({ checkRequest: null, isStreaming: false, messages: [], rollPending: false });
   useWorldStore.setState({
     characters: [
       {
@@ -76,6 +76,9 @@ describe('CheckRequestRail', () => {
     expect(screen.getByTestId('check-resolve-button')).toBeInTheDocument();
     expect(useChatStore.getState().messages).toEqual([]);
     expect(sendRoll).not.toHaveBeenCalled();
+    // ...but the command-bar lock is now engaged so the roll can't be
+    // discarded by typing past it (PR #151 follow-up).
+    expect(useChatStore.getState().rollPending).toBe(true);
   });
 
   it('resolving logs a roll line to the scroll and resends with the wire payload', async () => {

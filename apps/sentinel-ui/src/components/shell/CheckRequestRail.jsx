@@ -50,6 +50,7 @@ export function CheckRequestRail() {
   const addMessage = useChatStore((s) => s.addMessage);
   const isStreaming = useChatStore((s) => s.isStreaming);
   const setIsStreaming = useChatStore((s) => s.setIsStreaming);
+  const setRollPending = useChatStore((s) => s.setRollPending);
   const characters = useWorldStore((s) => s.characters);
   const playerName = usePlayerStore((s) => s.characterName);
   const sessionId = usePlayerStore((s) => s.sessionId);
@@ -72,17 +73,19 @@ export function CheckRequestRail() {
   const statLabel = STAT_LABEL[stat] || stat;
   const targetLabel = TARGET_LABEL[target] || `Target ${target}`;
 
-  // Beat 2: roll the d100 and show the result. PLAYER-PACED — this does
-  // NOT lock the turn, log the scroll line, or resend; the reveal just sits
-  // until the player taps Resolve. (The command bar stays usable in the
-  // meantime — typing a different action simply clears the check on the
-  // next turn, so there's no hang.)
+  // Beat 2: roll the d100 and show the result. PLAYER-PACED — this does NOT
+  // resend or log the scroll line; the reveal just sits until the player
+  // taps Resolve. It DOES set rollPending, which locks the command bar so a
+  // revealed roll can't be silently discarded by typing a different action
+  // (the lock lifts on Resolve / next turn via clearCheckRequest). Resolve
+  // is always present, so there's no dead-end.
   const handleRoll = () => {
     if (revealed || isStreaming) return;
     const statValue = playerStatValue(characters, playerName, stat);
     // effectDie present → a magnitude check (attack weapon die / spell die):
     // roll it alongside the d100. (RFC-0007 combat, RFC-0008 magic.)
     setRevealed(computeRoll({ stat, statValue, target, effectDie }));
+    setRollPending(true);
   };
 
   // Beat 3: the player has read the roll and tapped Resolve. NOW lock the
