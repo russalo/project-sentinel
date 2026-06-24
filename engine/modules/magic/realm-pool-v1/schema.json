@@ -17,8 +17,11 @@
     },
     "realms": {
       "type": "array",
-      "items": { "type": "string" },
-      "description": "The realms this caster can draw from, derived from the binding: a deity's 2 domain_realms, or a tradition's [primary, secondary]. Secondary-realm spells cost +1 pool."
+      "items": {
+        "type": "string",
+        "enum": ["elemental", "conjuration", "illusion", "binding", "healing", "wrath", "blessing", "curse"]
+      },
+      "description": "The realms this caster can draw from (lowercase slugs from the fixed set of 8), derived from the binding: a deity's 2 domain_realms, or a tradition's [primary, secondary]. Secondary-realm spells cost +1 pool."
     }
   },
   "required": ["binding"],

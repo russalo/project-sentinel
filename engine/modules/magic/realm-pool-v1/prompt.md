@@ -12,8 +12,10 @@ when the caster is established. Spells cost from `current` by tier:
 - **Cantrip** 0 · **Minor** 1 · **Standard** 2 · **Major** 4 · **Devastating** 8
 
 Check `current` before a cast: if it can't cover the cost, the spell
-fizzles or the caster improvises something lesser. Spend the cost on a
-successful cast (`current -= cost`). Refresh: **long rest → full**,
+fizzles or the caster improvises something lesser. The cost is spent
+the moment the spell is **cast** — `current -= cost` — whether or not a
+contested roll lands. The energy is expended either way; a missed or
+resisted spell still drains the pool. Refresh: **long rest → full**,
 **short rest → half**.
 
 BINDINGS (assign from fiction — no menu):
@@ -21,7 +23,11 @@ BINDINGS (assign from fiction — no menu):
 When a caster first casts, bind them to a source that fits their
 established fiction, and write `module_data.magic = {binding, realms}`
 (+ `patron_standing` for clerics). The binding gates which realms they
-can draw from.
+can draw from. Use **lowercase** values: `binding` is `"deity:<slug>"`
+(e.g. `"deity:the-mender"`) or `"tradition:<slug>"` (e.g.
+`"tradition:elementalist"`), and `realms` is lowercase realm slugs —
+`healing`, `blessing`, `wrath`, `curse`, `elemental`, `conjuration`,
+`illusion`, `binding`. Never capitalize them in the state JSON.
 
 - **Clerics — a Patron deity.** Pick the deity whose domains fit the
   character. Each grants TWO domain realms:
@@ -59,9 +65,13 @@ CASTING:
   Hard 80 / Very Hard 100), and `effect_die`: the spell's die (below).
   Resolve from the margin; the spell's magnitude (damage or healing) is
   `effect_roll + ⌊margin/10⌋`, exactly like a weapon hit.
-- **Uncontested spell** (self-buff, utility, a ward, an illusion no one
-  is actively resisting): no roll — spend the pool and narrate the
-  effect.
+- **Uncontested spell** (self-buff, utility, healing, a ward, an
+  illusion no one is actively resisting): no d100 contest. Spend the
+  pool and narrate the effect. For an uncontested spell with a listed
+  magnitude die (e.g. Mend's `heal 1d8`), apply a value within that
+  die's range as the effect — treat the die's average as a sensible
+  default — rather than running the contested d100 + `effect_die`
+  machinery, which is for contested casts only.
 
 SPELL REFERENCE (~3 per realm; tier · cost · effect):
 
