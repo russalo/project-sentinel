@@ -13,6 +13,7 @@
 
 CLAUDE.md
 ARCHITECTURE.md
+CONTRIBUTING.md
 
 docs/adr/README.md
 docs/adr/0001-data-canonical-source-of-truth.md
@@ -27,7 +28,11 @@ docs/rfc/0003-tester-guide.md
 docs/rfc/0004-tester-guide-screenshots.md
 docs/rfc/0005-module-infrastructure.md
 docs/rfc/0006-resolution-and-character-sheet.md
+docs/rfc/0007-class-and-combat.md
 
 docs/WORKSPACE.md
 docs/BACKLOG.md
+docs/ROADMAP.md
+docs/VISION.md
+docs/QUICKSTART.md
 docs/alpha/TESTER_GUIDE.md
