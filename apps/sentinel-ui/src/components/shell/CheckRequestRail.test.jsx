@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { CheckRequestRail } from './CheckRequestRail';
 import { useChatStore } from '../../stores/chatStore';
@@ -64,7 +64,7 @@ describe('CheckRequestRail', () => {
     expect(reveal).toHaveTextContent('Near miss');
   });
 
-  it('rolling logs a roll line to the scroll and resends with the wire payload', async () => {
+  it('rolling alone neither logs to the scroll nor resends — it is player-paced', async () => {
     stubD100(47);
     useChatStore.setState({
       checkRequest: { stat: 'body', target: 80, label: 'Force it' },
@@ -72,13 +72,27 @@ describe('CheckRequestRail', () => {
     render(<CheckRequestRail />);
     await userEvent.click(screen.getByTestId('check-roll-button'));
 
-    // A roll line was added to the scroll (beat 3) — synchronously on click.
+    // The reveal sits with a Resolve button; nothing has advanced.
+    expect(screen.getByTestId('check-resolve-button')).toBeInTheDocument();
+    expect(useChatStore.getState().messages).toEqual([]);
+    expect(sendRoll).not.toHaveBeenCalled();
+  });
+
+  it('resolving logs a roll line to the scroll and resends with the wire payload', async () => {
+    stubD100(47);
+    useChatStore.setState({
+      checkRequest: { stat: 'body', target: 80, label: 'Force it' },
+    });
+    render(<CheckRequestRail />);
+    await userEvent.click(screen.getByTestId('check-roll-button'));
+    await userEvent.click(screen.getByTestId('check-resolve-button'));
+
+    // The roll line lands in the scroll (beat 3) — on Resolve, no timer.
     const msgs = useChatStore.getState().messages;
     expect(msgs.some((m) => m.type === 'system' && /margin -3/.test(m.content))).toBe(true);
 
-    // After the reveal pause (real 900ms timeout), the turn resends with the
-    // wire payload. waitFor polls until the deferred sendRoll fires.
-    await waitFor(() => expect(sendRoll).toHaveBeenCalledTimes(1), { timeout: 2000 });
+    // The turn resends synchronously with the wire payload.
+    expect(sendRoll).toHaveBeenCalledTimes(1);
     const [wire, label, sessionId] = sendRoll.mock.calls[0];
     expect(wire).toMatchObject({ stat: 'body', rolled: 47, bonus: 30, total: 77, target: 80, margin: -3 });
     expect(wire.statValue).toBeUndefined(); // wire payload only

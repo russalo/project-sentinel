@@ -2,19 +2,22 @@
 // resolution module / RFC-0006 Slice 2). Renders above the command bar
 // (a sibling of ActionPillRail) when the DM has requested a check.
 //
-// Three beats:
+// Three beats, each PLAYER-PACED (no timers — the reveal never advances
+// on its own, so it can't outrun the player's reading):
 //   1. Request — "🎲 BODY check — Hard (80)  [Roll]" + the DM's prompt.
-//   2. Reveal  — click-to-roll; a static count-up of d100 + bonus → total
-//      vs target, with the margin band. (Animated dice are a later polish.)
-//   3. Resolve — the roll lands as a line in the scroll, and the turn
-//      resends carrying the result so the DM resolves from the margin.
+//   2. Reveal  — click Roll: the d100 + bonus → total vs target lands and
+//      SITS there, with the margin band, alongside a "Resolve →" button.
+//      Nothing happens until the player taps it.
+//   3. Resolve — click Resolve: the roll lands as a line in the scroll, the
+//      turn locks, and it resends carrying the result so the DM resolves
+//      from the margin. (Mirrors the LevelUpCard's pick→Confirm shape.)
 //
 // The d100 is rolled CLIENT-SIDE (real randomness, not LLM bias) — see
 // utils/roll.js. The player's governing-stat value is read from the
 // player character's module_data.character_sheet.stats; missing stats
 // default to 5 (ordinary), so a roll never strands even mid-migration.
 
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { useChatStore } from '../../stores/chatStore';
 import { useWorldStore } from '../../stores/worldStore';
 import { usePlayerStore } from '../../stores/playerStore';
@@ -52,16 +55,16 @@ export function CheckRequestRail() {
   const sessionId = usePlayerStore((s) => s.sessionId);
   const { sendRoll } = useDMStream();
   const [revealed, setRevealed] = useState(null);
-  const timerRef = useRef(null);
 
   // Reset the local reveal whenever the check request changes/clears, so a
-  // stale reveal can't bleed into the next request.
-  useEffect(() => {
+  // stale reveal can't bleed into the next request. Done during render on
+  // identity change (the React-recommended "adjust state when a prop
+  // changes" pattern) rather than in an effect — no extra render pass.
+  const [seenRequest, setSeenRequest] = useState(checkRequest);
+  if (checkRequest !== seenRequest) {
+    setSeenRequest(checkRequest);
     setRevealed(null);
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
-  }, [checkRequest]);
+  }
 
   if (!checkRequest) return null;
 
@@ -69,31 +72,35 @@ export function CheckRequestRail() {
   const statLabel = STAT_LABEL[stat] || stat;
   const targetLabel = TARGET_LABEL[target] || `Target ${target}`;
 
+  // Beat 2: roll the d100 and show the result. PLAYER-PACED — this does
+  // NOT lock the turn, log the scroll line, or resend; the reveal just sits
+  // until the player taps Resolve. (The command bar stays usable in the
+  // meantime — typing a different action simply clears the check on the
+  // next turn, so there's no hang.)
   const handleRoll = () => {
     if (revealed || isStreaming) return;
-    // Lock the turn immediately so the command input (which gates on
-    // isStreaming) can't race a competing action during the reveal pause
-    // before sendRoll fires. runTurn re-asserts this and clears it in its
-    // finally. (codex P2 on PR #146.)
-    setIsStreaming(true);
     const statValue = playerStatValue(characters, playerName, stat);
     // effectDie present → a magnitude check (attack weapon die / spell die):
     // roll it alongside the d100. (RFC-0007 combat, RFC-0008 magic.)
-    const result = computeRoll({ stat, statValue, target, effectDie });
-    setRevealed(result);
-    // Beat 3: drop a concise roll line into the scroll for the history,
-    // then resend the turn so the DM resolves from the margin. The brief
-    // pause lets the reveal register before the resolution stream starts
-    // (which clears the check request + unmounts this rail).
-    const band = marginBand(result.margin, result.openEnded);
+    setRevealed(computeRoll({ stat, statValue, target, effectDie }));
+  };
+
+  // Beat 3: the player has read the roll and tapped Resolve. NOW lock the
+  // turn (the command input gates on isStreaming; runTurn re-asserts this
+  // and clears it in its finally), drop the roll line into the scroll for
+  // the history, and resend the turn so the DM resolves from the margin —
+  // which clears the check request and unmounts this rail. The isStreaming
+  // guard doubles as the double-tap guard.
+  const handleResolve = () => {
+    if (!revealed || isStreaming) return;
+    setIsStreaming(true);
+    const band = marginBand(revealed.margin, revealed.openEnded);
     addMessage({
       type: 'system',
-      content: `🎲 ${statLabel} vs ${targetLabel} ${target} — ${result.total} (margin ${result.margin >= 0 ? '+' : ''}${result.margin}): ${band.label}`,
+      content: `🎲 ${statLabel} vs ${targetLabel} ${target} — ${revealed.total} (margin ${revealed.margin >= 0 ? '+' : ''}${revealed.margin}): ${band.label}`,
       timestamp: new Date(),
     });
-    timerRef.current = setTimeout(() => {
-      sendRoll(toWirePayload(result), label || `${statLabel} check`, sessionId);
-    }, 900);
+    sendRoll(toWirePayload(revealed), label || `${statLabel} check`, sessionId);
   };
 
   const band = revealed ? marginBand(revealed.margin, revealed.openEnded) : null;
@@ -136,6 +143,17 @@ export function CheckRequestRail() {
                 <span>{revealed.effectRoll}{revealed.margin >= 0 ? ` + ${Math.floor(revealed.margin / 10)} (margin)` : ''}</span>
               </div>
             )}
+            <div className="mt-2 flex justify-end">
+              <button
+                type="button"
+                data-testid="check-resolve-button"
+                onClick={handleResolve}
+                disabled={isStreaming}
+                className="px-4 py-1.5 bg-amber text-void rounded font-medium hover:bg-amber/90 transition-colors disabled:opacity-50"
+              >
+                {isStreaming ? 'Resolving…' : 'Resolve →'}
+              </button>
+            </div>
           </div>
         )}
       </div>
