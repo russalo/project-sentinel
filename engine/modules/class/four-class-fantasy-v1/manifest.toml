@@ -1,0 +1,18 @@
+# Four Fantasy classes — Warrior / Rogue / Mage / Cleric (ADR-0005
+# subsystem `class`; Fantasy-flagship v0.1, ratified 2026-06-24). A
+# prompt-fragment module: the character's `class` is already a top-level
+# entity field, so this module supplies the *mechanical definitions*
+# (HP factor, stat priority, magic access, signature moves) that combat
+# (RFC-0007) and magic (RFC-0008) read — the same for every character of
+# a class, hence rules not per-character state.
+
+name = "core/four-class-fantasy-v1"
+version = "1.0.0"
+subsystem = "class"
+interface_version = "1.0"
+
+prompt_fragment = "prompt.md"
+
+schema_fragment = ""
+preset_paths = []
+requires = ["core/four-stat-v1"]

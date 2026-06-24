@@ -55,15 +55,19 @@ def test_base_fragment_byte_identical_to_pre_rfc0005():
     assert load_module("core/base-v1").prompt_fragment_text == frozen
 
 
-def test_default_assembles_base_resolution_character_sheet():
-    """RFC-0006 Slice 2: the default prompt is base + resolution +
-    character_sheet, in canonical order, joined by blank lines. Derives
-    the expectation from the fragments themselves so it's not brittle to
-    prose edits — it pins the ASSEMBLY ORDER, not the content."""
+def test_default_assembles_in_canonical_order():
+    """RFC-0007: the default prompt is base + resolution + character_sheet
+    + class + combat, in CANONICAL_SUBSYSTEM_ORDER, joined by blank lines.
+    Derives the expectation from the fragments themselves so it's not
+    brittle to prose edits — it pins the ASSEMBLY ORDER, not the content."""
     base = load_module("core/base-v1").prompt_fragment_text
     resolution = load_module("core/d100-open-v1").prompt_fragment_text
     sheet = load_module("core/four-stat-v1").prompt_fragment_text
-    assert build_dm_prompt() == f"{base}\n\n{resolution}\n\n{sheet}"
+    klass = load_module("core/four-class-fantasy-v1").prompt_fragment_text
+    combat = load_module("core/hp-pool-v1").prompt_fragment_text
+    assert (
+        build_dm_prompt() == f"{base}\n\n{resolution}\n\n{sheet}\n\n{klass}\n\n{combat}"
+    )
 
 
 def test_dm_system_prompt_constant_matches_assembly():
@@ -159,13 +163,15 @@ def test_base_is_first_in_canonical_order():
     assert CANONICAL_SUBSYSTEM_ORDER[0] == "base"
 
 
-def test_default_modules_is_base_resolution_character_sheet():
-    # RFC-0006 Slice 2: resolution joined the default set — Sentinel is now
-    # a d100 RPG on every world.
+def test_default_modules_is_five_core_set():
+    # RFC-0007: class + combat joined — Sentinel has a full Fantasy core
+    # ruleset (resolution, sheet, classes, combat) on every world.
     assert DEFAULT_MODULES == {
         "base": "core/base-v1",
         "resolution": "core/d100-open-v1",
         "character_sheet": "core/four-stat-v1",
+        "class": "core/four-class-fantasy-v1",
+        "combat": "core/hp-pool-v1",
     }
 
 
@@ -175,6 +181,25 @@ def test_resolution_module_loads():
     assert loaded.manifest.requires == ("core/four-stat-v1",)
     assert "check_request" in loaded.prompt_fragment_text
     assert "ROLL RESULT" in loaded.prompt_fragment_text
+
+
+def test_class_module_loads():
+    loaded = load_module("core/four-class-fantasy-v1")
+    assert loaded.manifest.subsystem == "class"
+    for cls in ("Warrior", "Rogue", "Mage", "Cleric"):
+        assert cls in loaded.prompt_fragment_text
+
+
+def test_combat_module_loads():
+    loaded = load_module("core/hp-pool-v1")
+    assert loaded.manifest.subsystem == "combat"
+    assert loaded.manifest.requires == (
+        "core/four-stat-v1",
+        "core/four-class-fantasy-v1",
+        "core/d100-open-v1",
+    )
+    assert "weapon_die" in loaded.prompt_fragment_text
+    assert "death save" in loaded.prompt_fragment_text.lower()
 
 
 def test_character_sheet_module_loads():

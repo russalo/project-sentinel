@@ -1,0 +1,18 @@
+# HP-pool combat (ADR-0005 subsystem `combat`; Fantasy-flagship v0.1,
+# combat decisions ratified 2026-06-24: round-per-roll, hybrid damage
+# (weapon die + margin nudge), sheet hp). A prompt-fragment module —
+# combat reuses the d100 check loop from the resolution module (an attack
+# IS a Body check vs the target's Defense), so it adds no new roll
+# infrastructure. RFC-0007.
+
+name = "core/hp-pool-v1"
+version = "1.0.0"
+subsystem = "combat"
+interface_version = "1.0"
+
+prompt_fragment = "prompt.md"
+
+schema_fragment = ""
+preset_paths = []
+# Combat reads the four stats + class HP factor and reuses the d100 check.
+requires = ["core/four-stat-v1", "core/four-class-fantasy-v1", "core/d100-open-v1"]

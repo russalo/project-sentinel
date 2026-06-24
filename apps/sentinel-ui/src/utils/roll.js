@@ -20,9 +20,24 @@ export function rollD100() {
   return 1 + Math.floor(Math.random() * 100);
 }
 
+// Roll a single weapon die from a "1dN" spec (RFC-0007 combat). Returns
+// 1..N, or null for an unrecognized/oversized spec. v0.1 supports the
+// single-die "1dN" form only (light 1d4 … two-handed 1d10).
+export function rollWeaponDie(spec) {
+  const m = /^1d(\d+)$/.exec(String(spec ?? '').trim());
+  if (!m) return null;
+  const sides = parseInt(m[1], 10);
+  if (!(sides >= 2 && sides <= 100)) return null;
+  return 1 + Math.floor(Math.random() * sides);
+}
+
 // v0.1 open-ended is a SINGLE reroll (not a chain) — simpler to display and
 // reason about; chaining is a deferred RM-style depth pass.
-export function computeRoll({ stat, statValue, target, mods = 0 }) {
+//
+// `weaponDie` (RFC-0007 combat): when the check is an attack, roll the
+// weapon die alongside the d100 — the DM computes damage from
+// weapon_roll + floor(margin/10). Omit for non-combat checks.
+export function computeRoll({ stat, statValue, target, mods = 0, weaponDie = null }) {
   const first = rollD100();
   let openEnded = null;
   let openEndedRoll = 0;
@@ -36,6 +51,7 @@ export function computeRoll({ stat, statValue, target, mods = 0 }) {
   const bonus = statValue * 5;
   const total = first + openEndedRoll + bonus + mods;
   const margin = total - target;
+  const weaponRoll = weaponDie ? rollWeaponDie(weaponDie) : null;
   return {
     // ── wire fields (sent to the backend) ──
     stat,
@@ -45,6 +61,9 @@ export function computeRoll({ stat, statValue, target, mods = 0 }) {
     target,
     margin,
     openEnded,
+    // weapon fields only on a combat attack (null otherwise)
+    weaponDie: weaponRoll !== null ? weaponDie : null,
+    weaponRoll,
     // ── display-only extras (not sent; used by the reveal) ──
     statValue,
     mods,
@@ -53,8 +72,9 @@ export function computeRoll({ stat, statValue, target, mods = 0 }) {
 }
 
 // Extract just the backend RollResult fields from a computeRoll() result.
+// weaponDie/weaponRoll are included only when the check was an attack.
 export function toWirePayload(r) {
-  return {
+  const wire = {
     stat: r.stat,
     rolled: r.rolled,
     bonus: r.bonus,
@@ -63,6 +83,11 @@ export function toWirePayload(r) {
     margin: r.margin,
     openEnded: r.openEnded,
   };
+  if (r.weaponRoll !== null && r.weaponRoll !== undefined) {
+    wire.weaponDie = r.weaponDie;
+    wire.weaponRoll = r.weaponRoll;
+  }
+  return wire;
 }
 
 // Categorical band for the margin, mirroring the resolution prompt's bands —

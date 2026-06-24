@@ -119,6 +119,70 @@ describe('PlayerVitals — finding the player', () => {
   })
 })
 
+describe('PlayerVitals — sheet hp (RFC-0007)', () => {
+  it('reads module_data.character_sheet.hp and shows current/max with a fraction-based band', () => {
+    usePlayerStore.setState({ characterName: 'Russalo' })
+    useWorldStore.setState({
+      characters: [
+        {
+          name: 'Russalo',
+          role: 'player',
+          module_data: { character_sheet: { hp: { current: 24, max: 48 } } },
+        },
+      ],
+    })
+    render(<PlayerVitals />)
+    // 24/48 = 50% → "Wounded" band (40-69%); readout shows the real numbers.
+    expect(screen.getByText(/Wounded/)).toBeInTheDocument()
+    expect(screen.getByText('24/48')).toBeInTheDocument()
+    const meter = screen.getByRole('meter')
+    expect(meter).toHaveAttribute('aria-valuetext', 'Wounded — 24/48')
+    expect(meter).toHaveAttribute('aria-valuenow', '50') // percentage
+  })
+
+  it('prefers sheet hp over the legacy flat health when both are present', () => {
+    usePlayerStore.setState({ characterName: 'Russalo' })
+    useWorldStore.setState({
+      characters: [
+        {
+          name: 'Russalo',
+          role: 'player',
+          health: 90, // legacy — must be ignored
+          module_data: { character_sheet: { hp: { current: 6, max: 12 } } },
+        },
+      ],
+    })
+    render(<PlayerVitals />)
+    expect(screen.getByText('6/12')).toBeInTheDocument() // sheet, not 90/100
+  })
+
+  it('falls back to flat health when sheet hp is absent (transition)', () => {
+    usePlayerStore.setState({ characterName: 'Russalo' })
+    useWorldStore.setState({
+      characters: [{ name: 'Russalo', role: 'player', health: 80 }],
+    })
+    render(<PlayerVitals />)
+    expect(screen.getByText('80/100')).toBeInTheDocument()
+  })
+
+  it('clamps current to max and ignores a non-positive max (falls back)', () => {
+    usePlayerStore.setState({ characterName: 'Russalo' })
+    useWorldStore.setState({
+      characters: [
+        {
+          name: 'Russalo',
+          role: 'player',
+          health: 70,
+          module_data: { character_sheet: { hp: { current: 5, max: 0 } } }, // invalid max
+        },
+      ],
+    })
+    render(<PlayerVitals />)
+    // max=0 is unusable → fall back to flat health 70/100.
+    expect(screen.getByText('70/100')).toBeInTheDocument()
+  })
+})
+
 describe('PlayerVitals — bands', () => {
   it('renders Whole at 100 HP', () => {
     seedPlayer({ health: 100 })
