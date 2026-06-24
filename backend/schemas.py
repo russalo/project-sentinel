@@ -111,6 +111,11 @@ class RollResult(_CamelModel):
     margin: int
     # "high" (open-ended surge), "low" (fumble spiral), or None.
     open_ended: str | None = None
+    # RFC-0007 combat: on an attack the frontend also rolls the weapon die
+    # (which die came from the check_request's weapon_die). None outside
+    # combat. `model_dump()` yields snake-case (weapon_die / weapon_roll).
+    weapon_die: str | None = None
+    weapon_roll: int | None = None
 
 
 class StreamRequest(_CamelModel):

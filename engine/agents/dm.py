@@ -317,7 +317,20 @@ def _roll_block(roll: dict | None) -> str:
     to whatever fields are present rather than raising)."""
     if not isinstance(roll, dict) or not roll:
         return ""
-    fields = ("stat", "rolled", "bonus", "total", "target", "margin", "open_ended")
+    # `weapon_die` / `weapon_roll` ride along on a combat attack (RFC-0007):
+    # the frontend rolls the weapon die client-side; the DM computes
+    # damage = weapon_roll + floor(margin/10).
+    fields = (
+        "stat",
+        "rolled",
+        "bonus",
+        "total",
+        "target",
+        "margin",
+        "open_ended",
+        "weapon_die",
+        "weapon_roll",
+    )
     lines = [f"- {k}: {roll[k]}" for k in fields if k in roll]
     if not lines:
         return ""
