@@ -6,7 +6,7 @@ beforeEach(() => {
 });
 
 describe('chatStore.setCheckRequest — malformed-LLM-output hardening (PR #146)', () => {
-  it('accepts a well-formed check request', () => {
+  it('accepts a well-formed check request (weaponDie null for a non-combat check)', () => {
     useChatStore.getState().setCheckRequest({
       stat: 'body',
       target: 80,
@@ -18,7 +18,23 @@ describe('chatStore.setCheckRequest — malformed-LLM-output hardening (PR #146)
       target: 80,
       label: 'Force it',
       prompt: 'The iron is fast.',
+      weaponDie: null,
     });
+  });
+
+  it('passes weapon_die through as weaponDie on an attack (RFC-0007)', () => {
+    useChatStore.getState().setCheckRequest({
+      stat: 'body',
+      target: 55,
+      label: 'Strike the ghoul',
+      weapon_die: '1d8',
+    });
+    expect(useChatStore.getState().checkRequest.weaponDie).toBe('1d8');
+  });
+
+  it('drops a non-string weapon_die (treated as a non-combat check)', () => {
+    useChatStore.getState().setCheckRequest({ stat: 'body', target: 55, weapon_die: 8 });
+    expect(useChatStore.getState().checkRequest.weaponDie).toBeNull();
   });
 
   it('rejects an unrecognized stat', () => {
@@ -49,6 +65,7 @@ describe('chatStore.setCheckRequest — malformed-LLM-output hardening (PR #146)
       target: 40,
       label: '',
       prompt: '',
+      weaponDie: null,
     });
   });
 

@@ -172,6 +172,31 @@ function ZzzCaption() {
   );
 }
 
+// Resolve a player's HP into a 0-100 percentage (for the band + fill) plus
+// the real current/max for the readout (RFC-0007). Prefers the four-stat
+// sheet's hp; falls back to the legacy flat `health` (max 100) so a
+// character without a sheet hp still renders. Tolerant of missing/NaN/
+// out-of-range values: a known player with no usable HP reads as full.
+function playerHp(player) {
+  if (!player) return { hp: 0, hpCurrent: 0, hpMax: 0 };
+  const sheet = player?.module_data?.character_sheet?.hp;
+  if (
+    sheet &&
+    Number.isFinite(sheet.current) &&
+    Number.isFinite(sheet.max) &&
+    sheet.max > 0
+  ) {
+    const current = Math.max(0, Math.min(sheet.max, sheet.current));
+    const pct = Math.round((current / sheet.max) * 100);
+    return { hp: pct, hpCurrent: current, hpMax: sheet.max };
+  }
+  // Legacy flat health (0-100; default 100 when absent).
+  const raw = player?.health;
+  const input = raw === undefined ? 100 : raw;
+  const flat = Number.isFinite(input) ? Math.max(0, Math.min(100, input)) : 100;
+  return { hp: flat, hpCurrent: flat, hpMax: 100 };
+}
+
 export function PlayerVitals() {
   const characters = useWorldStore((s) => s.characters);
   const playerName = usePlayerStore((s) => s.characterName);
@@ -193,13 +218,14 @@ export function PlayerVitals() {
 
   const placeholder = !player;
 
-  // Missing health on a known player → 100. NaN / non-finite → 100.
-  // Out-of-range → clamped.
-  const rawHp = player?.health;
-  const hpInput = rawHp === undefined ? 100 : rawHp;
-  const hp = Number.isFinite(hpInput)
-    ? Math.max(0, Math.min(100, hpInput))
-    : 100;
+  // HP source (RFC-0007): prefer the four-stat sheet's hp {current, max}
+  // (variable max per character = Body × class factor). Fall back to the
+  // legacy flat `health` 0-100 for characters not yet given a sheet hp
+  // (created before RFC-0007 / not yet in combat) so existing worlds keep
+  // rendering through the transition. `hp` below is always a 0-100
+  // PERCENTAGE so the band + fill helpers (which expect 0-100) are unchanged;
+  // `hpCurrent`/`hpMax` carry the real numbers for the readout.
+  const { hp, hpCurrent, hpMax } = playerHp(player);
 
   // Status normalization — case- and whitespace-tolerant (DM emits "Dead",
   // "DEAD", " dead ", "Unconscious", "UNCONSCIOUS" etc.). Empty string
@@ -225,7 +251,7 @@ export function PlayerVitals() {
 
   const ariaValueText = placeholder
     ? 'Unknown'
-    : `${band.label} — ${hp}/100`;
+    : `${band.label} — ${hpCurrent}/${hpMax}`;
 
   return (
     <div className="border-b border-border pb-4 mb-4">
@@ -297,7 +323,7 @@ export function PlayerVitals() {
             {band.label}
           </div>
           <div className="text-dust text-xs mt-0.5 whitespace-nowrap">
-            {placeholder ? '—' : `${hp}/100`}
+            {placeholder ? '—' : `${hpCurrent}/${hpMax}`}
           </div>
           {player?.name && !placeholder && (
             <div className="text-ink text-xs mt-1 truncate max-w-full">
