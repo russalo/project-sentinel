@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinel.local/schemas/modules/magic/realm-pool-v1.json",
+  "title": "Realm-pool magic (module_data.magic)",
+  "description": "A caster character's module_data.magic sub-object under core/realm-pool-v1 (ADR-0005 / RFC-0008). The magic_pool itself lives in module_data.character_sheet (max = Will x 2); this object holds the caster's binding + accessible realms. Enforcement is deferred (same posture as character_sheet); shipped as the authored contract.",
+  "type": "object",
+  "properties": {
+    "binding": {
+      "type": "string",
+      "description": "The caster's source, assigned from fiction. 'deity:<slug>' for a Cleric (e.g. 'deity:the-mender') or 'tradition:<slug>' for a Mage (e.g. 'tradition:elementalist')."
+    },
+    "patron_standing": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 10,
+      "description": "Cleric only: standing with the patron deity, 0-10. DM-writable (shifts as the cleric honors or violates the deity's tenets). No mechanical spell-lockout in v0.1 (fall deferred)."
+    },
+    "realms": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["elemental", "conjuration", "illusion", "binding", "healing", "wrath", "blessing", "curse"]
+      },
+      "description": "The realms this caster can draw from (lowercase slugs from the fixed set of 8), derived from the binding: a deity's 2 domain_realms, or a tradition's [primary, secondary]. Secondary-realm spells cost +1 pool."
+    }
+  },
+  "required": ["binding"],
+  "additionalProperties": false
+}

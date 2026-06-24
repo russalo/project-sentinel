@@ -1,0 +1,18 @@
+# Realm-pool magic (ADR-0005 subsystem `magic`; Fantasy-flagship v0.1
+# Axis 6, ratified 2026-06-23/24). Mage/Cleric casting via a Will×2 pool;
+# realm-organized spells; caster bindings (deity Patron / arcane
+# Tradition) assigned from fiction. Casting reuses the d100 check loop
+# (a contested spell = a Will check vs a DC), so no new roll
+# infrastructure. v0.1 inlines the spell/patron/tradition content in the
+# prompt fragment (the module is the swap point; per-spell preset loading
+# is a later optimization). RFC-0008.
+
+name = "core/realm-pool-v1"
+version = "1.0.0"
+subsystem = "magic"
+interface_version = "1.0"
+
+prompt_fragment = "prompt.md"
+schema_fragment = "schema.json"
+preset_paths = []
+requires = ["core/four-stat-v1", "core/four-class-fantasy-v1", "core/d100-open-v1"]

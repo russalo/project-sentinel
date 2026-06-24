@@ -111,14 +111,19 @@ class RollResult(_CamelModel):
     margin: int
     # "high" (open-ended surge), "low" (fumble spiral), or None.
     open_ended: str | None = None
-    # RFC-0007 combat: on an attack the frontend also rolls the weapon die
-    # (which die came from the check_request's weapon_die). None outside
-    # combat. `model_dump()` yields snake-case (weapon_die / weapon_roll).
-    # Bounded 1..100 (no weapon die exceeds it) so a crafted client can't
-    # send an inflated weapon_roll to amplify damage. (gemini security-medium
-    # on PR #148 — the roll is client-side, so bound what feeds damage.)
-    weapon_die: str | None = None
-    weapon_roll: int | None = Field(default=None, ge=1, le=100)
+    # RFC-0007 combat / RFC-0008 magic: on an attack or contested cast the
+    # frontend also rolls the magnitude die (weapon or spell) named by the
+    # check_request's effect_die. None otherwise. `model_dump()` yields
+    # snake-case (effect_die / effect_roll).
+    #
+    # effect_die is pattern-constrained to a "<n>d<m>" die spec — it lands
+    # verbatim in the DM's ROLL RESULT prompt block, so an unconstrained
+    # client string would be a prompt-injection vector (gemini security-high
+    # on PR #149). effect_roll is bounded 1..100 (no die exceeds it) so a
+    # crafted client can't inflate damage/healing (gemini security-medium,
+    # PR #148). The roll is client-side, so bound what feeds the effect.
+    effect_die: str | None = Field(default=None, pattern=r"^\d{1,2}d\d{1,3}$")
+    effect_roll: int | None = Field(default=None, ge=1, le=100)
 
 
 class StreamRequest(_CamelModel):
