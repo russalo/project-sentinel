@@ -4,6 +4,7 @@ import { usePlayerStore } from '../../stores/playerStore';
 import { useDMStream } from '../../hooks/useDMStream';
 import { ActionPillRail } from './ActionPillRail';
 import { CheckRequestRail } from './CheckRequestRail';
+import { LevelUpCard } from './LevelUpCard';
 
 // `input` is lifted to chatStore so the ActionPillRail and inline `<action>`
 // highlights (NarrativeText) can populate the field via setInput(label). The
@@ -39,6 +40,7 @@ export function CommandBar() {
       style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
     >
       <CheckRequestRail />
+      <LevelUpCard />
       <ActionPillRail />
       <div
         className="px-3 lg:px-6 pt-1 flex gap-2 lg:gap-3"

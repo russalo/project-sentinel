@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { useChatStore } from './chatStore';
 
 beforeEach(() => {
-  useChatStore.setState({ checkRequest: null });
+  useChatStore.setState({ checkRequest: null, levelUp: null });
 });
 
 describe('chatStore.setCheckRequest — malformed-LLM-output hardening (PR #146)', () => {
@@ -73,5 +73,46 @@ describe('chatStore.setCheckRequest — malformed-LLM-output hardening (PR #146)
     useChatStore.getState().setCheckRequest({ stat: 'will', target: 100 });
     useChatStore.getState().clearCheckRequest();
     expect(useChatStore.getState().checkRequest).toBeNull();
+  });
+});
+
+describe('chatStore.setLevelUp — malformed-LLM-output hardening (RFC-0009)', () => {
+  it('accepts a well-formed level-up proposal (to_level → toLevel)', () => {
+    useChatStore.getState().setLevelUp({ to_level: 3 });
+    expect(useChatStore.getState().levelUp).toEqual({ toLevel: 3 });
+  });
+
+  it('rejects a non-integer / non-positive to_level', () => {
+    useChatStore.getState().setLevelUp({ to_level: 'three' });
+    expect(useChatStore.getState().levelUp).toBeNull();
+    useChatStore.getState().setLevelUp({ to_level: 0 });
+    expect(useChatStore.getState().levelUp).toBeNull();
+    useChatStore.getState().setLevelUp({ to_level: -1 });
+    expect(useChatStore.getState().levelUp).toBeNull();
+    useChatStore.getState().setLevelUp({}); // missing
+    expect(useChatStore.getState().levelUp).toBeNull();
+  });
+
+  it('rejects a to_level above the v0.1 1..5 cap (impossible advancement)', () => {
+    useChatStore.getState().setLevelUp({ to_level: 6 });
+    expect(useChatStore.getState().levelUp).toBeNull();
+    useChatStore.getState().setLevelUp({ to_level: 99 });
+    expect(useChatStore.getState().levelUp).toBeNull();
+    // 5 is the cap and still accepted.
+    useChatStore.getState().setLevelUp({ to_level: 5 });
+    expect(useChatStore.getState().levelUp).toEqual({ toLevel: 5 });
+  });
+
+  it('rejects null / non-object', () => {
+    useChatStore.getState().setLevelUp(null);
+    expect(useChatStore.getState().levelUp).toBeNull();
+    useChatStore.getState().setLevelUp('nonsense');
+    expect(useChatStore.getState().levelUp).toBeNull();
+  });
+
+  it('clearLevelUp resets to null', () => {
+    useChatStore.getState().setLevelUp({ to_level: 2 });
+    useChatStore.getState().clearLevelUp();
+    expect(useChatStore.getState().levelUp).toBeNull();
   });
 });

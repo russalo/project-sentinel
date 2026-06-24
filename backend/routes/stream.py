@@ -268,6 +268,10 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
         # carries the d100 roll; model_dump() yields the snake-case keys the
         # engine's ROLL RESULT block reads. None on an ordinary turn.
         roll=body.roll.model_dump() if body.roll is not None else None,
+        # ADR-0005 progression module (RFC-0009): on a level-up turn the body
+        # carries the player's chosen stat; the engine renders it as a
+        # LEVEL-UP CHOICE block. None otherwise.
+        level_up=body.level_up.model_dump() if body.level_up is not None else None,
     )
 
     next_turn_number = (session.turns[-1]["turn_number"] + 1) if session.turns else 1

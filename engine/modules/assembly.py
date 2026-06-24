@@ -25,6 +25,7 @@ from .loader import load_module
 #   RFC-0006 Slice 2: resolution (the d100 roll loop)
 #   RFC-0007: class + combat
 #   RFC-0008: magic
+#   RFC-0009: progression
 DEFAULT_MODULES: dict[str, str] = {
     "base": "core/base-v1",
     "resolution": "core/d100-open-v1",
@@ -32,6 +33,7 @@ DEFAULT_MODULES: dict[str, str] = {
     "class": "core/four-class-fantasy-v1",
     "combat": "core/hp-pool-v1",
     "magic": "core/realm-pool-v1",
+    "progression": "core/milestone-v1",
 }
 
 # Deterministic assembly order. A module fills its subsystem's slot; the

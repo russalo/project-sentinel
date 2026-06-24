@@ -73,6 +73,12 @@ class DMTurnInput:
     # a structured ROLL RESULT block in the prompt so the DM resolves from
     # the margin (never re-rolls, never invents the number).
     roll: dict[str, object] | None = None
+    # ADR-0005 progression module (RFC-0009): when the player enacts a
+    # DM-proposed level-up, their chosen stat rides here as
+    # ``{"stat": "will", "to_level": 2}``. None otherwise. Rendered as a
+    # LEVEL-UP CHOICE block so the DM applies exactly the player's choice
+    # (the PC-ownership wall — the DM never picks the stat itself).
+    level_up: dict[str, object] | None = None
 
 
 @dataclass

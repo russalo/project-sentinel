@@ -140,6 +140,39 @@ export const useChatStore = create((set) => ({
     });
   },
   clearCheckRequest: () => set({ checkRequest: null }),
+
+  // DM-proposed level-up for the current turn (ADR-0005 progression module
+  // / RFC-0009). Populated by useDMStream when the `world_update` event
+  // carries `level_up: {to_level}` — the DM is signalling the player has
+  // earned an advance and STOPS (the PC-ownership wall: the DM never picks
+  // the stat or writes the level itself). The LevelUpCard renders the
+  // stat-choice affordance; on confirm, useDMStream resends the turn
+  // carrying the choice. Cleared at the start of each turn (parallel to
+  // checkRequest) so a stale proposal can't linger.
+  levelUp: null,
+  // Validate a DM-emitted level_up before surfacing it. A malformed signal
+  // (non-integer / non-positive to_level) would produce a broken card, so
+  // reject it outright — better the DM keeps narrating than the player
+  // faces an un-actionable advance. (Mirrors setCheckRequest; the
+  // malformed-LLM-output hunt pattern.)
+  // The progression module is v0.1 levels 1..5; a malformed proposal above
+  // the cap (e.g. {to_level: 6}) must be rejected, not surfaced — otherwise
+  // LevelUpCard would let the player confirm an impossible advancement
+  // (codex P2, PR #150). Mirrors the backend LevelUpChoice bound.
+  setLevelUp: (req) => {
+    if (
+      !req ||
+      typeof req !== 'object' ||
+      !Number.isInteger(req.to_level) ||
+      req.to_level < 1 ||
+      req.to_level > 5
+    ) {
+      set({ levelUp: null });
+      return;
+    }
+    set({ levelUp: { toLevel: req.to_level } });
+  },
+  clearLevelUp: () => set({ levelUp: null }),
 }));
 
 // Dev-only handle so the screenshot tooling (scripts/src/screenshot-guide.mjs)

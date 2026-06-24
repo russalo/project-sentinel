@@ -56,18 +56,20 @@ def test_base_fragment_byte_identical_to_pre_rfc0005():
 
 
 def test_default_assembles_in_canonical_order():
-    """RFC-0008: the default prompt is base + resolution + character_sheet
-    + class + combat + magic, in CANONICAL_SUBSYSTEM_ORDER, joined by
-    blank lines. Derives the expectation from the fragments themselves so
-    it's not brittle to prose edits — it pins the ASSEMBLY ORDER."""
+    """RFC-0009: the default prompt is base + resolution + character_sheet
+    + class + combat + magic + progression, in CANONICAL_SUBSYSTEM_ORDER,
+    joined by blank lines. Derives the expectation from the fragments
+    themselves so it's not brittle to prose edits — pins the ORDER."""
     base = load_module("core/base-v1").prompt_fragment_text
     resolution = load_module("core/d100-open-v1").prompt_fragment_text
     sheet = load_module("core/four-stat-v1").prompt_fragment_text
     klass = load_module("core/four-class-fantasy-v1").prompt_fragment_text
     combat = load_module("core/hp-pool-v1").prompt_fragment_text
     magic = load_module("core/realm-pool-v1").prompt_fragment_text
+    progression = load_module("core/milestone-v1").prompt_fragment_text
     assert build_dm_prompt() == (
         f"{base}\n\n{resolution}\n\n{sheet}\n\n{klass}\n\n{combat}\n\n{magic}"
+        f"\n\n{progression}"
     )
 
 
@@ -164,9 +166,9 @@ def test_base_is_first_in_canonical_order():
     assert CANONICAL_SUBSYSTEM_ORDER[0] == "base"
 
 
-def test_default_modules_is_six_core_set():
-    # RFC-0008: magic joined — the full Fantasy core ruleset (resolution,
-    # sheet, classes, combat, magic) on every world.
+def test_default_modules_is_seven_core_set():
+    # RFC-0009: progression joined — the complete Fantasy core ruleset
+    # (resolution, sheet, classes, combat, magic, progression) on every world.
     assert DEFAULT_MODULES == {
         "base": "core/base-v1",
         "resolution": "core/d100-open-v1",
@@ -174,7 +176,18 @@ def test_default_modules_is_six_core_set():
         "class": "core/four-class-fantasy-v1",
         "combat": "core/hp-pool-v1",
         "magic": "core/realm-pool-v1",
+        "progression": "core/milestone-v1",
     }
+
+
+def test_progression_module_loads():
+    loaded = load_module("core/milestone-v1")
+    assert loaded.manifest.subsystem == "progression"
+    p = loaded.prompt_fragment_text
+    assert "level_up" in p  # the proposal signal
+    assert "LEVEL-UP CHOICE" in p  # the apply path
+    # the PC-ownership wall: DM proposes, never decides
+    assert "may NOT decide" in p or "player's to take" in p
 
 
 def test_magic_module_loads():
