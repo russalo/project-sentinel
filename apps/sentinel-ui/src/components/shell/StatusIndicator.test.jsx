@@ -10,7 +10,7 @@ import { StatusIndicator } from './StatusIndicator'
 import { useChatStore } from '../../stores/chatStore'
 
 beforeEach(() => {
-  useChatStore.setState({ isStreaming: false, streamError: false, rollPending: false })
+  useChatStore.setState({ isStreaming: false, streamError: false, rollResult: null })
 })
 
 describe('StatusIndicator', () => {
@@ -32,15 +32,15 @@ describe('StatusIndicator', () => {
   })
 
   it('shows "resolve to continue" while a rolled check awaits resolution', () => {
-    useChatStore.setState({ rollPending: true })
+    useChatStore.setState({ rollResult: { stat: 'body', total: 77, margin: -3 } })
     render(<StatusIndicator />)
     expect(screen.getByText('Roll ready — resolve to continue')).toBeInTheDocument()
     // Not the misleading "Streaming…" — the DM isn't working yet.
     expect(screen.queryByText('Streaming…')).toBeNull()
   })
 
-  it('streaming wins over a stale rollPending', () => {
-    useChatStore.setState({ rollPending: true, isStreaming: true })
+  it('streaming wins over a stale pending roll', () => {
+    useChatStore.setState({ rollResult: { stat: 'body', total: 77 }, isStreaming: true })
     render(<StatusIndicator />)
     expect(screen.getByText('Streaming…')).toBeInTheDocument()
   })

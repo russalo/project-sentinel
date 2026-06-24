@@ -2,7 +2,26 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { useChatStore } from './chatStore';
 
 beforeEach(() => {
-  useChatStore.setState({ checkRequest: null, levelUp: null, rollPending: false });
+  useChatStore.setState({ checkRequest: null, levelUp: null, rollResult: null });
+});
+
+describe('chatStore.clearMessages — full reset of turn-ephemeral state (inter-world bleed guard, PR #154)', () => {
+  it('clears the per-turn DM affordances so they cannot bleed across a world switch', () => {
+    // Seed world A's ephemeral state.
+    useChatStore.setState({
+      checkRequest: { stat: 'body', target: 80, label: 'x', prompt: '', effectDie: null },
+      suggestedActions: [{ label: 'flee', tone: 'cautious' }],
+      levelUp: { toLevel: 2 },
+      rollResult: { stat: 'body', total: 77, margin: -3 },
+    });
+    // Switching/loading a world calls clearMessages — none of A's state may survive.
+    useChatStore.getState().clearMessages();
+    const s = useChatStore.getState();
+    expect(s.checkRequest).toBeNull();
+    expect(s.suggestedActions).toEqual([]);
+    expect(s.levelUp).toBeNull();
+    expect(s.rollResult).toBeNull();
+  });
 });
 
 describe('chatStore.setCheckRequest — malformed-LLM-output hardening (PR #146)', () => {
@@ -76,22 +95,22 @@ describe('chatStore.setCheckRequest — malformed-LLM-output hardening (PR #146)
   });
 });
 
-describe('chatStore.rollPending — player-paced roll lock (PR #151 follow-up)', () => {
-  it('defaults to false', () => {
-    expect(useChatStore.getState().rollPending).toBe(false);
+describe('chatStore.rollResult — revealed roll + the player-paced lock (PR #152 follow-up)', () => {
+  const roll = { stat: 'body', rolled: 47, bonus: 30, total: 77, target: 80, margin: -3 };
+
+  it('defaults to null (no pending roll)', () => {
+    expect(useChatStore.getState().rollResult).toBeNull();
   });
 
-  it('setRollPending coerces to a boolean', () => {
-    useChatStore.getState().setRollPending(true);
-    expect(useChatStore.getState().rollPending).toBe(true);
-    useChatStore.getState().setRollPending(0);
-    expect(useChatStore.getState().rollPending).toBe(false);
+  it('setRollResult stores the revealed roll (the single source of truth for "pending")', () => {
+    useChatStore.getState().setRollResult(roll);
+    expect(useChatStore.getState().rollResult).toEqual(roll);
   });
 
-  it('clearCheckRequest lifts the roll lock (so it can never get stuck)', () => {
-    useChatStore.getState().setRollPending(true);
+  it('clearCheckRequest clears the revealed roll (so the lock can never get stuck)', () => {
+    useChatStore.getState().setRollResult(roll);
     useChatStore.getState().clearCheckRequest();
-    expect(useChatStore.getState().rollPending).toBe(false);
+    expect(useChatStore.getState().rollResult).toBeNull();
     expect(useChatStore.getState().checkRequest).toBeNull();
   });
 });

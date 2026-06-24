@@ -17,7 +17,6 @@
 // player character's module_data.character_sheet.stats; missing stats
 // default to 5 (ordinary), so a roll never strands even mid-migration.
 
-import { useState } from 'react';
 import { useChatStore } from '../../stores/chatStore';
 import { useWorldStore } from '../../stores/worldStore';
 import { usePlayerStore } from '../../stores/playerStore';
@@ -50,22 +49,17 @@ export function CheckRequestRail() {
   const addMessage = useChatStore((s) => s.addMessage);
   const isStreaming = useChatStore((s) => s.isStreaming);
   const setIsStreaming = useChatStore((s) => s.setIsStreaming);
-  const setRollPending = useChatStore((s) => s.setRollPending);
+  // The revealed roll lives in the store (not local state) so it survives the
+  // rail unmounting — e.g. navigating to /guide before resolving — and is
+  // restored on return (PR #152 follow-up). clearCheckRequest (called by
+  // runTurn at the top of every turn) resets it, so a stale reveal can't bleed
+  // into the next request.
+  const revealed = useChatStore((s) => s.rollResult);
+  const setRevealed = useChatStore((s) => s.setRollResult);
   const characters = useWorldStore((s) => s.characters);
   const playerName = usePlayerStore((s) => s.characterName);
   const sessionId = usePlayerStore((s) => s.sessionId);
   const { sendRoll } = useDMStream();
-  const [revealed, setRevealed] = useState(null);
-
-  // Reset the local reveal whenever the check request changes/clears, so a
-  // stale reveal can't bleed into the next request. Done during render on
-  // identity change (the React-recommended "adjust state when a prop
-  // changes" pattern) rather than in an effect — no extra render pass.
-  const [seenRequest, setSeenRequest] = useState(checkRequest);
-  if (checkRequest !== seenRequest) {
-    setSeenRequest(checkRequest);
-    setRevealed(null);
-  }
 
   if (!checkRequest) return null;
 
@@ -74,18 +68,18 @@ export function CheckRequestRail() {
   const targetLabel = TARGET_LABEL[target] || `Target ${target}`;
 
   // Beat 2: roll the d100 and show the result. PLAYER-PACED — this does NOT
-  // resend or log the scroll line; the reveal just sits until the player
-  // taps Resolve. It DOES set rollPending, which locks the command bar so a
+  // resend or log the scroll line; the reveal just sits until the player taps
+  // Resolve. Storing the result (rollResult) locks the command bar so the
   // revealed roll can't be silently discarded by typing a different action
-  // (the lock lifts on Resolve / next turn via clearCheckRequest). Resolve
-  // is always present, so there's no dead-end.
+  // (the lock lifts on Resolve / next turn via clearCheckRequest), and the
+  // result survives the rail unmounting. Resolve is always present — no
+  // dead-end.
   const handleRoll = () => {
     if (revealed || isStreaming) return;
     const statValue = playerStatValue(characters, playerName, stat);
     // effectDie present → a magnitude check (attack weapon die / spell die):
     // roll it alongside the d100. (RFC-0007 combat, RFC-0008 magic.)
     setRevealed(computeRoll({ stat, statValue, target, effectDie }));
-    setRollPending(true);
   };
 
   // Beat 3: the player has read the roll and tapped Resolve. NOW lock the

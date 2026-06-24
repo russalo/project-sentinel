@@ -15,13 +15,16 @@ vi.mock('./ActionPillRail', () => ({ ActionPillRail: () => null }));
 vi.mock('./CheckRequestRail', () => ({ CheckRequestRail: () => null }));
 vi.mock('./LevelUpCard', () => ({ LevelUpCard: () => null }));
 
+// A revealed-but-unresolved roll (rollResult set) is what engages the lock.
+const PENDING_ROLL = { stat: 'body', rolled: 47, bonus: 30, total: 77, target: 80, margin: -3 };
+
 beforeEach(() => {
   sendAction.mockReset();
-  useChatStore.setState({ input: '', isStreaming: false, rollPending: false, messages: [] });
+  useChatStore.setState({ input: '', isStreaming: false, rollResult: null, messages: [] });
   usePlayerStore.setState({ sessionId: 'sess-1' });
 });
 
-describe('CommandBar — rollPending lock (player-paced roll, PR #151 follow-up)', () => {
+describe('CommandBar — roll-pending lock (player-paced roll, PR #152)', () => {
   it('input + send are enabled in the ordinary idle state', () => {
     render(<CommandBar />);
     expect(screen.getByTestId('command-bar-input')).toBeEnabled();
@@ -29,7 +32,7 @@ describe('CommandBar — rollPending lock (player-paced roll, PR #151 follow-up)
   });
 
   it('locks input + send while a rolled check awaits resolution', () => {
-    useChatStore.setState({ rollPending: true });
+    useChatStore.setState({ rollResult: PENDING_ROLL });
     render(<CommandBar />);
     expect(screen.getByTestId('command-bar-input')).toBeDisabled();
     expect(screen.getByTestId('command-bar-send')).toBeDisabled();
@@ -37,8 +40,8 @@ describe('CommandBar — rollPending lock (player-paced roll, PR #151 follow-up)
       'placeholder', 'Resolve the roll to continue...');
   });
 
-  it('does not send an action while rollPending — the roll cannot be discarded by typing', () => {
-    useChatStore.setState({ rollPending: true, input: 'run away instead' });
+  it('does not send an action while a roll is pending — the roll cannot be discarded by typing', () => {
+    useChatStore.setState({ rollResult: PENDING_ROLL, input: 'run away instead' });
     render(<CommandBar />);
     // Even forcing a click on the (disabled) send does nothing.
     screen.getByTestId('command-bar-send').click();

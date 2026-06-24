@@ -20,7 +20,7 @@ function stubD100(...values) {
 beforeEach(() => {
   sendRoll.mockReset();
   vi.restoreAllMocks();
-  useChatStore.setState({ checkRequest: null, isStreaming: false, messages: [], rollPending: false });
+  useChatStore.setState({ checkRequest: null, isStreaming: false, messages: [], rollResult: null });
   useWorldStore.setState({
     characters: [
       {
@@ -76,9 +76,31 @@ describe('CheckRequestRail', () => {
     expect(screen.getByTestId('check-resolve-button')).toBeInTheDocument();
     expect(useChatStore.getState().messages).toEqual([]);
     expect(sendRoll).not.toHaveBeenCalled();
-    // ...but the command-bar lock is now engaged so the roll can't be
-    // discarded by typing past it (PR #151 follow-up).
-    expect(useChatStore.getState().rollPending).toBe(true);
+    // ...but the result is now in the store (rollResult), which both engages
+    // the command-bar lock and lets the reveal survive an unmount.
+    expect(useChatStore.getState().rollResult).toMatchObject({ stat: 'body', rolled: 47 });
+  });
+
+  it('a revealed roll survives the rail unmounting and remounting (PR #152 follow-up)', async () => {
+    stubD100(47);
+    useChatStore.setState({ checkRequest: { stat: 'body', target: 80, label: 'Force it' } });
+    const { unmount } = render(<CheckRequestRail />);
+    await userEvent.click(screen.getByTestId('check-roll-button'));
+    expect(screen.getByTestId('check-reveal')).toHaveTextContent('77');
+
+    // Player navigates away (e.g. to /guide): the rail unmounts. The store
+    // keeps checkRequest + rollResult.
+    unmount();
+
+    // Back on the world: a fresh rail instance restores the reveal from the
+    // store — no re-roll, Resolve still available.
+    render(<CheckRequestRail />);
+    const reveal = screen.getByTestId('check-reveal');
+    expect(reveal).toHaveTextContent('77');
+    expect(reveal).toHaveTextContent('margin -3');
+    expect(screen.getByTestId('check-resolve-button')).toBeInTheDocument();
+    // The Roll button is gone — the reveal is shown, not a fresh roll prompt.
+    expect(screen.queryByTestId('check-roll-button')).toBeNull();
   });
 
   it('resolving logs a roll line to the scroll and resends with the wire payload', async () => {
