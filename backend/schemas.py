@@ -126,6 +126,19 @@ class RollResult(_CamelModel):
     effect_roll: int | None = Field(default=None, ge=1, le=100)
 
 
+class LevelUpChoice(_CamelModel):
+    """The player's level-up enactment (ADR-0005 progression / RFC-0009).
+
+    Sent on the turn where the player takes a DM-proposed level-up: the
+    attribute they chose to raise (+ the target level for clarity). The
+    DM applies exactly this — the PC-ownership wall (the DM proposes,
+    never picks the stat itself)."""
+
+    # one of body / mind / heart / will
+    stat: str
+    to_level: int | None = Field(default=None, ge=1)
+
+
 class StreamRequest(_CamelModel):
     action: str
     session_id: str
@@ -140,6 +153,9 @@ class StreamRequest(_CamelModel):
     # turn — the d100 result for a check the DM previously requested. None on
     # an ordinary turn.
     roll: RollResult | None = None
+    # ADR-0005 progression module (RFC-0009): present when the player enacts
+    # a DM-proposed level-up — their chosen stat. None otherwise.
+    level_up: LevelUpChoice | None = None
 
 
 # ── GET /healthz ─────────────────────────────────────────────────────

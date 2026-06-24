@@ -1,0 +1,18 @@
+# Milestone progression (ADR-0005 subsystem `progression`; Fantasy-flagship
+# v0.1 Axis 4, ratified 2026-06-24). No XP counting — the DM PROPOSES a
+# level-up at earned narrative milestones; the player ENACTS it (picks the
+# stat to raise) via a level-up affordance; the DM applies only the player's
+# stated choice. This is where the PC-ownership principle gets its mechanism
+# (the 2026-04-15 smoke test caught the DM unilaterally leveling the player).
+# Prompt-fragment module — it coordinates growth across the existing
+# character_sheet/class state; no module_data of its own. RFC-0009.
+
+name = "core/milestone-v1"
+version = "1.0.0"
+subsystem = "progression"
+interface_version = "1.0"
+
+prompt_fragment = "prompt.md"
+schema_fragment = ""
+preset_paths = []
+requires = ["core/four-stat-v1", "core/four-class-fantasy-v1"]

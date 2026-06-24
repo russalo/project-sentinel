@@ -7,21 +7,25 @@ import { usePlayerStore } from '../stores/playerStore';
 import { computeDelta, hasDelta } from '../utils/delta';
 
 export function useDMStream() {
-  const { appendToBuffer, commitStreamMessage, setIsStreaming, setStreamError, addMessage, addSystemLogEntry, setSuggestedActions, clearSuggestedActions, setCheckRequest, clearCheckRequest } = useChatStore();
+  const { appendToBuffer, commitStreamMessage, setIsStreaming, setStreamError, addMessage, addSystemLogEntry, setSuggestedActions, clearSuggestedActions, setCheckRequest, clearCheckRequest, setLevelUp, clearLevelUp } = useChatStore();
   const applyUpdate = useWorldStore((s) => s.applyUpdate);
 
   // Core turn runner. `roll` is the d100 wire payload on a resolve turn
-  // (ADR-0005 resolution module), null on an ordinary turn.
+  // (ADR-0005 resolution module), null on an ordinary turn. `levelUp` is
+  // the level-up choice wire payload on an enact turn (ADR-0005 progression
+  // module / RFC-0009), null otherwise.
   const runTurn = useCallback(
-    async (action, sessionId, roll = null) => {
+    async (action, sessionId, roll = null, levelUp = null) => {
       setIsStreaming(true);
       setStreamError(false); // clear any prior turn's error
       // Drop the previous turn's DM-emitted affordances the moment a new
-      // turn starts — stale action pills / a stale check request from N-1
-      // turns ago shouldn't sit next to the new turn's narrative.
-      // Always-available pills (rule-based, frontend-only) are unaffected.
+      // turn starts — stale action pills / a stale check request / a stale
+      // level-up proposal from N-1 turns ago shouldn't sit next to the new
+      // turn's narrative. Always-available pills (rule-based, frontend-only)
+      // are unaffected.
       clearSuggestedActions();
       clearCheckRequest();
+      clearLevelUp();
       let buffer = '';
       const pendingDeltas = [];
       // worldId is advisory for the backend (it routes by session_id), but the
@@ -36,9 +40,9 @@ export function useDMStream() {
             // Per-world token (ADR 0003); empty header object when none is held.
             ...worldTokenHeader(worldId),
           },
-          // `roll` only present on a resolve turn; the backend RollResult
-          // model ignores it when null.
-          body: JSON.stringify({ action, sessionId, worldId, ...(roll ? { roll } : {}) }),
+          // `roll` only present on a resolve turn; `levelUp` only on an
+          // enact turn. The backend models ignore each when absent.
+          body: JSON.stringify({ action, sessionId, worldId, ...(roll ? { roll } : {}), ...(levelUp ? { levelUp } : {}) }),
         });
 
         if (!response.ok) {
@@ -97,6 +101,11 @@ export function useDMStream() {
               // prompt}` in the same world_update hint when it wants the
               // player to roll instead of resolving. Missing → cleared.
               setCheckRequest(event.data?.check_request);
+              // Surface a DM-proposed level-up (ADR-0005 progression
+              // module / RFC-0009): the DM emits `level_up: {to_level}` in
+              // the same world_update hint when the player has earned an
+              // advance, then STOPS. Missing → cleared.
+              setLevelUp(event.data?.level_up);
             }
             if (event.type === 'system') addMessage({ type: 'system', content: event.content, timestamp: new Date() });
             if (event.type === 'error') addMessage({ type: 'system', content: `[Error: ${event.content}]`, timestamp: new Date() });
@@ -118,7 +127,7 @@ export function useDMStream() {
         setIsStreaming(false);
       }
     },
-    [appendToBuffer, commitStreamMessage, setIsStreaming, setStreamError, addMessage, addSystemLogEntry, applyUpdate, setSuggestedActions, clearSuggestedActions, setCheckRequest, clearCheckRequest],
+    [appendToBuffer, commitStreamMessage, setIsStreaming, setStreamError, addMessage, addSystemLogEntry, applyUpdate, setSuggestedActions, clearSuggestedActions, setCheckRequest, clearCheckRequest, setLevelUp, clearLevelUp],
   );
 
   // Ordinary turn: the player's typed/clicked action, no roll.
@@ -135,5 +144,21 @@ export function useDMStream() {
     [runTurn],
   );
 
-  return { sendAction, sendRoll };
+  // Enact turn: the player took a DM-proposed level-up and chose a stat
+  // (ADR-0005 progression module / RFC-0009). `stat` is the lowercase
+  // attribute (body/mind/heart/will); `toLevel` is the target level. The
+  // backend LevelUpChoice model reads camelCase (toLevel); the DM applies
+  // exactly this — the PC-ownership wall.
+  const sendLevelUp = useCallback(
+    (stat, toLevel, sessionId) =>
+      runTurn(
+        `I advance to level ${toLevel}, raising ${stat}.`,
+        sessionId,
+        null,
+        { stat, toLevel },
+      ),
+    [runTurn],
+  );
+
+  return { sendAction, sendRoll, sendLevelUp };
 }
