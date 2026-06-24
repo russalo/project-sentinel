@@ -20,7 +20,15 @@ export const useChatStore = create((set) => ({
   addMessage: (message) => set((state) => ({
     messages: [...state.messages, { id: newId(), ...message }],
   })),
-  clearMessages: () => set({ messages: [], systemLog: [], unreadSystemLog: 0, activeView: 'narrative', streamBuffer: '', streamError: false, rollResult: null }),
+  // Full chat reset — used on world switch / session load (useWorldHydration)
+  // and new-world creation (WorldCreation). Resets ALL turn-ephemeral state,
+  // including the per-turn DM affordances (checkRequest, suggestedActions,
+  // levelUp) and the revealed roll (rollResult): otherwise a pending check /
+  // suggestion / level-up / roll from world A bleeds into world B on switch
+  // (inter-world state bleed — the multi-tenancy boundary; gemini-high on
+  // PR #154). This is the single place that boundary is enforced for chat
+  // state, so every turn-ephemeral field added to the store belongs here.
+  clearMessages: () => set({ messages: [], systemLog: [], unreadSystemLog: 0, activeView: 'narrative', streamBuffer: '', streamError: false, rollResult: null, checkRequest: null, suggestedActions: [], levelUp: null }),
 
   // System log — one entry per turn, persists across the session
   systemLog: [],

@@ -5,6 +5,25 @@ beforeEach(() => {
   useChatStore.setState({ checkRequest: null, levelUp: null, rollResult: null });
 });
 
+describe('chatStore.clearMessages — full reset of turn-ephemeral state (inter-world bleed guard, PR #154)', () => {
+  it('clears the per-turn DM affordances so they cannot bleed across a world switch', () => {
+    // Seed world A's ephemeral state.
+    useChatStore.setState({
+      checkRequest: { stat: 'body', target: 80, label: 'x', prompt: '', effectDie: null },
+      suggestedActions: [{ label: 'flee', tone: 'cautious' }],
+      levelUp: { toLevel: 2 },
+      rollResult: { stat: 'body', total: 77, margin: -3 },
+    });
+    // Switching/loading a world calls clearMessages — none of A's state may survive.
+    useChatStore.getState().clearMessages();
+    const s = useChatStore.getState();
+    expect(s.checkRequest).toBeNull();
+    expect(s.suggestedActions).toEqual([]);
+    expect(s.levelUp).toBeNull();
+    expect(s.rollResult).toBeNull();
+  });
+});
+
 describe('chatStore.setCheckRequest — malformed-LLM-output hardening (PR #146)', () => {
   it('accepts a well-formed check request (effectDie null for a non-combat check)', () => {
     useChatStore.getState().setCheckRequest({
