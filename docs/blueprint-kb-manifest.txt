@@ -29,6 +29,7 @@ docs/rfc/0004-tester-guide-screenshots.md
 docs/rfc/0005-module-infrastructure.md
 docs/rfc/0006-resolution-and-character-sheet.md
 docs/rfc/0007-class-and-combat.md
+docs/rfc/0008-magic.md
 
 docs/WORKSPACE.md
 docs/BACKLOG.md

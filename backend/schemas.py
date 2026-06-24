@@ -112,13 +112,13 @@ class RollResult(_CamelModel):
     # "high" (open-ended surge), "low" (fumble spiral), or None.
     open_ended: str | None = None
     # RFC-0007 combat: on an attack the frontend also rolls the weapon die
-    # (which die came from the check_request's weapon_die). None outside
-    # combat. `model_dump()` yields snake-case (weapon_die / weapon_roll).
+    # (which die came from the check_request's effect_die). None outside
+    # combat. `model_dump()` yields snake-case (effect_die / effect_roll).
     # Bounded 1..100 (no weapon die exceeds it) so a crafted client can't
-    # send an inflated weapon_roll to amplify damage. (gemini security-medium
+    # send an inflated effect_roll to amplify damage. (gemini security-medium
     # on PR #148 — the roll is client-side, so bound what feeds damage.)
-    weapon_die: str | None = None
-    weapon_roll: int | None = Field(default=None, ge=1, le=100)
+    effect_die: str | None = None
+    effect_roll: int | None = Field(default=None, ge=1, le=100)
 
 
 class StreamRequest(_CamelModel):

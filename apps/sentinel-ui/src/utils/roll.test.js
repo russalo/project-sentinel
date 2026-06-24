@@ -65,31 +65,31 @@ describe('computeRoll', () => {
 });
 
 describe('computeRoll — weapon die (RFC-0007 combat)', () => {
-  it('rolls the weapon die when weaponDie is given', () => {
+  it('rolls the weapon die when effectDie is given', () => {
     // Raw randoms: 0.46 → d100 47; 0.5 → 1d8 = 1 + floor(0.5*8) = 5.
     // (The stubRolls d100-inverse mapping doesn't apply to a d8, so spy directly.)
     const vals = [0.46, 0.5];
     let i = 0;
     vi.spyOn(Math, 'random').mockImplementation(() => vals[i++]);
-    const r = computeRoll({ stat: 'body', statValue: 6, target: 55, weaponDie: '1d8' });
+    const r = computeRoll({ stat: 'body', statValue: 6, target: 55, effectDie: '1d8' });
     expect(r.rolled).toBe(47);
-    expect(r.weaponDie).toBe('1d8');
-    expect(r.weaponRoll).toBe(5);
-    expect(r.weaponRoll).toBeGreaterThanOrEqual(1);
-    expect(r.weaponRoll).toBeLessThanOrEqual(8);
+    expect(r.effectDie).toBe('1d8');
+    expect(r.effectRoll).toBe(5);
+    expect(r.effectRoll).toBeGreaterThanOrEqual(1);
+    expect(r.effectRoll).toBeLessThanOrEqual(8);
   });
 
-  it('weaponRoll is null for a non-combat check', () => {
+  it('effectRoll is null for a non-combat check', () => {
     stubRolls(47);
     const r = computeRoll({ stat: 'mind', statValue: 5, target: 40 });
-    expect(r.weaponRoll).toBeNull();
-    expect(r.weaponDie).toBeNull();
+    expect(r.effectRoll).toBeNull();
+    expect(r.effectDie).toBeNull();
   });
 
   it('an unparseable weapon spec yields null (no weapon roll)', () => {
     stubRolls(47);
-    const r = computeRoll({ stat: 'body', statValue: 5, target: 55, weaponDie: 'sword' });
-    expect(r.weaponRoll).toBeNull();
+    const r = computeRoll({ stat: 'body', statValue: 5, target: 55, effectDie: 'sword' });
+    expect(r.effectRoll).toBeNull();
   });
 });
 

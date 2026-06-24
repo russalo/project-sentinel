@@ -18,12 +18,12 @@ check the same way as any d100 check, but as an ATTACK:
 - `target`: the defender's **Defense** = `40 + (Body × 3) + armor_bonus`
   (unarmored ≈ 40 + Body×3; armor adds to it). Judge the defender's Body +
   armor from the fiction.
-- include `weapon_die` in the `check_request`: the size of the attacker's
+- include `effect_die` in the `check_request`: the size of the attacker's
   weapon — `"1d4"` (light: dagger, club), `"1d6"` (medium: sword, axe),
   `"1d8"` (heavy: greatsword, warhammer), `"1d10"` (two-handed: polearm,
   greataxe). The frontend rolls this die alongside the d100.
 
-ROLL RESULT will carry the d100 fields PLUS `weapon_roll` (the rolled
+ROLL RESULT will carry the d100 fields PLUS `effect_roll` (the rolled
 weapon die). Resolve the round from the **margin** (`total − Defense`):
 - `margin < 0` — the attack misses or is turned aside; narrate the
   defender capitalizing the more negative it is.
@@ -33,7 +33,7 @@ weapon die). Resolve the round from the **margin** (`total − Defense`):
 
 DAMAGE (hybrid — weapon die + margin nudge):
 
-`damage = weapon_roll + ⌊margin / 10⌋`
+`damage = effect_roll + ⌊margin / 10⌋`
 
 The rolled weapon die is the base; a decisive hit adds +1 per full 10 of
 margin (margin +22 → +2; a barely-made hit at margin +3 → +0). Apply it:

@@ -126,7 +126,7 @@ export const useChatStore = create((set) => ({
       return;
     }
     // Coerce the optional display strings; never trust their type.
-    // `weapon_die` (RFC-0007 combat) rides along on an attack: a "1dN"
+    // `effect_die` (RFC-0007 combat) rides along on an attack: a "1dN"
     // spec the frontend rolls alongside the d100. Pass it only when it's
     // a string; otherwise the check is a non-combat check.
     set({
@@ -135,7 +135,7 @@ export const useChatStore = create((set) => ({
         target: req.target,
         label: typeof req.label === 'string' ? req.label : '',
         prompt: typeof req.prompt === 'string' ? req.prompt : '',
-        weaponDie: typeof req.weapon_die === 'string' ? req.weapon_die : null,
+        effectDie: typeof req.effect_die === 'string' ? req.effect_die : null,
       },
     });
   },

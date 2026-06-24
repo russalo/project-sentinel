@@ -65,7 +65,7 @@ export function CheckRequestRail() {
 
   if (!checkRequest) return null;
 
-  const { stat, target, label, prompt, weaponDie } = checkRequest;
+  const { stat, target, label, prompt, effectDie } = checkRequest;
   const statLabel = STAT_LABEL[stat] || stat;
   const targetLabel = TARGET_LABEL[target] || `Target ${target}`;
 
@@ -77,8 +77,9 @@ export function CheckRequestRail() {
     // finally. (codex P2 on PR #146.)
     setIsStreaming(true);
     const statValue = playerStatValue(characters, playerName, stat);
-    // weaponDie present → an attack (RFC-0007): roll the weapon die too.
-    const result = computeRoll({ stat, statValue, target, weaponDie });
+    // effectDie present → a magnitude check (attack weapon die / spell die):
+    // roll it alongside the d100. (RFC-0007 combat, RFC-0008 magic.)
+    const result = computeRoll({ stat, statValue, target, effectDie });
     setRevealed(result);
     // Beat 3: drop a concise roll line into the scroll for the history,
     // then resend the turn so the DM resolves from the margin. The brief
@@ -129,10 +130,10 @@ export function CheckRequestRail() {
               <span>margin {revealed.margin >= 0 ? '+' : ''}{revealed.margin}</span>
               <span>{band.label}</span>
             </div>
-            {revealed.weaponRoll !== null && revealed.weaponRoll !== undefined && (
-              <div data-testid="check-weapon-roll" className="flex justify-between border-t border-border mt-1 pt-1">
-                <span className="text-dust">weapon {revealed.weaponDie}</span>
-                <span>{revealed.weaponRoll}{revealed.margin >= 0 ? ` + ${Math.floor(revealed.margin / 10)} (margin)` : ''}</span>
+            {revealed.effectRoll !== null && revealed.effectRoll !== undefined && (
+              <div data-testid="check-effect-roll" className="flex justify-between border-t border-border mt-1 pt-1">
+                <span className="text-dust">effect {revealed.effectDie}</span>
+                <span>{revealed.effectRoll}{revealed.margin >= 0 ? ` + ${Math.floor(revealed.margin / 10)} (margin)` : ''}</span>
               </div>
             )}
           </div>

@@ -23,7 +23,7 @@ export function rollD100() {
 // Roll a single weapon die from a "1dN" spec (RFC-0007 combat). Returns
 // 1..N, or null for an unrecognized/oversized spec. v0.1 supports the
 // single-die "1dN" form only (light 1d4 … two-handed 1d10).
-export function rollWeaponDie(spec) {
+export function rollEffectDie(spec) {
   const m = /^1d(\d+)$/.exec(String(spec ?? '').trim());
   if (!m) return null;
   const sides = parseInt(m[1], 10);
@@ -34,10 +34,10 @@ export function rollWeaponDie(spec) {
 // v0.1 open-ended is a SINGLE reroll (not a chain) — simpler to display and
 // reason about; chaining is a deferred RM-style depth pass.
 //
-// `weaponDie` (RFC-0007 combat): when the check is an attack, roll the
+// `effectDie` (RFC-0007 combat): when the check is an attack, roll the
 // weapon die alongside the d100 — the DM computes damage from
 // weapon_roll + floor(margin/10). Omit for non-combat checks.
-export function computeRoll({ stat, statValue, target, mods = 0, weaponDie = null }) {
+export function computeRoll({ stat, statValue, target, mods = 0, effectDie = null }) {
   const first = rollD100();
   let openEnded = null;
   let openEndedRoll = 0;
@@ -51,7 +51,7 @@ export function computeRoll({ stat, statValue, target, mods = 0, weaponDie = nul
   const bonus = statValue * 5;
   const total = first + openEndedRoll + bonus + mods;
   const margin = total - target;
-  const weaponRoll = weaponDie ? rollWeaponDie(weaponDie) : null;
+  const effectRoll = effectDie ? rollEffectDie(effectDie) : null;
   return {
     // ── wire fields (sent to the backend) ──
     stat,
@@ -62,8 +62,8 @@ export function computeRoll({ stat, statValue, target, mods = 0, weaponDie = nul
     margin,
     openEnded,
     // weapon fields only on a combat attack (null otherwise)
-    weaponDie: weaponRoll !== null ? weaponDie : null,
-    weaponRoll,
+    effectDie: effectRoll !== null ? effectDie : null,
+    effectRoll,
     // ── display-only extras (not sent; used by the reveal) ──
     statValue,
     mods,
@@ -72,7 +72,7 @@ export function computeRoll({ stat, statValue, target, mods = 0, weaponDie = nul
 }
 
 // Extract just the backend RollResult fields from a computeRoll() result.
-// weaponDie/weaponRoll are included only when the check was an attack.
+// effectDie/effectRoll are included only when the check was an attack.
 export function toWirePayload(r) {
   const wire = {
     stat: r.stat,
@@ -83,9 +83,9 @@ export function toWirePayload(r) {
     margin: r.margin,
     openEnded: r.openEnded,
   };
-  if (r.weaponRoll !== null && r.weaponRoll !== undefined) {
-    wire.weaponDie = r.weaponDie;
-    wire.weaponRoll = r.weaponRoll;
+  if (r.effectRoll !== null && r.effectRoll !== undefined) {
+    wire.effectDie = r.effectDie;
+    wire.effectRoll = r.effectRoll;
   }
   return wire;
 }

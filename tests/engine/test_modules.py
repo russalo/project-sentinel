@@ -56,17 +56,18 @@ def test_base_fragment_byte_identical_to_pre_rfc0005():
 
 
 def test_default_assembles_in_canonical_order():
-    """RFC-0007: the default prompt is base + resolution + character_sheet
-    + class + combat, in CANONICAL_SUBSYSTEM_ORDER, joined by blank lines.
-    Derives the expectation from the fragments themselves so it's not
-    brittle to prose edits — it pins the ASSEMBLY ORDER, not the content."""
+    """RFC-0008: the default prompt is base + resolution + character_sheet
+    + class + combat + magic, in CANONICAL_SUBSYSTEM_ORDER, joined by
+    blank lines. Derives the expectation from the fragments themselves so
+    it's not brittle to prose edits — it pins the ASSEMBLY ORDER."""
     base = load_module("core/base-v1").prompt_fragment_text
     resolution = load_module("core/d100-open-v1").prompt_fragment_text
     sheet = load_module("core/four-stat-v1").prompt_fragment_text
     klass = load_module("core/four-class-fantasy-v1").prompt_fragment_text
     combat = load_module("core/hp-pool-v1").prompt_fragment_text
-    assert (
-        build_dm_prompt() == f"{base}\n\n{resolution}\n\n{sheet}\n\n{klass}\n\n{combat}"
+    magic = load_module("core/realm-pool-v1").prompt_fragment_text
+    assert build_dm_prompt() == (
+        f"{base}\n\n{resolution}\n\n{sheet}\n\n{klass}\n\n{combat}\n\n{magic}"
     )
 
 
@@ -163,16 +164,26 @@ def test_base_is_first_in_canonical_order():
     assert CANONICAL_SUBSYSTEM_ORDER[0] == "base"
 
 
-def test_default_modules_is_five_core_set():
-    # RFC-0007: class + combat joined — Sentinel has a full Fantasy core
-    # ruleset (resolution, sheet, classes, combat) on every world.
+def test_default_modules_is_six_core_set():
+    # RFC-0008: magic joined — the full Fantasy core ruleset (resolution,
+    # sheet, classes, combat, magic) on every world.
     assert DEFAULT_MODULES == {
         "base": "core/base-v1",
         "resolution": "core/d100-open-v1",
         "character_sheet": "core/four-stat-v1",
         "class": "core/four-class-fantasy-v1",
         "combat": "core/hp-pool-v1",
+        "magic": "core/realm-pool-v1",
     }
+
+
+def test_magic_module_loads():
+    loaded = load_module("core/realm-pool-v1")
+    assert loaded.manifest.subsystem == "magic"
+    assert loaded.manifest.schema_fragment == "schema.json"
+    # bindings + the four deities + four traditions are taught inline
+    for token in ("magic_pool", "The Mender", "Elementalist", "effect_die"):
+        assert token in loaded.prompt_fragment_text
 
 
 def test_resolution_module_loads():
@@ -198,7 +209,7 @@ def test_combat_module_loads():
         "core/four-class-fantasy-v1",
         "core/d100-open-v1",
     )
-    assert "weapon_die" in loaded.prompt_fragment_text
+    assert "effect_die" in loaded.prompt_fragment_text
     assert "death save" in loaded.prompt_fragment_text.lower()
 
 
