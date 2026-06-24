@@ -155,12 +155,17 @@ export const useChatStore = create((set) => ({
   // reject it outright — better the DM keeps narrating than the player
   // faces an un-actionable advance. (Mirrors setCheckRequest; the
   // malformed-LLM-output hunt pattern.)
+  // The progression module is v0.1 levels 1..5; a malformed proposal above
+  // the cap (e.g. {to_level: 6}) must be rejected, not surfaced — otherwise
+  // LevelUpCard would let the player confirm an impossible advancement
+  // (codex P2, PR #150). Mirrors the backend LevelUpChoice bound.
   setLevelUp: (req) => {
     if (
       !req ||
       typeof req !== 'object' ||
       !Number.isInteger(req.to_level) ||
-      req.to_level <= 0
+      req.to_level < 1 ||
+      req.to_level > 5
     ) {
       set({ levelUp: null });
       return;

@@ -134,9 +134,16 @@ class LevelUpChoice(_CamelModel):
     DM applies exactly this — the PC-ownership wall (the DM proposes,
     never picks the stat itself)."""
 
-    # one of body / mind / heart / will
-    stat: str
-    to_level: int | None = Field(default=None, ge=1)
+    # one of body / mind / heart / will. Pattern-constrained because it
+    # lands verbatim in the engine's LEVEL-UP CHOICE prompt block — an
+    # unconstrained client string would be a prompt-injection vector (the
+    # same class as RollResult.effect_die; gemini security-high / codex P2,
+    # PR #150). The frontend only ever sends one of the four.
+    stat: str = Field(pattern=r"^(body|mind|heart|will)$")
+    # bounded to the progression module's v0.1 1..5 cap so a crafted or
+    # malformed turn can't render "level 999" into the prompt; the bound
+    # tracks the module cap and rises when it does.
+    to_level: int | None = Field(default=None, ge=1, le=5)
 
 
 class StreamRequest(_CamelModel):

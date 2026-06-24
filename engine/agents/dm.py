@@ -326,11 +326,17 @@ def _level_up_block(level_up: dict | None) -> str:
     """Render a progression-module LEVEL-UP CHOICE block (RFC-0009), or ""
     when the turn carries no level-up. The player has chosen which stat to
     raise; the DM applies exactly that (the PC-ownership wall). Tolerant of
-    a missing stat (degrades to "" rather than instructing a bad apply)."""
+    a missing stat (degrades to "" rather than instructing a bad apply).
+
+    ``stat`` is constrained to the four attributes here too — defense in
+    depth. The backend schema (LevelUpChoice) already pattern-constrains it,
+    but the engine is callable independently of that route, and ``stat``
+    lands verbatim in the prompt, so an unrecognized value (or non-string)
+    must not be rendered (gemini security-high, PR #150)."""
     if not isinstance(level_up, dict):
         return ""
     stat = level_up.get("stat")
-    if not isinstance(stat, str) or not stat:
+    if not isinstance(stat, str) or stat not in {"body", "mind", "heart", "will"}:
         return ""
     to_level = level_up.get("to_level")
     lvl = f" to level {to_level}" if to_level is not None else ""

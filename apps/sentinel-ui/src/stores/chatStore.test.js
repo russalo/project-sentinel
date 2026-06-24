@@ -93,6 +93,16 @@ describe('chatStore.setLevelUp — malformed-LLM-output hardening (RFC-0009)', (
     expect(useChatStore.getState().levelUp).toBeNull();
   });
 
+  it('rejects a to_level above the v0.1 1..5 cap (impossible advancement)', () => {
+    useChatStore.getState().setLevelUp({ to_level: 6 });
+    expect(useChatStore.getState().levelUp).toBeNull();
+    useChatStore.getState().setLevelUp({ to_level: 99 });
+    expect(useChatStore.getState().levelUp).toBeNull();
+    // 5 is the cap and still accepted.
+    useChatStore.getState().setLevelUp({ to_level: 5 });
+    expect(useChatStore.getState().levelUp).toEqual({ toLevel: 5 });
+  });
+
   it('rejects null / non-object', () => {
     useChatStore.getState().setLevelUp(null);
     expect(useChatStore.getState().levelUp).toBeNull();
