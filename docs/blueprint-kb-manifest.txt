@@ -1,0 +1,38 @@
+# Blueprint KB sync manifest — the canonical Project Sentinel docs that
+# Blueprint (the RussaloOS inventory control plane) nightly auto-syncs
+# into its knowledge base via gh (SHA-gated; prunes on removal).
+#
+# One repo-relative path per line. Blank lines and lines starting with
+# '#' are ignored. Adding a new canonical doc (e.g. a new ADR/RFC) means
+# adding its path here in the same PR that lands it — keep this list in
+# step with the docs it tracks.
+#
+# Agreed 2026-06-24 (Blueprint Claude ↔ project-sentinel Claude, ratified
+# by Russell). Scope: the standing-reference + design-record set, NOT
+# transient scratch, code, or gitignored material.
+
+CLAUDE.md
+ARCHITECTURE.md
+CONTRIBUTING.md
+
+docs/adr/README.md
+docs/adr/0001-data-canonical-source-of-truth.md
+docs/adr/0002-world-identity-and-isolation.md
+docs/adr/0003-access-gating-and-public-exposure.md
+docs/adr/0005-subsystem-modularity.md
+
+docs/rfc/README.md
+docs/rfc/0001-player-vitals-vitality-fill.md
+docs/rfc/0002-system-messages.md
+docs/rfc/0003-tester-guide.md
+docs/rfc/0004-tester-guide-screenshots.md
+docs/rfc/0005-module-infrastructure.md
+docs/rfc/0006-resolution-and-character-sheet.md
+docs/rfc/0007-class-and-combat.md
+
+docs/WORKSPACE.md
+docs/BACKLOG.md
+docs/ROADMAP.md
+docs/VISION.md
+docs/QUICKSTART.md
+docs/alpha/TESTER_GUIDE.md
