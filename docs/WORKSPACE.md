@@ -316,39 +316,59 @@ single shared tree exactly as before — the per-world routing is built and test
 (the tracer-soak gate in `tests/test_world_isolation_tracer_soak.py` proves zero
 cross-world leak) but dormant until you flip it.
 
-**The cutover is one operational change: set `SENTINEL_WORLDS_ROOT` to the same
-absolute path for all three services**, since they each read it independently:
+**Arming is host-gated by a marker file (PR #156), not a hand-edit.** A host with
+a `~/.sentinel-armed` marker renders the armed config from the chezmoi template's
+armed branch on `just env`: `SENTINEL_WORLDS_ROOT` (a path outside this repo —
+`$HOME/sentinel-worlds`), the `SENTINEL_RL_*` / `SENTINEL_LLM_DAILY_CEILING` /
+`SENTINEL_MAX_CONCURRENT_STREAMS` knobs, `SENTINEL_TRUSTED_PROXY_HOPS=1`, the
+feedback knobs, and the **age-decrypted** `SENTINEL_SESSION_TOKEN_SECRET`.
+Unmarked hosts (dev / CI / fresh clone) render dormant defaults (shared tree,
+anonymous, unthrottled, Groq). The marker is host-local + uncommitted, so a clone
+never self-arms, and it gates *render* time — so `just env` is the pickup step no
+matter how services are supervised. (It's used instead of `.chezmoi.hostname`,
+which resolves to `srv334254` on origin-core via Hostinger's `/etc/hosts` stamp —
+that would silently disarm the alpha.) For the age key / recipient / custody /
+rotation substrate, see **SECRET-MANAGEMENT.md** (russalo/tailnet, the shared
+secret store); this doc owns only the sentinel-side marker + `just env` + service
+flow.
 
-- the **backend** (`backend/config.py` → `worlds_root`) — routes reads,
-- **fs-manager** and **git-sync** (`mcp-servers/*/server.py` → `WORLDS_ROOT`) —
-  route writes/commits.
+All three services read `SENTINEL_WORLDS_ROOT` independently — the **backend**
+(`backend/config.py` → `worlds_root`, routes reads) and **fs-manager** +
+**git-sync** (`mcp-servers/*/server.py` → `WORLDS_ROOT`, route writes/commits) —
+so **all three must agree** (a split writes state to the wrong tree). On
+origin-core they run as **systemd units** (`infrastructure/systemd/*.service`,
+`User=russellp`) that each load the same rendered `infrastructure/.env` via
+`EnvironmentFile=`, so one `just env` feeds all three uniformly. Agreement is
+**enforced**: the backend **refuses to start** in per-world mode unless both MCP
+`/health` report `worlds_root: true` (`backend/mcp_agreement.py`), and
+`just cutover-check` surfaces the same — plus env, bind, and rate-limit posture —
+*before* a restart.
 
-It belongs in `infrastructure/.env` (the chezmoi template ships the `SENTINEL_*`
-knobs defaulted-off — re-run `just env` to pick them up, which also drops any
-stale legacy vars from an old generated `.env`), pointing at a data root
-**outside this repo** (e.g. `~/sentinel-worlds`). **All three must agree** — a
-split (backend per-world but a server still shared, or vice versa) would write
-state to the wrong tree. This is now **enforced**: the backend **refuses to
-start** in per-world mode unless both MCP `/health` report `worlds_root: true`
-(`backend/mcp_agreement.py`), and `just cutover-check` surfaces the same — plus
-the env, bind, and rate-limit posture — *before* you restart anything.
-
-**Cutover checklist (origin-core):**
+**Cutover / re-cutover checklist (origin-core):**
 
 1. Tracer-soak (`tests/test_world_isolation_tracer_soak.py`) is green in CI.
-2. In `infrastructure/.env` (chezmoi template → `just env`): set the **same**
-   `SENTINEL_WORLDS_ROOT` (absolute path, outside this repo) for all three
-   services, plus `SENTINEL_SESSION_TOKEN_SECRET`, the `SENTINEL_RL_*` /
-   `SENTINEL_LLM_DAILY_CEILING` knobs, `SENTINEL_MAX_CONCURRENT_STREAMS=10`
-   (closed-alpha planning target — caps in-flight `/api/stream` requests;
-   503 + `Retry-After: 5` past cap), and `SENTINEL_TRUSTED_PROXY_HOPS=1` (behind
-   Caddy). Leave `SENTINEL_ALLOW_PUBLIC_BIND` unset.
+2. Arm + render: `touch ~/.sentinel-armed`, then `just env`. Renders the full
+   armed `infrastructure/.env` at mode 0600 (the source is `private_`), including
+   the age-decrypted session secret. (Requires the shared age key at
+   `~/.config/chezmoi/key.txt` — an armed host without it fails the render *loud*
+   rather than blanking auth; key custody is in SECRET-MANAGEMENT.md.)
+   `SENTINEL_ALLOW_PUBLIC_BIND` stays unset (not in the template).
 3. Caddy: `caddy hash-password` → put the hash in `$SENTINEL_INVITE_HASH`; apply
    `infrastructure/caddy/Caddyfile.example` to the live Caddyfile; `caddy reload`.
-4. (Re)start the MCP servers (`systemctl restart sentinel-fs-manager sentinel-git-sync`).
+4. Restart the MCP servers so they pick up the rendered `.env`:
+   `sudo systemctl restart sentinel-fs-manager sentinel-git-sync`.
 5. **`just cutover-check`** — the go/no-go gate. Must report **READY** (no FAILs).
-6. Restart the backend (`systemctl restart sentinel-backend`); its startup
+6. Restart the backend: `sudo systemctl restart sentinel-backend`; its startup
    agreement check re-confirms per-world mode, then it serves.
+
+**First-time install of the systemd units** (one-time, needs root — done on
+origin-core 2026-06-25): substitute `<REPO_ROOT>` / `<USER>` in
+`infrastructure/systemd/*.service`, `sudo cp` them to `/etc/systemd/system/`,
+`sudo systemctl daemon-reload`, then `sudo systemctl enable --now
+sentinel-fs-manager sentinel-git-sync` and (once they're up) `sudo systemctl
+enable --now sentinel-backend`. systemd reads `EnvironmentFile=` as root *before*
+dropping to `User=`, so the 0600 `.env` needs no loosening. Before the migration,
+free the ports by stopping any prior nohup processes.
 
 ### Closed-alpha operator dashboard
 
@@ -401,11 +421,13 @@ the repo eliminates it.
 **Set it as a shell environment variable — *not* in `infrastructure/.env`.** That
 file is a regenerated artifact (`just env`, and the `env` prerequisite of `just
 start`, run `chezmoi apply --force` over it), so a hand-edited value is silently
-overwritten on the next stack start. (The production cutover above is the
-opposite: there you *do* set it via the template → `.env`, because the systemd
-units load `.env` through `EnvironmentFile` and a shell `export` wouldn't reach
-them — that path doesn't run `just env` per stack start.) For local dev, the
-shell env is the durable single source that every consumer reads:
+overwritten on the next stack start. (An *armed* host — one with a
+`~/.sentinel-armed` marker — is the opposite: there `just env` renders the armed
+value into `.env` from the template's armed branch, and the systemd units load it
+via `EnvironmentFile=`; a shell `export` wouldn't reach systemd-managed services.
+An unmarked dev box gets the blank default, which is why the shell-export approach
+here is the right move for dev.) For local dev, the shell env is the durable
+single source that every consumer reads:
 
 ```
 export SENTINEL_WORLDS_ROOT="$HOME/sentinel-worlds"   # a path OUTSIDE this repo
