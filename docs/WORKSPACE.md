@@ -328,16 +328,17 @@ never self-arms, and it gates *render* time — so `just env` is the pickup step
 matter how services are supervised. (It's used instead of `.chezmoi.hostname`,
 which resolves to `srv334254` on origin-core via Hostinger's `/etc/hosts` stamp —
 that would silently disarm the alpha.) For the age key / recipient / custody /
-rotation substrate, see **SECRET-MANAGEMENT.md** (russalo/tailnet, the shared
-secret store); this doc owns only the sentinel-side marker + `just env` + service
-flow.
+rotation substrate, see **`SECRET-MANAGEMENT.md` in the `russalo/tailnet` repo**
+(the shared secret store — a separate private repo, same owner; intentionally not
+duplicated here per the doc-split). This doc owns only the sentinel-side marker +
+`just env` + service flow.
 
 All three services read `SENTINEL_WORLDS_ROOT` independently — the **backend**
 (`backend/config.py` → `worlds_root`, routes reads) and **fs-manager** +
 **git-sync** (`mcp-servers/*/server.py` → `WORLDS_ROOT`, route writes/commits) —
 so **all three must agree** (a split writes state to the wrong tree). On
 origin-core they run as **systemd units** (`infrastructure/systemd/*.service`,
-`User=russellp`) that each load the same rendered `infrastructure/.env` via
+`User=<USER>`) that each load the same rendered `infrastructure/.env` via
 `EnvironmentFile=`, so one `just env` feeds all three uniformly. Agreement is
 **enforced**: the backend **refuses to start** in per-world mode unless both MCP
 `/health` report `worlds_root: true` (`backend/mcp_agreement.py`), and
@@ -351,7 +352,8 @@ origin-core they run as **systemd units** (`infrastructure/systemd/*.service`,
    armed `infrastructure/.env` at mode 0600 (the source is `private_`), including
    the age-decrypted session secret. (Requires the shared age key at
    `~/.config/chezmoi/key.txt` — an armed host without it fails the render *loud*
-   rather than blanking auth; key custody is in SECRET-MANAGEMENT.md.)
+   rather than blanking auth; key custody is in `SECRET-MANAGEMENT.md` in the
+   `russalo/tailnet` repo.)
    `SENTINEL_ALLOW_PUBLIC_BIND` stays unset (not in the template).
 3. Caddy: `caddy hash-password` → put the hash in `$SENTINEL_INVITE_HASH`; apply
    `infrastructure/caddy/Caddyfile.example` to the live Caddyfile; `caddy reload`.
