@@ -36,7 +36,7 @@ cd project-sentinel
 just env
 ```
 
-Chezmoi reads `.chezmoi/dot_infrastructure/dot_env.tmpl` and writes
+Chezmoi reads `.chezmoi/infrastructure/private_dot_env.tmpl` and writes
 `infrastructure/.env` with the correct settings for your OS — including a
 commented-out `DOCKER_HOST` line for macOS Docker Desktop and a `PYTHON_BIN`
 hint for Windows.
