@@ -75,17 +75,19 @@ PYTHON_BIN=python3
 # (`just cutover-check` verifies); arming is driven by the marker now, not a
 # hand-edited .env.
 {{ if $armed -}}
-SENTINEL_WORLDS_ROOT=/home/russellp/sentinel-worlds
+SENTINEL_WORLDS_ROOT={{ .chezmoi.homeDir }}/sentinel-worlds
 {{ else -}}
 SENTINEL_WORLDS_ROOT=
 {{ end -}}
 # Per-world session-token secret. On an armed host WITH the shared age key it is
 # decrypted from the committed ciphertext (.chezmoi/.chezmoitemplates/
-# session_token_secret.age, encrypted to the mesh recipient). On any host
-# missing the marker OR the key it renders blank (anonymous) - so `just env`
-# never hard-fails on a keyless box (fresh clone / CI). The decrypt is only
-# reached inside the armed+key branch.
-SENTINEL_SESSION_TOKEN_SECRET={{ if and $armed $haveAgeKey }}{{ includeTemplate "session_token_secret.age" | decrypt | trim }}{{ end }}
+# session_token_secret.age, encrypted to the mesh recipient). UNARMED hosts (dev
+# / CI / fresh clone, no marker) render blank (anonymous) so `just env` never
+# hard-fails there. But an ARMED host MISSING the key FAILS LOUD rather than
+# rendering blank: a blank secret = token enforcement OFF, so silently degrading
+# the live alpha to anonymous on a key-path mistake is the wrong failure mode —
+# stop the render instead (gemini-high / codex-P1, PR #156).
+SENTINEL_SESSION_TOKEN_SECRET={{ if $armed }}{{ if $haveAgeKey }}{{ includeTemplate "session_token_secret.age" | decrypt | trim }}{{ else }}{{ fail "armed host (~/.sentinel-armed present) is missing the age key at ~/.config/chezmoi/key.txt — refusing to render a blank SENTINEL_SESSION_TOKEN_SECRET, which would silently disable token enforcement on the live alpha" }}{{ end }}{{ end }}
 # Rate limits (0 = disabled): per-IP world creation / per-world turns / global
 # daily LLM-call ceiling. Concurrency: max in-flight /api/stream (503 at cap).
 {{ if $armed -}}
