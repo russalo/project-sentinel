@@ -93,3 +93,6 @@ scratch/
 # land in the code repo. Triaged into docs/ALPHA_FEEDBACK.md by hand;
 # untriaged on-disk records stay here for the operator to read.
 /feedback/
+
+# Defensive: the old dot_infrastructure source mistargeted here (fixed in chore/env-chezmoi-reconcile).
+.infrastructure/
