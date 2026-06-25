@@ -587,6 +587,6 @@ The two nodes communicate over a Tailscale mesh in production; locally they run 
 **Polyglot tooling**
 - pnpm workspace (Node 24, pnpm 10) — `pnpm-workspace.yaml` covers `apps/*` and `scripts`
 - Python 3.11+ for the MCP servers, the FastAPI backend, and the engine package — each has its own `requirements.txt`
-- `chezmoi` generates `infrastructure/.env` from `.chezmoi/dot_infrastructure/dot_env.tmpl` — that's why `just env` exists, and why you should never hand-write `infrastructure/.env`
+- `chezmoi` generates `infrastructure/.env` from `.chezmoi/infrastructure/private_dot_env.tmpl` — that's why `just env` exists, and why you should never hand-write `infrastructure/.env`. The template is host-gated (PR #156): a host with a `~/.sentinel-armed` marker renders the armed access-layer knobs + LiteLLM→Gemini routing + the age-decrypted session secret (0600); every other host gets dormant dev defaults. `just env` on origin-core is therefore safe + authoritative now — not a clobber hazard.
 
 **Cross-OS constraint** — this project targets macOS, Linux, and Windows. The chezmoi template handles OS-specific values (Docker socket path, Python binary). Never write linux-only shell in a `justfile` recipe without providing the equivalent for other platforms.

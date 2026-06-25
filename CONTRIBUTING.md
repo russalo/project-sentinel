@@ -135,7 +135,7 @@ up a localized version of the Infrastructure Node directly on your machine.
 just env
 ```
 
-Chezmoi reads `.chezmoi/dot_infrastructure/dot_env.tmpl` and writes
+Chezmoi reads `.chezmoi/infrastructure/private_dot_env.tmpl` and writes
 `infrastructure/.env` with the correct values for your OS (Docker socket path,
 Python binary). You normally won't need to edit it by hand.
 

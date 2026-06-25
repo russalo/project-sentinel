@@ -133,7 +133,7 @@ flowchart TD
 just env
 ```
 
-Chezmoi reads `.chezmoi/dot_infrastructure/dot_env.tmpl` and writes
+Chezmoi reads `.chezmoi/infrastructure/private_dot_env.tmpl` and writes
 `infrastructure/.env` with the correct Docker socket path and Python binary
 for your OS.
 
