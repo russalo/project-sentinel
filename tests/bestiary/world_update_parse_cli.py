@@ -47,10 +47,15 @@ def main(argv: list[str]) -> int:
     # Structured verdict on stdout — survived_check reads this. A hostile
     # specimen should yield payload_present=false (refused), not a smuggled
     # payload.
-    print(json.dumps({
-        "payload_present": result.payload is not None,
-        "error_count": len(result.errors),
-    }, sort_keys=True))
+    print(
+        json.dumps(
+            {
+                "payload_present": result.payload is not None,
+                "error_count": len(result.errors),
+            },
+            sort_keys=True,
+        )
+    )
     return 0
 
 

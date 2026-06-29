@@ -30,7 +30,9 @@ from pathlib import Path
 
 import pytest
 
-bestiary = pytest.importorskip("bestiary", reason="bestiary not installed (local sibling project)")
+bestiary = pytest.importorskip(
+    "bestiary", reason="bestiary not installed (local sibling project)"
+)
 
 from bestiary import (  # noqa: E402
     Catalog,
@@ -52,7 +54,9 @@ def _bytes_catalog() -> Catalog:
     root and exercise filesystem-walking parsers (e.g. file-observer), not a
     content parser — running them here would only test our file-reading adapter,
     not `extract()`. (bestiary's own model: BYTES → a file, FS_LAYOUT → a tree.)"""
-    return Catalog([s for s in build_seed_catalog().active() if s.modality is Modality.BYTES])
+    return Catalog(
+        [s for s in build_seed_catalog().active() if s.modality is Modality.BYTES]
+    )
 
 
 def _structured_refusal(stdout: str) -> bool:
