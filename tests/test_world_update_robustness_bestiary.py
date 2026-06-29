@@ -1,30 +1,39 @@
 """Adversarial robustness of the world_update parse boundary, via bestiary.
 
 bestiary (`russalo/bestiary`) is a proven-real adversarial-input corpus +
-contract-runner for byte-parsers. We point it at the Fact-Extractor's
-`<world_update>` extraction (`engine.agents.fact_extractor.extract`) — the
-untrusted-LLM-text → validated-payload-or-refusal boundary — and assert it
-upholds the robustness contract on every specimen:
+contract-runner. We point it at the Fact-Extractor's `<world_update>` extraction
+(`engine.agents.fact_extractor.extract`) — the untrusted-LLM-text →
+validated-payload-or-refusal boundary — and assert the robustness contract:
 
-- NEVER-CRASH  — hostile input degrades to a structured error, never aborts/hangs
-- BOUNDED      — resource use stays capped regardless of input size/nesting
-- DETERMINISTIC— identical input → identical verdict
-- NO-ESCAPE    — the parser reads nothing outside its input
-- (survived_check) STRUCTURED-REFUSAL — a hostile specimen is *refused*
-  (no payload smuggled through), not silently misparsed
+- NEVER-CRASH   — hostile input degrades to a structured error, never aborts/hangs
+- NO-ESCAPE     — the parser reads nothing outside its input
+- STRUCTURED-REFUSAL (survived_check) — a hostile specimen is *refused*
+  (no payload smuggled through), never silently misparsed
+- BOUNDED       — resource use stays capped regardless of input size/nesting
+- DETERMINISTIC — identical input → identical verdict
+
+Two targets (simplified on bestiary v0.10.0, which shipped the two fixes from
+Sentinel's bestiary#21):
+- A CallableTarget covers NEVER-CRASH + NO-ESCAPE + STRUCTURED-REFUSAL fully
+  IN-PROCESS — the survived_check now runs on extract()'s return value (a
+  FactExtractResult), so no per-specimen CLI shim is needed for these legs.
+- A CliTarget covers BOUNDED + DETERMINISTIC, which need subprocess isolation;
+  the minimal CLI shim (tests/bestiary/world_update_parse_cli.py) is kept ONLY
+  for those.
+Both declare `accepts={Modality.BYTES}` (v0.10), so FS_LAYOUT tree specimens SKIP
+rather than false-FAIL a content parser — no manual catalog filtering.
 
 This complements — does not replace — the semantic schema-gate tests
-(protected-field / namespace / path-traversal); those attack the validate +
-fs-manager layers, this attacks the parse layer.
+(protected-field / namespace / path-traversal), which attack the validate +
+fs-manager layers; this attacks the parse layer.
 
-bestiary is a LOCAL sibling project (not on PyPI), so this skips where it
-isn't installed (e.g. GitHub CI); it runs on origin-core dev where bestiary
-is `pip install -e`'d. To gate in CI, make bestiary installable there.
+bestiary is a LOCAL sibling project (not on PyPI), so this skips where it isn't
+installed (e.g. GitHub CI); it runs on origin-core dev where bestiary is
+`pip install -e`'d. To gate in CI, make bestiary installable there.
 """
 
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 
@@ -35,7 +44,6 @@ bestiary = pytest.importorskip(
 )
 
 from bestiary import (  # noqa: E402
-    Catalog,
     CallableTarget,
     CliTarget,
     Modality,
@@ -43,31 +51,32 @@ from bestiary import (  # noqa: E402
     run,
 )
 
+# Import the parser + schema at module load (not inside the target fn) so the
+# one-time import + schema-file read happen BEFORE any specimen runs — otherwise
+# NO-ESCAPE would flag that first-call read. The cached validator is then warmed
+# in the test before the run.
+from engine.agents.fact_extractor import extract  # noqa: E402
+
 _CLI = Path(__file__).parent / "bestiary" / "world_update_parse_cli.py"
 _FIXED_SESSION = "00000000-0000-4000-8000-000000000000"
+_BYTES = frozenset({Modality.BYTES})
 
 
-def _bytes_catalog() -> Catalog:
-    """The corpus scoped to the BYTES modality — the specimens that apply to a
-    *content* parser. The Fact-Extractor consumes a single blob of LLM text, so
-    it is a BYTES target ("a single file"); FS_LAYOUT specimens point at a tree
-    root and exercise filesystem-walking parsers (e.g. file-observer), not a
-    content parser — running them here would only test our file-reading adapter,
-    not `extract()`. (bestiary's own model: BYTES → a file, FS_LAYOUT → a tree.)"""
-    return Catalog(
-        [s for s in build_seed_catalog().active() if s.modality is Modality.BYTES]
-    )
+def _parse(path: Path) -> object:
+    """Feed the specimen to the parser exactly as a raw DM response (decode the
+    lossless way — the real boundary is LLM *text*). Returns the FactExtractResult
+    so survived_check can inspect it in-process. No try/except: a raise IS the
+    NEVER-CRASH finding we want surfaced."""
+    text = Path(path).read_bytes().decode("utf-8", errors="surrogateescape")
+    return extract(text, session_id=_FIXED_SESSION, turn_number=0)
 
 
-def _structured_refusal(stdout: str) -> bool:
-    """survived_check: the parser produced a structured verdict AND refused the
-    hostile specimen (no payload smuggled through). Anything else — empty
-    output, unparseable, or an accepted payload — is a finding."""
-    try:
-        verdict = json.loads(stdout)
-    except (json.JSONDecodeError, ValueError):
-        return False
-    return verdict.get("payload_present") is False and "error_count" in verdict
+def _refused(result: object) -> bool:
+    """survived_check (in-process, on extract()'s FactExtractResult): a hostile
+    specimen must be REFUSED — no payload smuggled through. `payload is None`
+    means nothing was dispatched. Reads an attribute that always exists, so it
+    never raises (a raising check would be recorded as a loud ERROR)."""
+    return getattr(result, "payload", "sentinel") is None
 
 
 def _assert_report_clean(report) -> None:
@@ -83,29 +92,31 @@ def _assert_report_clean(report) -> None:
         )
 
 
-def test_world_update_parse_survives_adversarial_corpus():
-    """CliTarget (subprocess): NEVER-CRASH / BOUNDED / DETERMINISTIC + the
-    structured-refusal survived_check over the seed catalog."""
-    target = CliTarget([sys.executable, str(_CLI), "{path}"])
-    report = run(target, _bytes_catalog(), survived_check=_structured_refusal)
-    # Sanity: the run actually exercised specimens (not all skipped).
-    counts = report.counts()
-    assert counts.get("pass", 0) > 0, f"no specimens evaluated: {counts}"
-    _assert_report_clean(report)
-
-
-def test_world_update_parse_no_escape():
-    """CallableTarget (in-process): NO-ESCAPE — the parser reads nothing outside
-    its input. Pre-initialize the schema validator so its one-time schema-file
-    read doesn't trip the NO-ESCAPE sink during a specimen."""
+def test_world_update_parse_robustness_in_process():
+    """CallableTarget (accepts BYTES): NEVER-CRASH + NO-ESCAPE + STRUCTURED-REFUSAL,
+    all in-process via the return-value survived_check (bestiary v0.10 / #21).
+    Pre-warm the cached schema validator so its one-time file read doesn't trip
+    the NO-ESCAPE sink during a specimen."""
     import engine.schema as schema
 
     schema.validate({})  # warm the cached validator (loads the schema file once)
-    from engine.agents.fact_extractor import extract
+    report = run(
+        CallableTarget(_parse, label="world_update_parse", accepts=_BYTES),
+        build_seed_catalog(),
+        survived_check=_refused,
+    )
+    # Sanity: the run actually exercised specimens (not all skipped).
+    assert report.counts().get("pass", 0) > 0, (
+        f"no specimens evaluated: {report.counts()}"
+    )
+    _assert_report_clean(report)
 
-    def parse(path: Path) -> object:
-        text = Path(path).read_bytes().decode("utf-8", errors="surrogateescape")
-        return extract(text, session_id=_FIXED_SESSION, turn_number=0)
 
-    report = run(CallableTarget(parse, label="world_update_parse"), _bytes_catalog())
+def test_world_update_parse_bounded():
+    """CliTarget (accepts BYTES): BOUNDED + DETERMINISTIC — the legs that need
+    subprocess isolation. The minimal CLI shim is kept only for these."""
+    report = run(
+        CliTarget([sys.executable, str(_CLI), "{path}"], accepts=_BYTES),
+        build_seed_catalog(),
+    )
     _assert_report_clean(report)
