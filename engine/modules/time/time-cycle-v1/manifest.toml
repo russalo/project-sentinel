@@ -1,0 +1,21 @@
+# Time + rest (ADR-0005 subsystem `time`; Fantasy-flagship, RFC-0010).
+# A bounded day cycle (`world.timeOfDay` → `world.day` counter) plus the
+# rest mechanic that makes non-magical recovery real: short rest (partial
+# HP, half pool) and long rest (full HP + pool, day+1). A prompt-fragment
+# module — it writes the existing sheet `hp`/`magic_pool` fields and the
+# world `timeOfDay`/`day`, so it adds no new schema. It completes the HP
+# lifecycle the combat (drain) + magic (heal) modules half-defined, and is
+# the authority for the "long rest → full / short rest → half" pool refresh
+# the magic module already references. RFC-0010.
+
+name = "core/time-cycle-v1"
+version = "1.0.0"
+subsystem = "time"
+interface_version = "1.0"
+
+prompt_fragment = "prompt.md"
+schema_fragment = ""
+preset_paths = []
+# Reads + restores the sheet hp/magic_pool; coordinates with combat (drain)
+# and magic (pool refresh).
+requires = ["core/four-stat-v1", "core/hp-pool-v1", "core/realm-pool-v1"]
