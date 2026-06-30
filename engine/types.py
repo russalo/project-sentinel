@@ -46,6 +46,10 @@ class WorldContext:
     weather: str
     time_of_day: str
     tension: int
+    # RFC-0010: the day counter the time module advances on a night wrap /
+    # long rest. Carried into the DM context each turn so the DM sees the
+    # current value and increments (rather than guesses/resets) it.
+    day: int = 1
     characters: list[dict[str, Any]] = field(default_factory=list)
     locations: list[dict[str, Any]] = field(default_factory=list)
     factions: list[dict[str, Any]] = field(default_factory=list)

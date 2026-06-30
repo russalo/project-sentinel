@@ -112,6 +112,7 @@ def load_world_context(
         weather=world_raw.get("weather", "Calm"),
         time_of_day=world_raw.get("timeOfDay", "Day"),
         tension=int(world_raw.get("tension", 0) or 0),
+        day=int(world_raw.get("day", 1) or 1),
         characters=characters,
         locations=locations,
         factions=factions,

@@ -40,6 +40,7 @@ BOUNDARIES:
 - Recovery is bounded by the rules above: no resting twice in a row to
   over-heal past a short rest's share, and no full heal without the night a
   long rest costs.
-- Emit the recovered `hp.current` / `magic_pool.current` (and the advanced
-  `timeOfDay` / `day`) in the `world_update` block, the same way combat
-  emits damage.
+- Emit the recovered `module_data.character_sheet.hp.current` /
+  `module_data.character_sheet.magic_pool.current` (and the advanced
+  `world.timeOfDay` / `world.day`) in the `world_update` block, the same
+  way combat emits damage.
