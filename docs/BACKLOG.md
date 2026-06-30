@@ -414,6 +414,16 @@ the structural pattern. This collapses N independent rulesets into "1
 template + per-genre overrides," which is roughly how the world-creation
 preset pipeline (`data/lore/core/presets/genres/`) already wants to work.
 
+**Landed so far (the eight-module default set):** RFC-0005 (module infra)
+· RFC-0006 (d100 resolution + four-stat sheet) · RFC-0007 (class + combat,
+HP pool + death saves) · RFC-0008 (magic, realm pool) · RFC-0009
+(progression, milestone level-up) · **RFC-0010 (time + rest — the day
+cycle + short/long rest recovery; closes the healing/recovery + time/
+calendar items below)**. Still open from the starting list: **encounter
+mechanics** (monster templates + scaffold — the `tension` slot's teeth),
+**weather/environment effects**, **faction/economy basics**, and
+**death-stakes enforcement** (the `permadeath` flag is still prompt-only).
+
 - [ ] **Define Fantasy-flagship core systems — the canonical mechanical
       layer underneath the ambient surfaces.** Big initiative; needs its
       own planning doc (probably `docs/CORE_SYSTEMS.md` with near-term /

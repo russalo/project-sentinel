@@ -56,10 +56,11 @@ def test_base_fragment_byte_identical_to_pre_rfc0005():
 
 
 def test_default_assembles_in_canonical_order():
-    """RFC-0009: the default prompt is base + resolution + character_sheet
-    + class + combat + magic + progression, in CANONICAL_SUBSYSTEM_ORDER,
-    joined by blank lines. Derives the expectation from the fragments
-    themselves so it's not brittle to prose edits — pins the ORDER."""
+    """RFC-0010: the default prompt is base + resolution + character_sheet
+    + class + combat + magic + progression + time, in
+    CANONICAL_SUBSYSTEM_ORDER, joined by blank lines. Derives the
+    expectation from the fragments themselves so it's not brittle to prose
+    edits — pins the ORDER."""
     base = load_module("core/base-v1").prompt_fragment_text
     resolution = load_module("core/d100-open-v1").prompt_fragment_text
     sheet = load_module("core/four-stat-v1").prompt_fragment_text
@@ -67,9 +68,10 @@ def test_default_assembles_in_canonical_order():
     combat = load_module("core/hp-pool-v1").prompt_fragment_text
     magic = load_module("core/realm-pool-v1").prompt_fragment_text
     progression = load_module("core/milestone-v1").prompt_fragment_text
+    time = load_module("core/time-cycle-v1").prompt_fragment_text
     assert build_dm_prompt() == (
         f"{base}\n\n{resolution}\n\n{sheet}\n\n{klass}\n\n{combat}\n\n{magic}"
-        f"\n\n{progression}"
+        f"\n\n{progression}\n\n{time}"
     )
 
 
@@ -166,9 +168,10 @@ def test_base_is_first_in_canonical_order():
     assert CANONICAL_SUBSYSTEM_ORDER[0] == "base"
 
 
-def test_default_modules_is_seven_core_set():
-    # RFC-0009: progression joined — the complete Fantasy core ruleset
-    # (resolution, sheet, classes, combat, magic, progression) on every world.
+def test_default_modules_is_eight_core_set():
+    # RFC-0010: time (day cycle + rest) joined — the Fantasy core ruleset
+    # (resolution, sheet, classes, combat, magic, progression, time) on
+    # every world.
     assert DEFAULT_MODULES == {
         "base": "core/base-v1",
         "resolution": "core/d100-open-v1",
@@ -177,6 +180,7 @@ def test_default_modules_is_seven_core_set():
         "combat": "core/hp-pool-v1",
         "magic": "core/realm-pool-v1",
         "progression": "core/milestone-v1",
+        "time": "core/time-cycle-v1",
     }
 
 
@@ -188,6 +192,23 @@ def test_progression_module_loads():
     assert "LEVEL-UP CHOICE" in p  # the apply path
     # the PC-ownership wall: DM proposes, never decides
     assert "may NOT decide" in p or "player's to take" in p
+
+
+def test_time_module_loads():
+    loaded = load_module("core/time-cycle-v1")
+    assert loaded.manifest.subsystem == "time"
+    assert loaded.manifest.requires == (
+        "core/four-stat-v1",
+        "core/hp-pool-v1",
+        "core/realm-pool-v1",
+    )
+    p = loaded.prompt_fragment_text
+    # the bounded day cycle + the two rest kinds it teaches
+    assert "timeOfDay" in p
+    for token in ("SHORT REST", "LONG REST"):
+        assert token in p
+    # the boundary: rest does not revive the dead / bypass death saves
+    assert "does NOT revive the dead" in p
 
 
 def test_magic_module_loads():

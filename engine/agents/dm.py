@@ -296,7 +296,7 @@ def _build_messages(
         f"\nCURRENT WORLD STATE:\n"
         f"- World: {ctx.world_name} ({ctx.current_era})\n"
         f"- Location: {ctx.current_location}\n"
-        f"- Time: {ctx.time_of_day}, Weather: {ctx.weather}\n"
+        f"- Time: {ctx.time_of_day} (Day {ctx.day}), Weather: {ctx.weather}\n"
         f"- Tension: {ctx.tension}/10\n\n"
         f"KNOWN CHARACTERS: {chars}\n"
         f"KNOWN LOCATIONS: {locs}\n"

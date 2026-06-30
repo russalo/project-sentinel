@@ -114,6 +114,7 @@ def _make_turn_input(player_action: str = "I look around.") -> DMTurnInput:
         weather="Clear",
         time_of_day="Noon",
         tension=3,
+        day=4,
     )
     return DMTurnInput(
         session_id="abc",
@@ -187,6 +188,10 @@ def test_build_messages_includes_world_state_in_user_message():
     assert "Test Realm" in user_content
     assert "The Test Tavern" in user_content
     assert "Tension: 3/10" in user_content
+    # RFC-0010: the day counter the time module increments must be visible
+    # to the DM each turn (Codex review on PR #164 — without this the DM
+    # can't increment it, only guess/reset).
+    assert "Day 4" in user_content
     assert "I order a drink." in user_content
 
 
