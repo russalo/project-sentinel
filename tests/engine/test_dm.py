@@ -270,6 +270,47 @@ def test_build_messages_omits_level_up_block_when_absent_or_bad():
     )
 
 
+def test_build_messages_injects_canon_block_when_retrieved_lore_present():
+    # RFC-0011: retrieved canon renders a RELEVANT CANON block in the user
+    # message, before the player action, so the DM cites it.
+    ctx = _make_turn_input().world_context
+    lore = [
+        {
+            "id": "mir_halder",
+            "kind": "character",
+            "name": "Mir Halder",
+            "source": "data/state/core/entities/mir_halder.json",
+            "snippet": "Innkeeper with a face like a closed ledger",
+        }
+    ]
+    content = _build_messages(ctx, "I greet the innkeeper.", None, None, lore)[1][
+        "content"
+    ]
+    assert "RELEVANT CANON" in content
+    assert "Mir Halder [character]: Innkeeper" in content
+    # canon precedes the player action (it's context, not a directive)
+    assert content.index("RELEVANT CANON") < content.index("PLAYER ACTION")
+
+
+def test_build_messages_omits_canon_block_when_none_or_empty():
+    # Dormant / fail-open path: no retrieved_lore ⇒ the assembled message is
+    # identical to a turn without the fold.
+    ctx = _make_turn_input().world_context
+    baseline = _build_messages(ctx, "I look around.")[1]["content"]
+    assert "RELEVANT CANON" not in baseline
+    assert _build_messages(ctx, "I look around.", None, None, None)[1]["content"] == (
+        baseline
+    )
+    assert _build_messages(ctx, "I look around.", None, None, [])[1]["content"] == (
+        baseline
+    )
+
+
+def test_dm_turn_input_retrieved_lore_defaults_none():
+    ti = _make_turn_input()
+    assert ti.retrieved_lore is None
+
+
 def test_build_messages_renders_none_yet_for_empty_collections():
     ctx = WorldContext(
         world_name="Empty",

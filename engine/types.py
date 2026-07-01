@@ -83,6 +83,12 @@ class DMTurnInput:
     # LEVEL-UP CHOICE block so the DM applies exactly the player's choice
     # (the PC-ownership wall — the DM never picks the stat itself).
     level_up: dict[str, object] | None = None
+    # RFC-0011 Lorekeeper fold: ranked, provenance-carrying canon hits the
+    # backend retrieved from poggio for this turn (lean-projected dicts
+    # ``{id, kind, name, source, snippet}``). None on a turn with retrieval
+    # disabled or when it failed open. Rendered as a RELEVANT CANON block so
+    # the DM cites established canon instead of improvising it.
+    retrieved_lore: list[dict[str, object]] | None = None
 
 
 @dataclass

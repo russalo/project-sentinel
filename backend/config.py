@@ -117,6 +117,17 @@ class Settings:
     feedback_root: Path | None = None
     rl_feedback_per_hour: int = 0
 
+    # ── RFC-0011 Lorekeeper fold (opt-in; dormant by default) ────────────
+    # When enabled, the backend retrieves relevant canon from ``poggio`` (an
+    # external trellis-based tool) before each turn and injects it into the DM
+    # prompt so the DM cites canon instead of improvising. Disabled by default
+    # → the turn path is byte-identical to today. Fail-open: a missing/broken
+    # poggio never breaks a turn (retrieval degrades to no canon block).
+    # ``poggio_bin`` is resolved on PATH (override to point at a built binary
+    # until it's installed); poggio subprocesses ``trellis`` itself.
+    lorekeeper_enabled: bool = False
+    poggio_bin: str = "poggio"
+
     @classmethod
     def load(cls) -> "Settings":
         _load_env()
@@ -185,4 +196,9 @@ class Settings:
                 else None
             ),
             rl_feedback_per_hour=_int_env("SENTINEL_RL_FEEDBACK_PER_HOUR", "0"),
+            lorekeeper_enabled=(
+                (_env("SENTINEL_LOREKEEPER_ENABLED", "false") or "false").lower()
+                == "true"
+            ),
+            poggio_bin=_env("SENTINEL_POGGIO_BIN", "poggio") or "poggio",
         )
