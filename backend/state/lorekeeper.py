@@ -36,6 +36,11 @@ _SCENE_LIMIT = 5
 _ESTABLISHED_LIMIT = 3
 _TOTAL_CAP = 8
 _TIMEOUT_S = 10.0
+# The schema-version probe is a trivial version print (no trellis, no
+# retrieval), so it gets a much shorter timeout than a recipe query — it runs
+# synchronously in the turn path, and a hung probe shouldn't delay a turn by
+# the full retrieval budget (gemini-medium on PR #166).
+_SCHEMA_TIMEOUT_S = 3.0
 
 # RFC-0012: the poggio output-schema this fold is written against. poggio's
 # `schema-version` probe must report exactly this, or retrieval is disabled for
@@ -200,7 +205,7 @@ def _schema_ok(poggio_bin: str) -> bool:
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=_TIMEOUT_S,
+            timeout=_SCHEMA_TIMEOUT_S,
             check=True,
         )
         version = (proc.stdout or "").strip()

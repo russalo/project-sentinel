@@ -123,6 +123,23 @@ def test_schema_probe_is_cached_once_per_process(monkeypatch):
     assert probes["n"] == 1  # probed once, cached thereafter
 
 
+def test_schema_probe_uses_short_timeout(monkeypatch):
+    # The version probe is trivial; it must not carry the full retrieval timeout
+    # (it runs synchronously in the turn path) — gemini-medium on PR #166.
+    seen = {}
+
+    def run(cmd, **kwargs):
+        if "schema-version" in cmd:
+            seen.update(kwargs)
+            return _proc("0.2")
+        return _proc(json.dumps([_LEAN_ENTITY]))
+
+    monkeypatch.setattr(lorekeeper.subprocess, "run", run)
+    lorekeeper.retrieve_canon(Path("/w/data"), _ctx(), "act", _settings())
+    assert seen.get("timeout") == lorekeeper._SCHEMA_TIMEOUT_S
+    assert lorekeeper._SCHEMA_TIMEOUT_S < lorekeeper._TIMEOUT_S
+
+
 # ── recipe fail-open (schema OK) ────────────────────────────────────
 
 
