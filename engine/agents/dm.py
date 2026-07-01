@@ -60,6 +60,7 @@ from typing import Any, Iterator
 from ..llm import build_client
 from ..modules import build_dm_prompt
 from ..types import Config, DMTurnInput, DMTurnResult, IntroInput, WorldContext
+from .lorekeeper import render_canon_block
 
 # Strip a trailing <world_update>...</world_update> block from raw DM
 # output before returning the user-facing narrative. Mirrors the
@@ -103,6 +104,7 @@ def run_turn(
         turn_input.player_action,
         turn_input.roll,
         turn_input.level_up,
+        turn_input.retrieved_lore,
     )
 
     response = client.chat.completions.create(
@@ -164,6 +166,7 @@ def stream_turn(
         turn_input.player_action,
         turn_input.roll,
         turn_input.level_up,
+        turn_input.retrieved_lore,
     )
 
     stream = client.chat.completions.create(
@@ -247,6 +250,7 @@ def _build_messages(
     player_action: str,
     roll: dict | None = None,
     level_up: dict | None = None,
+    retrieved_lore: list | None = None,
 ) -> list[dict]:
     """Assemble the OpenAI ``messages`` array for a DM turn.
 
@@ -307,6 +311,9 @@ def _build_messages(
 
     user_content = (
         context_block
+        # RFC-0011: retrieved canon is context — inject it with the world
+        # state, before the player's action. "" when retrieval is off / empty.
+        + render_canon_block(retrieved_lore)
         + "\nPLAYER ACTION: "
         + player_action
         + _roll_block(roll)

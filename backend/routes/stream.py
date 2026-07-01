@@ -43,6 +43,7 @@ from ..engine_bridge import build_engine_config
 from ..ratelimit import enforce, enforce_llm_ceiling
 from ..schemas import StreamRequest
 from ..state import sessions as session_state
+from ..state.lorekeeper import retrieve_canon
 from ..state.world_context import load_world_context
 from ..state.world_root import find_session_data_dir
 
@@ -260,10 +261,17 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
         recent_turns=recent,
     )
 
+    # RFC-0011 Lorekeeper fold: retrieve relevant canon for this turn and inject
+    # it into the DM prompt so the DM cites established canon instead of
+    # improvising it. Dormant unless SENTINEL_LOREKEEPER_ENABLED; fail-open
+    # (a missing/broken poggio degrades to no canon, never breaks the turn).
+    retrieved_lore = retrieve_canon(data_dir, world_context, body.action, settings)
+
     turn_input = engine.DMTurnInput(
         session_id=body.session_id,
         player_action=body.action,
         world_context=world_context,
+        retrieved_lore=retrieved_lore,
         # ADR-0005 resolution module (RFC-0006): on a resolve turn the body
         # carries the d100 roll; model_dump() yields the snake-case keys the
         # engine's ROLL RESULT block reads. None on an ordinary turn.
