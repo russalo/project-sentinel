@@ -280,7 +280,8 @@ in `GEMINI.md`.
 - `backend/` — FastAPI production backend (`:8001`)
 - `engine/` — pure-Python Inference Node package (agents, dispatch, schema)
 - `mcp-servers/` — Python MCP server implementations (fs-manager, git-sync)
-- `apps/sentinel-ui/` — React 19 + Vite frontend
+- `apps/sentinel-ui/` — React 19 + Vite frontend (the gated game app)
+- `apps/sentinel-site/` — React 19 + Vite public landing + `/guide` SPA, served at the apex of `sentinelrpg.com` (separate from the gated game app; renders the shared `docs/alpha/TESTER_GUIDE.md`)
 - `data/` — canonical world state (`state/*.json`) and lore (`lore/*.md`) under git
 - `schemas/` — shared JSON Schema contracts
 - `infrastructure/` — Docker Compose and environment configuration
@@ -339,6 +340,41 @@ in `GEMINI.md`.
   OPENAI_BASE_URL DM_MODEL` first so a stale shell-exported value can't win over
   `.env`. Verify a turn (or the loaded config) after restarting — don't assume
   `--reload` caught it.
+- **Public marketing site is LIVE at `sentinelrpg.com` (since 2026-06-30).**
+  `apps/sentinel-site` (`@sentinel/site`, React 19 / Vite / Tailwind / wouter) is a
+  separate **public, unauthenticated** SPA — routes `/` (landing) + `/guide` (renders
+  the shared `docs/alpha/TESTER_GUIDE.md`) — that exists because the gated `/alpha/`
+  basic_auth-401s OG/link-preview crawlers. It's the home for the share card.
+  `sentinelrpg.online` 301→apex. Lane: the **SPA artifact + cutover is mine**;
+  **DNS/TLS/hosting/edge is tailnet's** (placement = origin-core static behind gate;
+  delivery = I drop `sentinelrpg-site-<sha>.tar.gz` in `/srv/handoff/sentinelrpg/`
+  on merge, tailnet does the atomic symlink swap). "Sentinel RPG" = public brand;
+  "Project Sentinel" = engine codename. See `reference_sentinel_public_domains` memory.
+- **Game art via `genimg` (headless, dual-provider image gen).** `/srv/projects/genimg/genimg.sh`
+  generates images for cards/genre-tiles/heroes across TWO providers (routed by model name):
+  Gemini/Imagen (key `~/.config/genimg/gemini.env`) — `gemini-3-pro-image` = best text-in-image,
+  `imagen-4.0` for aspect; and OpenAI gpt-image (key `~/.config/review-kit/openai.env`) —
+  `gpt-image-2` newest, `--size`/`--quality`, no visible watermark. Format-aware finalizer
+  honors your output extension.
+  Pipeline: strip the visible Gemini sparkle (corner-flatness gate, or a wide→card crop
+  removes it) → SynthID persists/disclosed → bake Sentinel provenance tEXt (Author=`Sentinel
+  RPG`, Copyright=`© 2026 Sentinel RPG by Russalo`, Source=`https://sentinelrpg.com`,
+  Disclaimer) → hash-verify served bytes. Firefly/Figma preferred for design-grade public
+  work. See `reference_genimg_tool` memory.
+- **Lorekeeper fold (DM cites canon) is BUILT + DORMANT (since 2026-07-01).**
+  RFC-0011 (Slice 1) + RFC-0012 (Slice 2) + ADR-0006 landed a lore-retrieval
+  step in the turn loop: the backend (`backend/state/lorekeeper.py`, IO)
+  subprocesses **`poggio`** (a peer tool at `senlab/poggio` / `russalo/poggio`
+  that vendors `trellis` — the retrieval substrate, **NOT ChromaDB**, retired by
+  ADR-0006) to fetch ranked, provenance-carrying canon, and the pure engine
+  (`engine/agents/lorekeeper.py`) renders it into the DM prompt. **Gated by
+  `SENTINEL_LOREKEEPER_ENABLED` (default false = dormant)** and **fail-open**
+  (missing/broken poggio → no canon, never breaks a turn). To make it live =
+  **arm it**: build+install `poggio` on PATH (`cargo build --release`), `trellis
+  >= 0.26` on PATH, flip the flag in a patch window (pin `poggio >= 0.2.0`).
+  Channel with the poggio session: build/FRs → `russalo/poggio` issues (label
+  `from:sentinel`); coordination → via Russell. See `project_lorekeeper_fold_state`
+  + `project_poggio_session_json_softcontract` memories.
 - **Sentinel runs on TWO hostnames now (since 2026-06-07).** The closed
   alpha is **live at `sentinel.russalo.com/alpha/`** (gate-fronted: DNS
   resolves to a separate gate machine that terminates TLS and reverse-
@@ -559,8 +595,8 @@ the separation before editing.
 Sentinel is a two-node agentic system with a strict filesystem firewall between them. Understanding this split is required before editing anything in `engine/`, `mcp-servers/`, or `schemas/`.
 
 **The two nodes**
-- **Inference Node** (`engine/`) — pure-Python package housing the DM and Fact-Extractor agents (the Lorekeeper is planned, not yet built — see `docs/BACKLOG.md`). **Never granted direct filesystem access.** Generates narrative, then emits a structured `<world_update>` JSON payload. Live and wired into the FastAPI backend; the engine→fs-manager→git-sync path runs end-to-end. See `engine/README.md` for the boundary contract.
-- **Infrastructure Node** (`mcp-servers/` + `infrastructure/`) — ChromaDB (for future RAG / Lorekeeper) + the git-backed hybrid filesystem under `data/`. The only path from Inference → disk.
+- **Inference Node** (`engine/`) — pure-Python package housing the DM and Fact-Extractor agents. **Never granted direct filesystem access.** Generates narrative, then emits a structured `<world_update>` JSON payload. Live and wired into the FastAPI backend; the engine→fs-manager→git-sync path runs end-to-end. The **Lorekeeper** read-side fold is BUILT (dormant) — but per the engine boundary its retrieval IO lives in the backend, not here; `engine/agents/lorekeeper.py` only *renders* the retrieved canon (see the Lorekeeper bullet above + `engine/README.md` for the boundary contract).
+- **Infrastructure Node** (`mcp-servers/` + `infrastructure/`) — the git-backed hybrid filesystem under `data/` (the only path from Inference → disk). ChromaDB is still in the Compose stack (currently `stopped`) but its planned RAG/Lorekeeper role was **retired by ADR-0006** in favor of the `poggio`/`trellis` retrieval substrate (deterministic + citable, where vector RAG fought Sentinel's invariants).
 
 The two nodes communicate over a Tailscale mesh in production; locally they run side-by-side on the same host.
 
