@@ -15,6 +15,11 @@
 # (e.g. prod-core) with:  touch ~/.sentinel-armed
 {{- $armed := stat (joinPath .chezmoi.homeDir ".sentinel-armed") -}}
 {{- $haveAgeKey := stat (joinPath .chezmoi.homeDir ".config" "chezmoi" "key.txt") -}}
+{{- /* A SECOND marker gates the Lorekeeper fold independently of the main arm,
+       so it can be turned on in a deliberate patch window without a template
+       edit (and a stray `just env` can't arm it). Arm: touch
+       ~/.sentinel-lorekeeper-armed && just env && restart backend. */ -}}
+{{- $lorekeeperArmed := stat (joinPath .chezmoi.homeDir ".sentinel-lorekeeper-armed") -}}
 
 # --- Tailscale Mesh Binding ---------------------------------------------------
 # 127.0.0.1 = local-only dev (no Tailscale required).
@@ -123,6 +128,28 @@ SENTINEL_RL_FEEDBACK_PER_HOUR=10
 {{ else -}}
 SENTINEL_FEEDBACK_ROOT=
 SENTINEL_RL_FEEDBACK_PER_HOUR=0
+{{ end -}}
+
+# --- Lorekeeper fold (RFC-0011/0012) - STAGED, MARKER-GATED -------------------
+# Retrieval that lets the DM cite established canon, via the poggio/trellis
+# substrate (ADR-0006). STAGED: the binary paths render on the armed host now
+# (inert while OFF), and ENABLED is gated on a SECOND marker so arming is a
+# deliberate, template-edit-free step:
+#   ARM (in a patch window):  touch ~/.sentinel-lorekeeper-armed && just env \
+#                             && systemctl restart sentinel-backend
+#     then watch logs for retrieval firing (not silently disabled).
+#   ROLLBACK (instant):       rm ~/.sentinel-lorekeeper-armed && just env \
+#                             && systemctl restart sentinel-backend
+# Paths are ABSOLUTE because systemd's PATH lacks ~/.cargo/bin (verified
+# 2026-07-01) - relying on PATH silently fail-opens; POGGIO_TRELLIS_BIN reaches
+# poggio via the inherited process env. Fail-open: a missing/broken poggio
+# degrades to no canon, never breaks a turn. Pin poggio >= 0.2.0 (schema 0.2).
+{{ if $armed -}}
+SENTINEL_LOREKEEPER_ENABLED={{ if $lorekeeperArmed }}true{{ else }}false{{ end }}
+SENTINEL_POGGIO_BIN=/srv/projects/senlab/poggio/target/release/poggio
+POGGIO_TRELLIS_BIN=/srv/projects/pkplab/trellis/target/release/trellis
+{{ else -}}
+SENTINEL_LOREKEEPER_ENABLED=false
 {{ end -}}
 
 # --- Debug --------------------------------------------------------------------
