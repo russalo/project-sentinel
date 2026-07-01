@@ -30,13 +30,21 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 
 logger = logging.getLogger(__name__)
 
-# Slice-1 budget (RFC-0011): scene entities + a bm25 "have we established X?"
-# on the action, deduped and capped. Tuned later with real telemetry.
+# Budget (RFC-0011): scene entities + a bm25 "have we established X?" on the
+# action, deduped and capped. Tuned later with real telemetry.
 _SCENE_LIMIT = 5
 _ESTABLISHED_LIMIT = 3
 _TOTAL_CAP = 8
-_SNIPPET_MAX = 160
 _TIMEOUT_S = 10.0
+
+# RFC-0012: the poggio output-schema this fold is written against. poggio's
+# `schema-version` probe must report exactly this, or retrieval is disabled for
+# the process (deploy-safety — a wrong/old binary emits a different hit shape).
+# Bump in lockstep with the pinned `poggio >= x` when adopting a new schema.
+_EXPECTED_SCHEMA = "0.2"
+# Process-level cache of the schema-version verdict, keyed by binary path. The
+# binary can't change under a running process, so one probe per binary suffices.
+_schema_ok_cache: dict[str, bool] = {}
 
 
 def retrieve_canon(
@@ -52,6 +60,11 @@ def retrieve_canon(
     both shared and per-world modes).
     """
     if not settings.lorekeeper_enabled:
+        return []
+    # Deploy-safety (RFC-0012): a wrong/old/missing poggio emits a different hit
+    # shape. Assert the schema once (cached) before trusting any output; on a
+    # mismatch, retrieval is disabled for the process — no degraded canon.
+    if not _schema_ok(settings.poggio_bin):
         return []
 
     world_root = Path(data_dir).parent
@@ -141,38 +154,69 @@ def _run_recipe(
 
 
 def _project(hit: object) -> dict[str, Any] | None:
-    """Lean-project one poggio hit to ``{id, kind, name, source, snippet}``.
+    """Validate + pass through one poggio v0.2.0 **lean** hit.
 
-    Consumer-side projection for Slice 1 (Poggio's own lean projection is
-    ``poggio#4`` / their v0.2.0). Entity hits carry no ``snippet`` → use the
-    ``description``; narrative ("established") hits carry a highlighted
-    ``snippet`` + no ``name`` → label them by turn number.
+    RFC-0012: poggio now emits the lean shape ``{id, kind, name, source,
+    snippet}`` directly (entity name/description + turn label + source-side
+    truncation are all poggio's job now), so this is a pass-through — no
+    derivation, no re-truncation. It keeps only the defensive guard: ``id``
+    must be a non-empty string (it's the dedup key — a non-scalar would raise
+    ``TypeError: unhashable`` outside the per-recipe try and break fail-open;
+    poggio v0.2.0 guarantees string ids, but this is untrusted external output).
+    ``name``/``snippet`` are coerced to ``str`` and default gracefully.
     """
     if not isinstance(hit, dict):
         return None
     hid = hit.get("id")
-    # `id` must be a non-empty string: it's the dedup key (a set membership
-    # test), so a non-scalar (list/dict) would raise `TypeError: unhashable`
-    # outside the per-recipe try and break fail-open (codex P2 on PR #165).
     if not isinstance(hid, str) or not hid:
         return None
-    attrs = hit.get("attrs") if isinstance(hit.get("attrs"), dict) else {}
-    kind = hit.get("kind", "?")
-
-    name = attrs.get("name")
-    if not name and kind == "turn":
-        turn_number = attrs.get("turn_number")
-        name = f"prior turn {turn_number}" if turn_number is not None else "prior turn"
-    name = name or hid
-
-    snippet = str(hit.get("snippet") or attrs.get("description") or "").strip()
-    if len(snippet) > _SNIPPET_MAX:
-        snippet = snippet[: _SNIPPET_MAX - 1].rstrip() + "…"
-
     return {
         "id": hid,
-        "kind": kind,
-        "name": name,
+        "kind": hit.get("kind", "?"),
+        "name": str(hit.get("name") or hid),
         "source": hit.get("source", ""),
-        "snippet": snippet,
+        "snippet": str(hit.get("snippet") or ""),
     }
+
+
+def _schema_ok(poggio_bin: str) -> bool:
+    """True if the poggio binary reports the schema this fold expects.
+
+    RFC-0012 deploy-safety: probe ``poggio schema-version`` once per process
+    (cached) and require exactly ``_EXPECTED_SCHEMA``. A wrong/old/missing
+    binary (mismatch, non-zero exit, decode error, not on PATH) → ``False``,
+    logged once, and retrieval is disabled for the process — fail-open loud, so
+    a bad install yields no canon rather than a mis-shaped (slug-name) block.
+    The probe needs no trellis.
+    """
+    cached = _schema_ok_cache.get(poggio_bin)
+    if cached is not None:
+        return cached
+    ok = False
+    try:
+        proc = subprocess.run(
+            [poggio_bin, "schema-version"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=_TIMEOUT_S,
+            check=True,
+        )
+        version = (proc.stdout or "").strip()
+        ok = version == _EXPECTED_SCHEMA
+        if not ok:
+            logger.warning(
+                "lorekeeper: poggio schema-version %r != expected %r — retrieval "
+                "DISABLED for this process (fail-open loud)",
+                version,
+                _EXPECTED_SCHEMA,
+            )
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+        logger.warning(
+            "lorekeeper: poggio schema-version probe failed — retrieval DISABLED "
+            "for this process (fail-open loud): %s",
+            exc,
+        )
+    _schema_ok_cache[poggio_bin] = ok
+    return ok
