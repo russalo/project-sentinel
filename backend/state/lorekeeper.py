@@ -115,12 +115,19 @@ def _run_recipe(
             cmd,
             capture_output=True,
             text=True,
+            # poggio emits UTF-8 JSON; decode it as UTF-8 regardless of the
+            # host locale (Windows defaults to CP1252, which would mangle
+            # non-ASCII lore/names — gemini-high on PR #165). errors="replace"
+            # keeps a stray byte from raising, preserving fail-open.
+            encoding="utf-8",
+            errors="replace",
             timeout=_TIMEOUT_S,
             check=True,
         )
-    except (OSError, subprocess.SubprocessError) as exc:
-        # OSError covers FileNotFoundError (poggio not on PATH);
-        # SubprocessError covers non-zero exit + timeout. Fail-open.
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+        # OSError covers FileNotFoundError (poggio not on PATH); SubprocessError
+        # covers non-zero exit + timeout; ValueError covers a decode error.
+        # Fail-open.
         logger.warning("lorekeeper: poggio %s failed (fail-open): %s", recipe, exc)
         return []
     try:
@@ -144,7 +151,10 @@ def _project(hit: object) -> dict[str, Any] | None:
     if not isinstance(hit, dict):
         return None
     hid = hit.get("id")
-    if not hid:
+    # `id` must be a non-empty string: it's the dedup key (a set membership
+    # test), so a non-scalar (list/dict) would raise `TypeError: unhashable`
+    # outside the per-recipe try and break fail-open (codex P2 on PR #165).
+    if not isinstance(hid, str) or not hid:
         return None
     attrs = hit.get("attrs") if isinstance(hit.get("attrs"), dict) else {}
     kind = hit.get("kind", "?")

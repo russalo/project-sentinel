@@ -124,3 +124,29 @@ def test_nowhere_location_skips_at_location(monkeypatch):
         Path("/w/data"), _ctx(location="Nowhere"), "act", _settings()
     )
     assert "at-location" not in recipes  # placeholder location isn't queried
+
+
+def test_non_scalar_id_is_skipped_not_crashed(monkeypatch):
+    # A malformed hit with a list `id` must not raise TypeError: unhashable
+    # in the dedup set — it's skipped (fail-open). (codex P2 on PR #165.)
+    bad = {"id": ["bad"], "kind": "character", "source": "s", "attrs": {"name": "X"}}
+    good = {"id": "chez", "kind": "character", "source": "s", "attrs": {"name": "Chez"}}
+    monkeypatch.setattr(
+        lorekeeper.subprocess, "run", lambda *a, **k: _proc(json.dumps([bad, good]))
+    )
+    out = lorekeeper.retrieve_canon(Path("/w/data"), _ctx(), "act", _settings())
+    assert [h["id"] for h in out] == ["chez"]  # bad skipped, good kept, no raise
+
+
+def test_subprocess_decodes_as_utf8(monkeypatch):
+    # Force UTF-8 decoding regardless of host locale (Windows CP1252 would
+    # mangle non-ASCII lore) — gemini-high on PR #165.
+    seen = {}
+
+    def fake_run(cmd, **kwargs):
+        seen.update(kwargs)
+        return _proc("[]")
+
+    monkeypatch.setattr(lorekeeper.subprocess, "run", fake_run)
+    lorekeeper.retrieve_canon(Path("/w/data"), _ctx(), "act", _settings())
+    assert seen.get("encoding") == "utf-8"
