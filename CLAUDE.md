@@ -326,6 +326,13 @@ in `GEMINI.md`.
   other task, but there's no longer a special stack-decision gate.
 - `just` is the command runner. Add new recipes to `justfile` rather than creating
   standalone scripts unless the logic is complex enough to warrant a separate file.
+- **Background shell polls must be BOUNDED** — always `for i in $(seq 1 N)` with a
+  break condition, never a bare `until`/`while` loop. Three orphaned until-loops
+  (PR-review polls from June sessions) survived their sessions and hammered the
+  GitHub API every 10–15s for 3–7 DAYS before being caught in a server-stress hunt
+  (2026-07-02). When origin-core feels stressed, check `pgrep -f "sleep 1[05]"`
+  for leftover poll loops (and see the `project_reboot_recovery` memory for the
+  full post-reboot / stress-hunt checklist).
 - **The DM LLM is any OpenAI-compatible endpoint, configured in
   `infrastructure/.env`** (gitignored) via `OPENAI_BASE_URL` / `DM_MODEL` /
   `OPENAI_API_KEY`. The chezmoi template default is Groq
