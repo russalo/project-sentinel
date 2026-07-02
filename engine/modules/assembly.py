@@ -27,6 +27,7 @@ from .loader import load_module
 #   RFC-0008: magic
 #   RFC-0009: progression
 #   RFC-0010: time (day cycle + rest/recovery)
+#   RFC-0013: tension (encounter frames — threat tiers, paths, consequences)
 DEFAULT_MODULES: dict[str, str] = {
     "base": "core/base-v1",
     "resolution": "core/d100-open-v1",
@@ -36,6 +37,7 @@ DEFAULT_MODULES: dict[str, str] = {
     "magic": "core/realm-pool-v1",
     "progression": "core/milestone-v1",
     "time": "core/time-cycle-v1",
+    "tension": "core/encounter-frames-v1",
 }
 
 # Deterministic assembly order. A module fills its subsystem's slot; the

@@ -264,7 +264,13 @@ def _build_messages(
     """
     chars = (
         ", ".join(
-            f"{c.get('name', '?')} ({c.get('role', '?')}, {c.get('status', '?')})"
+            # RFC-0013: surface a persisted threat tier so the DM reuses the
+            # established tier on later turns instead of re-judging it (codex
+            # P2 on PR #169 — the same never-shown-can't-maintain gap as
+            # world.day on PR #164).
+            f"{c.get('name', '?')} ({c.get('role', '?')}, {c.get('status', '?')}"
+            + (f", threat {c['threat']}" if c.get("threat") else "")
+            + ")"
             for c in ctx.characters
         )
         or "None yet"

@@ -270,6 +270,21 @@ def test_build_messages_omits_level_up_block_when_absent_or_bad():
     )
 
 
+def test_build_messages_renders_persisted_threat_tier():
+    # RFC-0013: a character carrying a persisted `threat` tier must surface it
+    # in the KNOWN CHARACTERS line — the DM can't reuse an established tier it
+    # never sees (codex P2 on PR #169; same gap-shape as world.day on #164).
+    ctx = _make_turn_input().world_context
+    ctx.characters = [
+        {"name": "Gnarl", "role": "enemy", "status": "alive", "threat": "dangerous"},
+        {"name": "Mira", "role": "ally", "status": "alive"},
+    ]
+    content = _build_messages(ctx, "I press on.")[1]["content"]
+    assert "Gnarl (enemy, alive, threat dangerous)" in content
+    # no threat attribute → unchanged rendering
+    assert "Mira (ally, alive)" in content
+
+
 def test_build_messages_injects_canon_block_when_retrieved_lore_present():
     # RFC-0011: retrieved canon renders a RELEVANT CANON block in the user
     # message, before the player action, so the DM cites it.

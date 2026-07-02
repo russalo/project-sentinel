@@ -56,8 +56,8 @@ def test_base_fragment_byte_identical_to_pre_rfc0005():
 
 
 def test_default_assembles_in_canonical_order():
-    """RFC-0010: the default prompt is base + resolution + character_sheet
-    + class + combat + magic + progression + time, in
+    """RFC-0013: the default prompt is base + resolution + character_sheet
+    + class + combat + magic + progression + time + tension, in
     CANONICAL_SUBSYSTEM_ORDER, joined by blank lines. Derives the
     expectation from the fragments themselves so it's not brittle to prose
     edits — pins the ORDER."""
@@ -69,9 +69,10 @@ def test_default_assembles_in_canonical_order():
     magic = load_module("core/realm-pool-v1").prompt_fragment_text
     progression = load_module("core/milestone-v1").prompt_fragment_text
     time = load_module("core/time-cycle-v1").prompt_fragment_text
+    tension = load_module("core/encounter-frames-v1").prompt_fragment_text
     assert build_dm_prompt() == (
         f"{base}\n\n{resolution}\n\n{sheet}\n\n{klass}\n\n{combat}\n\n{magic}"
-        f"\n\n{progression}\n\n{time}"
+        f"\n\n{progression}\n\n{time}\n\n{tension}"
     )
 
 
@@ -168,10 +169,11 @@ def test_base_is_first_in_canonical_order():
     assert CANONICAL_SUBSYSTEM_ORDER[0] == "base"
 
 
-def test_default_modules_is_eight_core_set():
-    # RFC-0010: time (day cycle + rest) joined — the Fantasy core ruleset
-    # (resolution, sheet, classes, combat, magic, progression, time) on
-    # every world.
+def test_default_modules_is_nine_core_set():
+    # RFC-0013: tension (encounter frames) joined — the Fantasy core ruleset
+    # (resolution, sheet, classes, combat, magic, progression, time, tension)
+    # on every world. Every reserved CANONICAL_SUBSYSTEM_ORDER slot is now
+    # filled.
     assert DEFAULT_MODULES == {
         "base": "core/base-v1",
         "resolution": "core/d100-open-v1",
@@ -181,6 +183,7 @@ def test_default_modules_is_eight_core_set():
         "magic": "core/realm-pool-v1",
         "progression": "core/milestone-v1",
         "time": "core/time-cycle-v1",
+        "tension": "core/encounter-frames-v1",
     }
 
 
@@ -209,6 +212,26 @@ def test_time_module_loads():
         assert token in p
     # the boundary: rest does not revive the dead / bypass death saves
     assert "does NOT revive the dead" in p
+
+
+def test_encounter_module_loads():
+    loaded = load_module("core/encounter-frames-v1")
+    assert loaded.manifest.subsystem == "tension"
+    assert loaded.manifest.requires == (
+        "core/four-stat-v1",
+        "core/hp-pool-v1",
+        "core/d100-open-v1",
+    )
+    p = loaded.prompt_fragment_text
+    # the five-tier ladder + the persisted tier attribute
+    for tier in ("trivial", "standard", "dangerous", "deadly", "mythic"):
+        assert tier in p
+    assert 'threat: "<tier>"' in p
+    # surprise is check-gated; fleeing is a check at cost; consequences persist
+    assert "REACTION CHECK" in p
+    assert "AT COST" in p
+    assert "didn't happen" in p  # the never-empty-resolution rule
+    assert "DO NOT default to combat" in p
 
 
 def test_magic_module_loads():

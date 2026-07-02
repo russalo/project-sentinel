@@ -1,0 +1,25 @@
+# Encounter frames (ADR-0005 subsystem `tension`; Fantasy-flagship, RFC-0013).
+# The mechanical layer under the tension meter: base-v1's TENSION & ENCOUNTER
+# PRESSURE block says WHEN an encounter must land and lists kinds; this module
+# says WHAT one mechanically is — five level-scaled threat tiers (the ladder
+# behind combat's "sensible numbers"), telegraph-by-default with a check-gated
+# surprise, >=2 resolution paths (fight/flee/parley/outwit, flee-at-cost),
+# persistent consequences, and one-line frames for the non-combat kinds. A
+# prompt-fragment module — it grounds numbers the combat module owns and writes
+# ordinary DM-emitted entity attributes (`threat`), so it adds no new schema.
+# Fills the `tension` slot reserved in CANONICAL_SUBSYSTEM_ORDER since
+# RFC-0005. RFC-0013.
+
+name = "core/encounter-frames-v1"
+version = "1.0.0"
+subsystem = "tension"
+interface_version = "1.0"
+
+prompt_fragment = "prompt.md"
+schema_fragment = ""
+preset_paths = []
+# Tiers ground on the sheet/combat math (hp, Defense, effect dice) and every
+# resolution path runs on the d100 check loop. Time (RFC-0010) is referenced
+# (conditions clear on long rest, weather costs a block) but NOT required —
+# a world without it degrades gracefully.
+requires = ["core/four-stat-v1", "core/hp-pool-v1", "core/d100-open-v1"]
