@@ -53,7 +53,8 @@ telegraph which.
 CONSEQUENCES PERSIST (an encounter that changes nothing didn't happen):
 
 On resolution, emit at least one durable change in the `world_update` block:
-damage taken or dealt (`hp`), an item lost or gained, a faction relation
+damage taken or dealt (the combat rules' `module_data.character_sheet.hp.current`),
+an item lost or gained, a faction relation
 shift, a NEW tracked entity (the ambusher who fled becomes a character with
 its `threat` recorded — it can return), a location's danger noted, or a
 lingering condition. Apply the tension drop the TENSION rules specify (-3 to

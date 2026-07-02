@@ -63,7 +63,7 @@ evaporating without consequence. The silhouette exposed healing's gap
    parley; nothing refuses flee-at-cost. Pursuit/arrest = flee in reverse.
 
 4. **Consequences persist.** On resolution the DM emits at least one durable
-   change (hp, item, faction relation, a new tracked entity with its
+   change (the sheet `hp`, item, faction relation, a new tracked entity with its
    `threat` recorded, location danger, or a lingering condition a long rest
    clears). Plus the base block's tension drop. "An encounter that changes
    nothing didn't happen" — never an empty resolution.
