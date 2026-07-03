@@ -157,13 +157,17 @@ def _mirror_death_outcome_to_hint(
 ) -> None:
     """Patch the PC's entry in the SSE ``world_update`` hint to the committed
     death-save status + clock (RFC-0014), so the UI never renders the DM's stale
-    version. In-place; tolerant of a malformed/absent characters list."""
-    if not isinstance(hint, dict):
+    version. If the DM emitted no PC entry (e.g. no ``<world_update>`` at all —
+    the synth-payload case), ADD one so the committed death still reaches the UI
+    without a refresh (codex P2 on PR #172). In-place; tolerant of a malformed
+    hint."""
+    if not isinstance(hint, dict) or not isinstance(player_name, str):
         return
     chars = hint.get("characters")
     if not isinstance(chars, list):
-        return
-    lowered = (player_name or "").strip().lower()
+        chars = []
+        hint["characters"] = chars
+    lowered = player_name.strip().lower()
     pc = None
     for char in chars:
         if isinstance(char, dict) and str(char.get("role", "")).lower() == "player":
@@ -178,7 +182,9 @@ def _mirror_death_outcome_to_hint(
                 pc = char
                 break
     if pc is None:
-        return  # no PC entry to correct; hydration will reconcile on next load
+        # No PC entry to correct — add a minimal one carrying the committed death.
+        pc = {"name": player_name, "role": "player", "action": "upsert"}
+        chars.append(pc)
     pc["status"] = outcome_hint.get("status", pc.get("status"))
     module_data = pc.setdefault("module_data", {})
     if isinstance(module_data, dict):

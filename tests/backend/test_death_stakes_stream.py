@@ -133,9 +133,12 @@ def test_death_save_derived_from_stored_status_not_client_kind(
         },
     )
     assert resp.status_code == 200
-    _ = resp.text
+    body = resp.text
     op = _pc_op(fake_dispatch_log[0]["payload"])
     assert op is not None and op["data"]["status"] == "dead"
+    # The SSE world_update must carry the committed death even though the DM
+    # emitted no <world_update> block (the mirror adds a PC entry) — codex P2.
+    assert '"world_update"' in body and '"dead"' in body
 
 
 def test_no_death_save_when_pc_not_unconscious(
