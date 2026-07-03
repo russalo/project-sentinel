@@ -48,8 +48,8 @@ from these fragments in canonical order.
 | Subsystem | Module | RFC | What it commits |
 |---|---|---|---|
 | `base` | `core/base-v1` | [0005](./rfc/0005-module-infrastructure.md) | Status enum (`alive`/`unconscious`/`dead`/`unknown`/`missing`), the `<world_update>` frame, and the base DM behavior repackaged as a fragment. |
-| `resolution` | `core/d100-open-v1` | [0006](./rfc/0006-resolution-and-character-sheet.md) | **Server-authoritative** d100 checks vs a DC — the engine rolls (`check_request` → Roll), the DM does not invent the number. |
-| `character_sheet` | `core/four-stat-v1` | [0006](./rfc/0006-resolution-and-character-sheet.md) | Four-stat sheet (`might`/`grace`/`wits`/`will`) as schema fields under `module_data`. |
+| `resolution` | `core/d100-open-v1` | [0006](./rfc/0006-resolution-and-character-sheet.md) | Real **client-rolled** d100 vs a DC — the roll is the trust anchor (real randomness, not LLM bias), the backend validates it (`RollResult`) and passes it through, and the DM resolves from the margin; it does not invent the number. |
+| `character_sheet` | `core/four-stat-v1` | [0006](./rfc/0006-resolution-and-character-sheet.md) | Four-stat sheet (`body`/`mind`/`heart`/`will`) as schema fields under `module_data`. |
 | `class` | `core/four-class-fantasy-v1` | [0007](./rfc/0007-class-and-combat.md) | Four Fantasy classes and their prompt-level flavor. |
 | `combat` | `core/hp-pool-v1` | [0007](./rfc/0007-class-and-combat.md) | HP pool as schema; the down-and-out ladder (0 HP → `unconscious` → death saves → `dead`). **The death ladder is currently prompt-honored, not engine-enforced** — see the gap below. |
 | `magic` | `core/realm-pool-v1` | [0008](./rfc/0008-magic.md) | Realm-pool magic resource, spell effect tiers, Revive. |
@@ -62,8 +62,10 @@ from these fragments in canonical order.
 The systems above sit at different points on a **narration → enforcement**
 gradient, and that is the single most useful lens for what to build next:
 
-- **Enforced** (engine commits the outcome, DM dresses it): `resolution` — the
-  d100 roll is the backend's, surfaced to the player as a Roll affordance.
+- **Enforced** (the outcome follows from a real roll, DM dresses it):
+  `resolution` — a real client-rolled d100, server-validated, resolved by the
+  margin and surfaced to the player as a Roll affordance. The DM can't invent
+  the result.
 - **Prompt-honored** (DM is *asked* to follow the rule, nothing checks it):
   everything else, including the combat death ladder.
 
@@ -79,14 +81,17 @@ the status enum, but all of it is DM-honored. The `permadeath` world flag is
 **label-only** (`engine/types.py`, `engine/agents/dm.py`) — it appends a prompt
 line and gates nothing. So the most consequential moment in the game — a
 character dying — is exactly the moment the engine currently commits to least.
-This is inconsistent with RFC-0006, where an ordinary check became
-server-authoritative.
+This is inconsistent with RFC-0006, where an ordinary check became a real,
+server-validated roll instead of a DM-invented number.
 
-**The decision (Option 2, approved 2026-07-02).** Move death saves to the same
-server-authoritative path as ordinary checks:
+**The decision (Option 2, approved 2026-07-02).** Move death saves onto the same
+real-roll path as ordinary checks:
 
-- The death save becomes a real `check_request` the **backend rolls** (`will`
-  vs Moderate 60), not a number the DM invents.
+- The death save becomes a real `check_request` resolved through the **same
+  client-rolled, server-validated `RollResult` flow** as every other check
+  (`will` vs Moderate 60) — a real roll, not a number the DM invents. (It is
+  *not* a new backend roll; that would fork a second dice model and break the
+  player-visible Roll-affordance trust contract.)
 - The three-strike death clock is **tracked in world/character state**, not held
   in the DM's context.
 - Three tracked failures → the engine sets `status: dead`; healing/stabilize
