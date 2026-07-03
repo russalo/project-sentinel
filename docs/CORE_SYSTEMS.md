@@ -75,7 +75,7 @@ enforced end. That rule is death.
 
 ## Next slice — death-stakes enforcement (RFC-0014, Option 2)
 
-**The gap.** `combat/hp-pool-v1/prompt.md` instructs the DM to run a death save
+**The gap.** `engine/modules/combat/hp-pool-v1/prompt.md` instructs the DM to run a death save
 (a `will` check vs Moderate 60; three failures → `dead`) and `base-v1` defines
 the status enum, but all of it is DM-honored. The `permadeath` world flag is
 **label-only** (`engine/types.py`, `engine/agents/dm.py`) — it appends a prompt
