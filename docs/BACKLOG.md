@@ -393,6 +393,12 @@ context, which is fragile and prevents any genre from having real rules.
 
 ## Core Systems — Fantasy as Flagship Model
 
+> **Canonical home moved to [`CORE_SYSTEMS.md`](./CORE_SYSTEMS.md)** (2026-07-02).
+> That doc holds the shipped nine-module inventory, the enforcement gradient, the
+> committed next slice (death-stakes enforcement, RFC-0014 / Option 2), and the
+> vision half. The entries below are retained as the harvest pool until they land
+> as RFCs or are pruned; new core-systems planning goes in `CORE_SYSTEMS.md`.
+
 Sentinel's ambient surfaces (HP silhouette, tension meter, character cards,
 encounter pressure) only mean something durable if the **systemic layer
 underneath** is defined. Right now those surfaces visualize state the DM
