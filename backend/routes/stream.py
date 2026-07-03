@@ -33,6 +33,7 @@ from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 
 import engine
+from engine import death_stakes
 from engine.agents import dm as dm_agent
 from engine.agents import fact_extractor
 
@@ -267,6 +268,30 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
     # (a missing/broken poggio degrades to no canon, never breaks the turn).
     retrieved_lore = retrieve_canon(data_dir, world_context, body.action, settings)
 
+    # RFC-0014 death-stakes: on a `death_save` resolve turn the engine — not the
+    # DM — computes the outcome from the validated roll + the PC's STORED `will`
+    # and death clock. Recomputing server-side means a crafted client `margin`
+    # can't dodge death (only `rolled` is server-validated). The committed
+    # outcome rides into the prompt as a narrate-not-decide block and is injected
+    # authoritatively into the write payload below (Q1 = 2a).
+    death_outcome_obj = None
+    death_outcome_hint: dict | None = None
+    if body.roll is not None and body.roll.kind == "death_save":
+        pc = death_stakes.find_player_character(
+            world_context.characters, session.player_character_name
+        )
+        death_outcome_obj = death_stakes.resolve_death_save(
+            rolled=body.roll.rolled,
+            will=death_stakes.stored_will(pc) if pc else 0,
+            current_failed=death_stakes.stored_death_clock(pc) if pc else 0,
+        )
+        death_outcome_hint = {
+            "status": death_outcome_obj.status,
+            "failed": death_outcome_obj.failed,
+            "stabilized": death_outcome_obj.stabilized,
+            "died": death_outcome_obj.died,
+        }
+
     turn_input = engine.DMTurnInput(
         session_id=body.session_id,
         player_action=body.action,
@@ -276,6 +301,9 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
         # carries the d100 roll; model_dump() yields the snake-case keys the
         # engine's ROLL RESULT block reads. None on an ordinary turn.
         roll=body.roll.model_dump() if body.roll is not None else None,
+        # RFC-0014: the engine-committed death-save outcome, rendered as a
+        # narrate-not-decide block. None on any non-death-save turn.
+        death_outcome=death_outcome_hint,
         # ADR-0005 progression module (RFC-0009): on a level-up turn the body
         # carries the player's chosen stat; the engine renders it as a
         # LEVEL-UP CHOICE block. None otherwise.
@@ -319,9 +347,43 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
             session_id=body.session_id,
             turn_number=next_turn_number,
         )
-        if extracted.payload is not None:
+
+        payload = extracted.payload
+        # RFC-0014: a death-save resolve turn MUST write the engine's committed
+        # outcome even if the DM emitted no <world_update> — synthesize a minimal
+        # payload so the status/clock still land authoritatively.
+        if death_outcome_obj is not None and payload is None:
+            payload = {
+                "session_id": body.session_id,
+                "log_entry": narrative[:200] or f"Turn {next_turn_number} death save.",
+                "updates": [],
+            }
+
+        if payload is not None:
+            # Engine-authoritative death outcome (Q1 = 2a): override any
+            # conflicting DM-emitted status/clock so a hallucinated "you recover"
+            # can't beat a rolled death.
+            if death_outcome_obj is not None:
+                death_stakes.apply_death_outcome(
+                    payload,
+                    player_name=session.player_character_name,
+                    outcome=death_outcome_obj,
+                )
+            # Permadeath gate (Q2): on EVERY turn, refuse to revive a stored-dead
+            # PC when the world's permadeath flag is set. Rejections surface to
+            # the player and the state stays dead — the DM sees it unchanged next
+            # turn.
+            _, permadeath_rejections = death_stakes.enforce_permadeath(
+                payload,
+                stored_characters=world_context.characters,
+                player_name=session.player_character_name,
+                permadeath=session.permadeath,
+            )
+            for rejection in permadeath_rejections:
+                yield _sse_event({"type": "error", "content": rejection})
+
             dispatch = engine.apply_world_update(
-                config, extracted.payload, world_id=session.world_id or None
+                config, payload, world_id=session.world_id or None
             )
             if not dispatch.ok:
                 yield _sse_event(

@@ -105,6 +105,7 @@ def run_turn(
         turn_input.roll,
         turn_input.level_up,
         turn_input.retrieved_lore,
+        turn_input.death_outcome,
     )
 
     response = client.chat.completions.create(
@@ -167,6 +168,7 @@ def stream_turn(
         turn_input.roll,
         turn_input.level_up,
         turn_input.retrieved_lore,
+        turn_input.death_outcome,
     )
 
     stream = client.chat.completions.create(
@@ -251,6 +253,7 @@ def _build_messages(
     roll: dict | None = None,
     level_up: dict | None = None,
     retrieved_lore: list | None = None,
+    death_outcome: dict | None = None,
 ) -> list[dict]:
     """Assemble the OpenAI ``messages`` array for a DM turn.
 
@@ -323,6 +326,7 @@ def _build_messages(
         + "\nPLAYER ACTION: "
         + player_action
         + _roll_block(roll)
+        + _death_outcome_block(death_outcome)
         + _level_up_block(level_up)
     )
 
@@ -388,6 +392,39 @@ def _roll_block(roll: dict | None) -> str:
     return (
         "\n\nROLL RESULT (resolve the action from this; do not re-roll):\n"
         + "\n".join(lines)
+    )
+
+
+def _death_outcome_block(outcome: dict | None) -> str:
+    """Render the DEATH-SAVE RESULT block (RFC-0014), or "" when absent.
+
+    On a death-save resolve turn the engine has ALREADY computed and written the
+    outcome (status + the death clock) authoritatively — the DM's job is only to
+    narrate it. This block states the committed result and forbids the DM from
+    changing status or the clock, so a hallucinated "you recover!" can't override
+    a rolled death. Tolerant of missing keys."""
+    if not isinstance(outcome, dict) or not outcome:
+        return ""
+    status = str(outcome.get("status", "unconscious"))
+    died = bool(outcome.get("died"))
+    stabilized = bool(outcome.get("stabilized"))
+    failed = outcome.get("failed")
+    if died:
+        line = "The death save FAILED and the character has DIED. This is final."
+    elif stabilized:
+        line = "The death save SUCCEEDED — the character stabilizes, still unconscious."
+    else:
+        line = (
+            f"The death save FAILED (clock {failed}/3). The character clings to "
+            "life, still unconscious."
+        )
+    return (
+        "\n\nDEATH-SAVE RESULT (already committed by the system — narrate it, do "
+        "NOT decide or change it):\n"
+        f"- outcome: {line}\n"
+        f"- committed status: {status}\n"
+        "Narrate this outcome in the fiction. Do NOT emit a different status for "
+        "the player, and do NOT alter the death-save clock — the system owns both."
     )
 
 

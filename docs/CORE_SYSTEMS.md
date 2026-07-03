@@ -51,7 +51,7 @@ from these fragments in canonical order.
 | `resolution` | `core/d100-open-v1` | [0006](./rfc/0006-resolution-and-character-sheet.md) | Real **client-rolled** d100 vs a DC — the roll is the trust anchor (real randomness, not LLM bias), the backend validates it (`RollResult`) and passes it through, and the DM resolves from the margin; it does not invent the number. |
 | `character_sheet` | `core/four-stat-v1` | [0006](./rfc/0006-resolution-and-character-sheet.md) | Four-stat sheet (`body`/`mind`/`heart`/`will`) as schema fields under `module_data`. |
 | `class` | `core/four-class-fantasy-v1` | [0007](./rfc/0007-class-and-combat.md) | Four Fantasy classes and their prompt-level flavor. |
-| `combat` | `core/hp-pool-v1` | [0007](./rfc/0007-class-and-combat.md) | HP pool as schema; the down-and-out ladder (0 HP → `unconscious` → death saves → `dead`). **The death ladder is currently prompt-honored, not engine-enforced** — see the gap below. |
+| `combat` | `core/hp-pool-v1` | [0007](./rfc/0007-class-and-combat.md), [0014](./rfc/0014-death-stakes-enforcement.md) | HP pool as schema; the down-and-out ladder (0 HP → `unconscious` → death saves → `dead`). **The death ladder is now engine-enforced** (RFC-0014): death saves resolve through a tamper-proof, engine-authoritative path and `permadeath` is a real revival gate. |
 | `magic` | `core/realm-pool-v1` | [0008](./rfc/0008-magic.md) | Realm-pool magic resource, spell effect tiers, Revive. |
 | `progression` | `core/milestone-v1` | [0009](./rfc/0009-progression.md) | Milestone level-up. |
 | `time` | `core/time-cycle-v1` | [0010](./rfc/0010-time-and-rest.md) | Day cycle + short/long rest recovery. Rest heals the living; it never revives the dead. |
@@ -64,16 +64,17 @@ gradient, and that is the single most useful lens for what to build next:
 
 - **Enforced** (the outcome follows from a real roll, DM dresses it):
   `resolution` — a real client-rolled d100, server-validated, resolved by the
-  margin and surfaced to the player as a Roll affordance. The DM can't invent
-  the result.
+  margin and surfaced to the player as a Roll affordance; and, as of RFC-0014,
+  the **death save** — the engine computes the outcome from a server-recomputed
+  margin and writes `status` + the death clock itself, so the DM cannot override
+  a rolled death. The DM can't invent either result.
 - **Prompt-honored** (DM is *asked* to follow the rule, nothing checks it):
-  everything else, including the combat death ladder.
+  everything else.
 
-RFC-0006 proved the enforced end is achievable without breaking the turn loop.
-The near-term work is to move the **highest-stakes** prompt-honored rule to the
-enforced end. That rule is death.
+RFC-0006 proved the enforced end is achievable without breaking the turn loop;
+RFC-0014 took the highest-stakes rule — death — across the same line.
 
-## Next slice — death-stakes enforcement (RFC-0014, Option 2)
+## Landed — death-stakes enforcement (RFC-0014, Option 2)
 
 **The gap.** `engine/modules/combat/hp-pool-v1/prompt.md` instructs the DM to run a death save
 (a `will` check vs Moderate 60; three failures → `dead`) and `base-v1` defines
@@ -105,15 +106,18 @@ real-roll path as ordinary checks:
 world-state, what a dead PC does to an in-flight world. RFC-0014 scopes the
 enforcement mechanics; the consequence layer is its own follow-up.
 
-RFC-0014 will carry the wire details (where the death clock lives on the
-character entity, how the death-save `check_request` is distinguished from an
-ordinary check in the SSE stream, the permadeath-refusal feedback shape) and its
-open questions. It is drafted as a follow-up to this doc landing.
+Implemented in [RFC-0014](./rfc/0014-death-stakes-enforcement.md): the death
+clock lives at `module_data.combat.death_saves_failed`; a `death_save`
+`check_request` carries a `kind` field the frontend echoes back on `RollResult`;
+the engine recomputes the margin server-side (so a forged client margin can't
+dodge death) and injects the committed `status`/clock authoritatively; the
+permadeath gate is a pure engine function run at dispatch-time that drops a
+revival update and surfaces a rejection.
 
 ## Still open from the flagship list
 
-Beyond death-stakes, two named systems from the original flagship list remain
-unbuilt. Both are near-term-eligible but not yet the committed slice:
+With death-stakes landed, two named systems from the original flagship list
+remain unbuilt — the next candidates:
 
 - **Faction / economy basics.** No subsystem exists. Factions render as entity
   cards but carry no mechanical standing, reputation, or economy. A new

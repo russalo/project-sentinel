@@ -37,7 +37,7 @@ export function rollEffectDie(spec) {
 // `effectDie` (RFC-0007 combat): when the check is an attack, roll the
 // weapon die alongside the d100 — the DM computes damage from
 // weapon_roll + floor(margin/10). Omit for non-combat checks.
-export function computeRoll({ stat, statValue, target, mods = 0, effectDie = null }) {
+export function computeRoll({ stat, statValue, target, mods = 0, effectDie = null, kind = 'skill' }) {
   const first = rollD100();
   let openEnded = null;
   let openEndedRoll = 0;
@@ -64,6 +64,9 @@ export function computeRoll({ stat, statValue, target, mods = 0, effectDie = nul
     // weapon fields only on a combat attack (null otherwise)
     effectDie: effectRoll !== null ? effectDie : null,
     effectRoll,
+    // RFC-0014: which kind of check this is; "death_save" routes to
+    // engine-authoritative resolution on the backend, else an ordinary check.
+    kind: kind === 'death_save' ? 'death_save' : 'skill',
     // ── display-only extras (not sent; used by the reveal) ──
     statValue,
     mods,
@@ -87,6 +90,10 @@ export function toWirePayload(r) {
     wire.effectDie = r.effectDie;
     wire.effectRoll = r.effectRoll;
   }
+  // RFC-0014: echo the check kind so the backend routes a death save to
+  // engine-authoritative resolution. Defaults "skill" (backend defaults it too,
+  // so an older client without this field still resolves correctly).
+  wire.kind = r.kind === 'death_save' ? 'death_save' : 'skill';
   return wire;
 }
 
