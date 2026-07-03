@@ -102,6 +102,111 @@ def test_engine_overrides_dm_on_a_fatal_death_save(
     assert op["data"]["module_data"]["combat"]["death_saves_failed"] == 3
 
 
+SESSION_BYPASS = "cccccccc-3333-4333-8333-cccccccccccc"
+SESSION_ALIVE = "dddddddd-4444-4444-8444-dddddddddddd"
+SESSION_SHEET = "eeeeeeee-5555-4555-8555-eeeeeeeeeeee"
+
+
+def test_death_save_derived_from_stored_status_not_client_kind(
+    client, fake_openai, fake_dispatch_log, fake_commit_log, tmp_data_dir
+):
+    # Bypass attempt: PC is unconscious (clock 2), client sends kind="skill" to
+    # dodge engine authority. The backend derives the death save from STORED
+    # status, so the third failure still lands as `dead`.
+    _prime_session(tmp_data_dir, SESSION_BYPASS, permadeath=False)
+    _prime_pc(tmp_data_dir, status="unconscious", will=1, failed=2)
+    fake_openai.chat.completions.set_stream_tokens(["...she fades from the light..."])
+    resp = client.post(
+        "/api/stream",
+        json={
+            "action": "hang on",
+            "sessionId": SESSION_BYPASS,
+            "roll": {
+                "kind": "skill",
+                "stat": "will",
+                "rolled": 1,
+                "bonus": 5,
+                "total": 6,
+                "target": 60,
+                "margin": 0,
+            },  # forged kind ignored
+        },
+    )
+    assert resp.status_code == 200
+    _ = resp.text
+    op = _pc_op(fake_dispatch_log[0]["payload"])
+    assert op is not None and op["data"]["status"] == "dead"
+
+
+def test_no_death_save_when_pc_not_unconscious(
+    client, fake_openai, fake_dispatch_log, fake_commit_log, tmp_data_dir
+):
+    # False-trigger: PC is alive, client sends kind="death_save". The engine must
+    # NOT resolve a death save — the DM's narration stands.
+    _prime_session(tmp_data_dir, SESSION_ALIVE, permadeath=False)
+    _prime_pc(tmp_data_dir, status="alive", will=5, failed=0)
+    fake_openai.chat.completions.set_stream_tokens(
+        [
+            '<world_update>{"characters":[{"name":"Aria","action":"upsert",'
+            '"status":"alive"}]}</world_update>'
+        ]
+    )
+    resp = client.post(
+        "/api/stream",
+        json={
+            "action": "swing sword",
+            "sessionId": SESSION_ALIVE,
+            "roll": {
+                "kind": "death_save",
+                "stat": "will",
+                "rolled": 1,
+                "bonus": 25,
+                "total": 26,
+                "target": 60,
+                "margin": -34,
+            },
+        },
+    )
+    assert resp.status_code == 200
+    _ = resp.text
+    op = _pc_op(fake_dispatch_log[0]["payload"])
+    assert op is not None and op["data"]["status"] == "alive"
+    assert "combat" not in op["data"].get("module_data", {})
+
+
+def test_death_save_preserves_stored_character_sheet(
+    client, fake_openai, fake_dispatch_log, fake_commit_log, tmp_data_dir
+):
+    # A stabilizing save must not erase the sheet: the dispatched op carries the
+    # full module_data so fs-manager's shallow merge keeps stats.
+    _prime_session(tmp_data_dir, SESSION_SHEET, permadeath=False)
+    _prime_pc(tmp_data_dir, status="unconscious", will=8, failed=0)
+    fake_openai.chat.completions.set_stream_tokens(["...a shallow, ragged breath..."])
+    resp = client.post(
+        "/api/stream",
+        json={
+            "action": "cling",
+            "sessionId": SESSION_SHEET,
+            "roll": {
+                "kind": "death_save",
+                "stat": "will",
+                "rolled": 50,
+                "bonus": 40,
+                "total": 90,
+                "target": 60,
+                "margin": 30,
+            },
+        },
+    )
+    assert resp.status_code == 200
+    _ = resp.text
+    op = _pc_op(fake_dispatch_log[0]["payload"])
+    assert op is not None
+    assert (
+        op["data"]["module_data"]["character_sheet"]["stats"]["will"] == 8
+    )  # preserved
+
+
 def test_permadeath_refuses_revival_with_feedback(
     client, fake_openai, fake_dispatch_log, fake_commit_log, tmp_data_dir
 ):

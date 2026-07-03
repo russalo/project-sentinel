@@ -40,8 +40,6 @@ DEATH_SAVE_TARGET = 60  # Moderate — fixed for death saves, not DM-chosen.
 DEATH_CLOCK_MAX = 3  # Three failed saves → dead.
 _STAT_MULTIPLIER = 5  # d100 + stat×5, mirroring apps/sentinel-ui/src/utils/roll.js.
 
-_REVIVABLE_STATUSES = {"alive", "unconscious", "unknown", "missing"}
-
 
 @dataclass(frozen=True)
 class DeathSaveOutcome:
@@ -96,36 +94,65 @@ def resolve_death_save(
     )
 
 
+def _as_dict(value: Any) -> dict[str, Any]:
+    """Return ``value`` if it's a dict, else an empty dict.
+
+    A malformed-input guard: world state is LLM-emitted, so ``module_data`` /
+    ``character`` may be well-formed JSON of the WRONG type (a list, string,
+    null). Chaining ``.get`` through this degrades instead of raising
+    ``AttributeError`` (gemini-high on PR #172; the malformed-LLM-output hunt
+    pattern)."""
+    return value if isinstance(value, dict) else {}
+
+
+def _deep_merge(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
+    """Recursively merge ``overlay`` onto a copy of ``base`` (dict values only)."""
+    out = dict(base)
+    for key, value in overlay.items():
+        if isinstance(out.get(key), dict) and isinstance(value, dict):
+            out[key] = _deep_merge(out[key], value)
+        else:
+            out[key] = value
+    return out
+
+
 def find_player_character(
     characters: list[dict[str, Any]], player_name: str
 ) -> dict[str, Any] | None:
     """Locate the player's character entity: prefer ``role == "player"``, else name."""
+    if not isinstance(characters, list):
+        return None
     for char in characters:
-        if str(char.get("role", "")).lower() == "player":
+        if isinstance(char, dict) and str(char.get("role", "")).lower() == "player":
             return char
     lowered = (player_name or "").strip().lower()
     if not lowered:
         return None
     for char in characters:
-        if str(char.get("name", "")).strip().lower() == lowered:
+        if (
+            isinstance(char, dict)
+            and str(char.get("name", "")).strip().lower() == lowered
+        ):
             return char
     return None
 
 
-def stored_will(character: dict[str, Any]) -> int:
-    """Read the stored ``will`` stat (0 if absent — a statless PC can't win a save)."""
-    stats = ((character.get("module_data") or {}).get("character_sheet") or {}).get(
-        "stats"
-    ) or {}
+def stored_will(character: dict[str, Any] | None) -> int:
+    """Read the stored ``will`` stat (0 if absent/malformed — a statless PC can't win)."""
+    stats = _as_dict(
+        _as_dict(
+            _as_dict(_as_dict(character).get("module_data")).get("character_sheet")
+        ).get("stats")
+    )
     try:
         return int(stats.get("will", 0))
     except (TypeError, ValueError):
         return 0
 
 
-def stored_death_clock(character: dict[str, Any]) -> int:
-    """Read the stored death-save clock (0 if absent)."""
-    combat = (character.get("module_data") or {}).get("combat") or {}
+def stored_death_clock(character: dict[str, Any] | None) -> int:
+    """Read the stored death-save clock (0 if absent/malformed)."""
+    combat = _as_dict(_as_dict(_as_dict(character).get("module_data")).get("combat"))
     try:
         return max(0, int(combat.get("death_saves_failed", 0)))
     except (TypeError, ValueError):
@@ -134,6 +161,8 @@ def stored_death_clock(character: dict[str, Any]) -> int:
 
 def _entities_op_matches(op: dict[str, Any], name: str) -> bool:
     """True if this update op targets the named character's entity file."""
+    if not isinstance(op, dict):
+        return False
     if str(op.get("operation")) != "update":
         return False
     target = str(op.get("target_file", ""))
@@ -150,18 +179,37 @@ def _entities_op_matches(op: dict[str, Any], name: str) -> bool:
 
 
 def apply_death_outcome(
-    payload: dict[str, Any], *, player_name: str, outcome: DeathSaveOutcome
+    payload: dict[str, Any],
+    *,
+    player_name: str,
+    outcome: DeathSaveOutcome,
+    stored_module_data: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Override the payload so the PC's committed ``status`` + death clock win.
+    """Make the engine's committed ``status`` + death clock the authoritative PC write.
 
-    Mutates the PC's existing update op if the DM emitted one (so the engine's
-    status/clock beat the DM's), else appends a minimal merge-update op. fs-manager
-    applies ``operation: "update"`` as a merge, so a partial ``data`` is enough.
+    Two subtleties, both real breaks the PR bots caught (PR #172):
+
+    - fs-manager applies ``update`` as a SHALLOW top-level merge
+      (``existing.update(data)``), so writing a *partial* ``module_data`` would
+      ERASE the stored ``character_sheet`` (stats/HP) — after one save the PC's
+      ``will`` reads 0. We therefore write the FULL ``module_data``: the stored
+      sheet deep-merged with the op's own same-turn changes, then our clock.
+    - The Fact-Extractor can emit MULTIPLE ops for one entity, executed in order,
+      so a later DM op could re-``alive`` a rolled ``dead``. We set the committed
+      status + clock on EVERY matching op (the last therefore wins), appending one
+      if the DM emitted none.
+
     Returns the same payload object for convenience.
     """
-    updates = payload.setdefault("updates", [])
-    op = next((o for o in updates if _entities_op_matches(o, player_name)), None)
-    if op is None:
+    if not isinstance(payload, dict):
+        return payload
+    updates = payload.get("updates")
+    if not isinstance(updates, list):
+        updates = []
+        payload["updates"] = updates
+    base_md = _as_dict(stored_module_data)
+    matching = [o for o in updates if _entities_op_matches(o, player_name)]
+    if not matching:
         slug = _slugify_entity(player_name)
         if slug is None:
             return payload  # nothing we can safely target
@@ -171,15 +219,22 @@ def apply_death_outcome(
             "data": {"name": player_name},
         }
         updates.append(op)
-    data = op.setdefault("data", {})
-    if not isinstance(data, dict):
-        return payload
-    data["status"] = outcome.status
-    module_data = data.setdefault("module_data", {})
-    if isinstance(module_data, dict):
-        combat = module_data.setdefault("combat", {})
-        if isinstance(combat, dict):
-            combat["death_saves_failed"] = outcome.failed
+        matching = [op]
+    for op in matching:
+        if not isinstance(op, dict):
+            continue
+        data = op.get("data")
+        if not isinstance(data, dict):
+            data = {}
+            op["data"] = data
+        data["status"] = outcome.status
+        # Full module_data so the shallow fs-manager merge preserves the sheet:
+        # stored sheet <- this op's same-turn module_data <- our death clock.
+        merged = _deep_merge(base_md, _as_dict(data.get("module_data")))
+        combat = _as_dict(merged.get("combat"))
+        combat["death_saves_failed"] = outcome.failed
+        merged["combat"] = combat
+        data["module_data"] = merged
     return payload
 
 
@@ -197,38 +252,59 @@ def enforce_permadeath(
     the PC's *stored* status is already ``dead`` — dying this turn is not revival.
     """
     rejections: list[str] = []
-    if not permadeath:
+    if not (permadeath and isinstance(payload, dict)):
         return payload, rejections
     pc = find_player_character(stored_characters, player_name)
     if pc is None or str(pc.get("status", "")).lower() != "dead":
         return payload, rejections
 
     name = str(pc.get("name") or player_name)
-    for op in payload.get("updates", []):
-        if not _entities_op_matches(op, name):
+    updates = payload.get("updates")
+    if not isinstance(updates, list):
+        return payload, rejections
+    for op in updates:
+        if not isinstance(op, dict):
             continue
         data = op.get("data")
         if not isinstance(data, dict):
             continue
+        # Match the PC's own entity file, OR any entities-update that RE-INTRODUCES
+        # the player under a new name (a rename/clone dodges the name+slug match —
+        # swarm MEDIUM on PR #172). There is one player and they are dead, so any
+        # entities op claiming role "player" is a revival attempt.
+        claims_player = (
+            str(op.get("operation")) == "update"
+            and "/entities/" in str(op.get("target_file", ""))
+            and str(data.get("role", "")).lower() == "player"
+        )
+        if not (_entities_op_matches(op, name) or claims_player):
+            continue
+        # Status is an ALLOWLIST, not a denylist (gemini/swarm HIGH on PR #172):
+        # only `dead` may stand on a stored-dead PC. Enumerating revival words
+        # ('alive', 'unconscious', …) let prose-y statuses ('stable', 'conscious',
+        # 'recovering') slip through — and the frontend renders anything != 'dead'
+        # as living, a full revival. Drop any non-empty status that isn't 'dead'.
         new_status = str(data.get("status", "")).lower()
-        if new_status in _REVIVABLE_STATUSES:
+        if new_status and new_status != "dead":
             data.pop("status", None)
             rejections.append(
                 f"permadeath: {name} is dead — status cannot be changed to "
                 f"'{new_status}'. Revival refused; narrate the death as final."
             )
-        # HP restore: the legacy flat `health` and module hp.current both count.
-        if _pops_positive(data, "health"):
+        # HP restore (flat `health`, module hp.current AND hp.max) + a death-clock
+        # reset are all revival-adjacent writes to a dead PC — drop them all.
+        char_sheet = _as_dict(_as_dict(data.get("module_data")).get("character_sheet"))
+        hp = _as_dict(char_sheet.get("hp"))
+        hp_restored = _pops_positive(data, "health")
+        hp_restored = _pops_positive(hp, "current") or hp_restored
+        hp_restored = _pops_positive(hp, "max") or hp_restored
+        combat = _as_dict(_as_dict(data.get("module_data")).get("combat"))
+        clock_written = combat.pop("death_saves_failed", None) is not None
+        if hp_restored or clock_written:
             rejections.append(
-                f"permadeath: {name} is dead — HP cannot be restored. Revival refused."
+                f"permadeath: {name} is dead — HP / death clock cannot be "
+                "restored. Revival refused."
             )
-        hp = (data.get("module_data") or {}).get("character_sheet", {})
-        if isinstance(hp, dict) and _pops_positive(hp.get("hp") or {}, "current"):
-            if not rejections or "HP cannot be restored" not in rejections[-1]:
-                rejections.append(
-                    f"permadeath: {name} is dead — HP cannot be restored. "
-                    "Revival refused."
-                )
     return payload, rejections
 
 

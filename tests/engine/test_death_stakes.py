@@ -115,6 +115,74 @@ def test_outcome_appends_op_when_dm_emitted_none():
     assert op["data"]["module_data"]["combat"]["death_saves_failed"] == 1
 
 
+def test_outcome_preserves_stored_character_sheet():
+    # fs-manager shallow-merges module_data, so the death write must carry the
+    # FULL sheet or `will`/stats are erased (codex P1). We pass stored_module_data.
+    stored_md = {
+        "character_sheet": {"stats": {"will": 8, "body": 5}, "hp": {"current": 0}}
+    }
+    payload = {
+        "updates": [
+            {
+                "target_file": "data/state/core/entities/aria.json",
+                "operation": "update",
+                "data": {"name": "Aria"},
+            }
+        ]
+    }
+    out = DeathSaveOutcome(
+        failed=1, status="unconscious", stabilized=False, died=False, margin=-3
+    )
+    apply_death_outcome(
+        payload, player_name="Aria", outcome=out, stored_module_data=stored_md
+    )
+    md = payload["updates"][0]["data"]["module_data"]
+    assert md["character_sheet"]["stats"]["will"] == 8  # sheet preserved
+    assert md["combat"]["death_saves_failed"] == 1  # clock added
+
+
+def test_outcome_wins_across_multiple_ops():
+    # The Fact-Extractor can emit multiple ops for one entity, run in order; a
+    # later DM op must not un-dead a rolled death (codex P1) — set on every op.
+    payload = {
+        "updates": [
+            {
+                "target_file": "data/state/core/entities/aria.json",
+                "operation": "update",
+                "data": {"name": "Aria", "status": "alive"},
+            },
+            {
+                "target_file": "data/state/core/entities/aria.json",
+                "operation": "update",
+                "data": {"name": "Aria", "status": "alive"},
+            },
+        ]
+    }
+    out = DeathSaveOutcome(
+        failed=3, status="dead", stabilized=False, died=True, margin=-9
+    )
+    apply_death_outcome(payload, player_name="Aria", outcome=out)
+    assert all(
+        op["data"]["status"] == "dead" for op in payload["updates"]
+    )  # last wins → dead
+
+
+def test_pure_functions_tolerate_malformed_input():
+    # Non-dict module_data / character / payload must degrade, not raise.
+    assert stored_will({"module_data": ["not", "a", "dict"]}) == 0
+    assert stored_death_clock({"module_data": "nope"}) == 0
+    assert stored_will(None) == 0
+    assert find_player_character("not-a-list", "Aria") is None
+    assert (
+        apply_death_outcome(
+            "not-a-dict",
+            player_name="Aria",
+            outcome=DeathSaveOutcome(0, "dead", False, True, -1),
+        )
+        == "not-a-dict"
+    )
+
+
 # ── enforce_permadeath ───────────────────────────────────────────────────────
 
 
@@ -154,6 +222,102 @@ def test_permadeath_noop_when_stored_pc_not_dead():
         permadeath=True,
     )
     assert rej == []  # dying/reviving an un-dead PC is not gated
+
+
+def test_permadeath_status_gate_is_an_allowlist():
+    # A prose-y status that isn't in the old denylist must still be blocked.
+    for word in ("stable", "conscious", "recovering", "awake", "injured"):
+        payload = {
+            "updates": [
+                {
+                    "target_file": "data/state/core/entities/aria.json",
+                    "operation": "update",
+                    "data": {"name": "Aria", "status": word},
+                }
+            ]
+        }
+        _, rej = enforce_permadeath(
+            payload,
+            stored_characters=[_pc(status="dead")],
+            player_name="Aria",
+            permadeath=True,
+        )
+        assert "status" not in payload["updates"][0]["data"], f"{word} slipped past"
+        assert rej
+
+
+def test_permadeath_status_dead_is_allowed_to_stand():
+    payload = {
+        "updates": [
+            {
+                "target_file": "data/state/core/entities/aria.json",
+                "operation": "update",
+                "data": {"name": "Aria", "status": "dead"},
+            }
+        ]
+    }
+    _, rej = enforce_permadeath(
+        payload,
+        stored_characters=[_pc(status="dead")],
+        player_name="Aria",
+        permadeath=True,
+    )
+    assert payload["updates"][0]["data"]["status"] == "dead" and rej == []
+
+
+def test_permadeath_blocks_renamed_player_revival():
+    # A rename/clone under a new name/slug dodges the name match — the role
+    # "player" catch closes it.
+    payload = {
+        "updates": [
+            {
+                "target_file": "data/state/core/entities/aria_the_reborn.json",
+                "operation": "update",
+                "data": {
+                    "name": "Aria the Reborn",
+                    "role": "player",
+                    "status": "alive",
+                    "health": 100,
+                },
+            }
+        ]
+    }
+    _, rej = enforce_permadeath(
+        payload,
+        stored_characters=[_pc(status="dead")],
+        player_name="Aria",
+        permadeath=True,
+    )
+    data = payload["updates"][0]["data"]
+    assert "status" not in data and "health" not in data and rej
+
+
+def test_permadeath_blocks_hp_max_and_clock_reset():
+    payload = {
+        "updates": [
+            {
+                "target_file": "data/state/core/entities/aria.json",
+                "operation": "update",
+                "data": {
+                    "name": "Aria",
+                    "module_data": {
+                        "character_sheet": {"hp": {"max": 100}},
+                        "combat": {"death_saves_failed": 0},
+                    },
+                },
+            }
+        ]
+    }
+    _, rej = enforce_permadeath(
+        payload,
+        stored_characters=[_pc(status="dead")],
+        player_name="Aria",
+        permadeath=True,
+    )
+    md = payload["updates"][0]["data"]["module_data"]
+    assert "max" not in md["character_sheet"]["hp"]  # hp.max drop
+    assert "death_saves_failed" not in md["combat"]  # clock-reset drop
+    assert rej
 
 
 def test_permadeath_refuses_status_revival_and_hp_restore():

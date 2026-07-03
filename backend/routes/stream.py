@@ -152,6 +152,41 @@ def _parse_frontend_hint(raw: str) -> dict:
     return parsed if isinstance(parsed, dict) else {}
 
 
+def _mirror_death_outcome_to_hint(
+    hint: dict, player_name: str, outcome_hint: dict
+) -> None:
+    """Patch the PC's entry in the SSE ``world_update`` hint to the committed
+    death-save status + clock (RFC-0014), so the UI never renders the DM's stale
+    version. In-place; tolerant of a malformed/absent characters list."""
+    if not isinstance(hint, dict):
+        return
+    chars = hint.get("characters")
+    if not isinstance(chars, list):
+        return
+    lowered = (player_name or "").strip().lower()
+    pc = None
+    for char in chars:
+        if isinstance(char, dict) and str(char.get("role", "")).lower() == "player":
+            pc = char
+            break
+    if pc is None:
+        for char in chars:
+            if (
+                isinstance(char, dict)
+                and str(char.get("name", "")).strip().lower() == lowered
+            ):
+                pc = char
+                break
+    if pc is None:
+        return  # no PC entry to correct; hydration will reconcile on next load
+    pc["status"] = outcome_hint.get("status", pc.get("status"))
+    module_data = pc.setdefault("module_data", {})
+    if isinstance(module_data, dict):
+        combat = module_data.setdefault("combat", {})
+        if isinstance(combat, dict):
+            combat["death_saves_failed"] = outcome_hint.get("failed")
+
+
 @router.post("/stream")
 def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
     # NOTE: This handler is deliberately `def`, not `async def`.
@@ -268,29 +303,37 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
     # (a missing/broken poggio degrades to no canon, never breaks the turn).
     retrieved_lore = retrieve_canon(data_dir, world_context, body.action, settings)
 
-    # RFC-0014 death-stakes: on a `death_save` resolve turn the engine — not the
-    # DM — computes the outcome from the validated roll + the PC's STORED `will`
-    # and death clock. Recomputing server-side means a crafted client `margin`
-    # can't dodge death (only `rolled` is server-validated). The committed
-    # outcome rides into the prompt as a narrate-not-decide block and is injected
-    # authoritatively into the write payload below (Q1 = 2a).
+    # RFC-0014 death-stakes: a death save is DERIVED FROM SERVER STATE, not the
+    # client's `roll.kind`. The trigger is "there is a roll AND the PC's STORED
+    # status is `unconscious`" — the only state a death save is valid in. Keying
+    # off the client-echoed `kind` would let a crafted/stale client either force
+    # a save when the PC is fine, or send `kind:"skill"` to bypass engine
+    # authority on a real save and reopen the forged-margin path (codex P1 on PR
+    # #172). `kind` stays advisory for the UI only. The engine then computes the
+    # outcome from the validated roll + the PC's STORED `will` and clock (a
+    # crafted client `margin` can't dodge death; only `rolled` is server-
+    # validated), rides it into the prompt as a narrate-not-decide block, and
+    # injects it authoritatively into the write payload below (Q1 = 2a).
     death_outcome_obj = None
     death_outcome_hint: dict | None = None
-    if body.roll is not None and body.roll.kind == "death_save":
-        pc = death_stakes.find_player_character(
+    death_pc_module_data: dict | None = None
+    if body.roll is not None:
+        _pc = death_stakes.find_player_character(
             world_context.characters, session.player_character_name
         )
-        death_outcome_obj = death_stakes.resolve_death_save(
-            rolled=body.roll.rolled,
-            will=death_stakes.stored_will(pc) if pc else 0,
-            current_failed=death_stakes.stored_death_clock(pc) if pc else 0,
-        )
-        death_outcome_hint = {
-            "status": death_outcome_obj.status,
-            "failed": death_outcome_obj.failed,
-            "stabilized": death_outcome_obj.stabilized,
-            "died": death_outcome_obj.died,
-        }
+        if _pc is not None and str(_pc.get("status", "")).lower() == "unconscious":
+            death_pc_module_data = _pc.get("module_data")
+            death_outcome_obj = death_stakes.resolve_death_save(
+                rolled=body.roll.rolled,
+                will=death_stakes.stored_will(_pc),
+                current_failed=death_stakes.stored_death_clock(_pc),
+            )
+            death_outcome_hint = {
+                "status": death_outcome_obj.status,
+                "failed": death_outcome_obj.failed,
+                "stabilized": death_outcome_obj.stabilized,
+                "died": death_outcome_obj.died,
+            }
 
     turn_input = engine.DMTurnInput(
         session_id=body.session_id,
@@ -334,6 +377,15 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
         narrative = _BLOCK_RE.sub("", raw_response).strip()
         frontend_hint = _parse_frontend_hint(raw_response)
 
+        # RFC-0014: mirror the engine-committed death outcome into the SSE hint so
+        # the UI shows the authoritative status immediately — otherwise the DM's
+        # (possibly "alive") version would render until a refresh re-hydrates the
+        # committed state.
+        if death_outcome_hint is not None:
+            _mirror_death_outcome_to_hint(
+                frontend_hint, session.player_character_name, death_outcome_hint
+            )
+
         # Emit the world_update event in the shape the frontend
         # expects (DM hint shape, not the fs-manager schema shape).
         yield _sse_event({"type": "world_update", "data": frontend_hint})
@@ -353,9 +405,18 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
         # outcome even if the DM emitted no <world_update> — synthesize a minimal
         # payload so the status/clock still land authoritatively.
         if death_outcome_obj is not None and payload is None:
+            # log_entry has a schema minLength of 10 — a short DM narrative would
+            # make fs-manager reject the whole payload and silently drop the
+            # committed death (swarm HIGH on PR #172). Fall back to a fixed
+            # >=10-char entry whenever the narrative is too short.
+            _narrative = narrative[:200]
             payload = {
                 "session_id": body.session_id,
-                "log_entry": narrative[:200] or f"Turn {next_turn_number} death save.",
+                "log_entry": (
+                    _narrative
+                    if len(_narrative.strip()) >= 10
+                    else f"Turn {next_turn_number} — death save resolved."
+                ),
                 "updates": [],
             }
 
@@ -368,6 +429,10 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
                     payload,
                     player_name=session.player_character_name,
                     outcome=death_outcome_obj,
+                    # Pass the PC's STORED module_data so the write carries the
+                    # full sheet — fs-manager's shallow merge would otherwise
+                    # erase character_sheet (stats/HP) behind the death clock.
+                    stored_module_data=death_pc_module_data,
                 )
             # Permadeath gate (Q2): on EVERY turn, refuse to revive a stored-dead
             # PC when the world's permadeath flag is set. Rejections surface to

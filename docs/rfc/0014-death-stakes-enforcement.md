@@ -80,9 +80,14 @@ Six seams, in dependency order:
    before `apply_world_update` (not inside `apply_world_update`, which is a thin
    fs-manager HTTP client with no world state, and not in fs-manager, which
    doesn't know `permadeath`): when the world's `permadeath` is set and a
-   character's **stored** `status == dead`, any update that would revive it
-   (status → alive/unconscious, or HP restore) is dropped and fed back to the
-   DM as a rejection — never silently honored.
+   character's **stored** `status == dead`, any update that would revive it is
+   dropped and fed back to the DM as a rejection — never silently honored. The
+   status check is an **allowlist** (only `dead` may stand — anything else,
+   including prose-y statuses like `stable`/`conscious`, is refused), the
+   HP-restore drop covers flat `health` + `hp.current`/`hp.max` + a death-clock
+   reset, and a **renamed/clone revival** (an entities-update claiming
+   `role: "player"` under a new name) is caught too — all hardened from the PR
+   review (see the review note).
 
 6. **Prompt.** Rewrite the `hp-pool-v1` death-save section: at 0 HP the DM
    *requests* a `death_save` check and, on resolve, *narrates* the
