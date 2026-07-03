@@ -111,6 +111,13 @@ class RollResult(_CamelModel):
     margin: int
     # "high" (open-ended surge), "low" (fumble spiral), or None.
     open_ended: str | None = None
+    # RFC-0014: which kind of check this resolves. The frontend echoes back the
+    # check_request's `kind`. Pattern-constrained (like effect_die / level_up
+    # stat) because it is client-controlled and steers engine logic — a
+    # "death_save" routes to engine-authoritative outcome + server-recomputed
+    # margin, so an unconstrained string can't smuggle in a new branch. Default
+    # "skill" = an ordinary DM-resolved check.
+    kind: str = Field(default="skill", pattern=r"^(skill|death_save)$")
     # RFC-0007 combat / RFC-0008 magic: on an attack or contested cast the
     # frontend also rolls the magnitude die (weapon or spell) named by the
     # check_request's effect_die. None otherwise. `model_dump()` yields

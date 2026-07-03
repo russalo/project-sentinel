@@ -144,6 +144,10 @@ export const useChatStore = create((set) => ({
         label: typeof req.label === 'string' ? req.label : '',
         prompt: typeof req.prompt === 'string' ? req.prompt : '',
         effectDie: typeof req.effect_die === 'string' ? req.effect_die : null,
+        // RFC-0014: a `death_save` check routes to engine-authoritative outcome
+        // + server-recomputed margin on resolve. Only the known kinds surface;
+        // anything else falls back to an ordinary skill check.
+        kind: req.kind === 'death_save' ? 'death_save' : 'skill',
       },
     });
   },

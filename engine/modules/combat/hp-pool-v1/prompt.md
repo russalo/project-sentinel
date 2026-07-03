@@ -40,18 +40,29 @@ margin (margin +22 → +2; a barely-made hit at margin +3 → +0). Apply it:
 `current -= damage` (clamp at 0). Emit the defender's updated
 `module_data.character_sheet.hp.current`.
 
-DOWN AND OUT:
+DOWN AND OUT (death saves are engine-resolved — RFC-0014):
 
 - `current` reaches 0 → set `status` to `unconscious`. The character is
-  down but not gone — healing, an ally, or a death-save can recover them.
-- While a character is unconscious at 0 HP, each of their turns you may
-  call a **death save**: a `will` check vs **Moderate 60**. A failure
-  advances a three-strike death clock; a success stabilizes them; any
-  healing reverses it and restores HP. Three failed death saves → set
-  `status` to `dead`.
-- `dead` is also correct on unambiguous, terminal narration (decapitation,
-  obliteration, a killing blow with no recovery). It is the harder
-  commitment — most drops to 0 HP should land on `unconscious` first.
+  down but not gone — healing, an ally, or a death save can recover them.
+- While the PLAYER character is unconscious at 0 HP, do NOT narrate their
+  fate — **request a death save**: emit a `check_request` with
+  `"kind": "death_save"`, `"stat": "will"`, `"target": 60`, and a `label`
+  like "Cling to life". Do not resolve it, and do not set `status` or a
+  death clock — the system rolls the save, computes the outcome, and writes
+  both authoritatively.
+- On the resolve turn you receive a **DEATH-SAVE RESULT** block stating the
+  committed outcome (stabilized / still clinging on / died). NARRATE that
+  outcome; never contradict it, never emit a different `status` for the
+  player, and never touch the death clock — the system owns them.
+- Healing an unconscious character (a normal `world_update`: raise
+  `hp.current`, set `status` back to `alive`) is still yours to narrate and
+  reverses the clock.
+- For NPCs, resolve death yourself as the fiction demands — the death-save
+  machinery is the player's. `dead` is correct on unambiguous terminal
+  narration of an NPC (decapitation, a killing blow with no recovery).
+- **Permadeath:** if the world is in permadeath and the player character is
+  already `dead`, they cannot be revived — the system refuses any revival.
+  Narrate death as final.
 
 NPCs get hp + a Defense the same way (you set sensible numbers by their
 threat level); they need not carry a full four-stat sheet. The player's

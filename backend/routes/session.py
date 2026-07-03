@@ -220,6 +220,9 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
         mood=body.mood or "",
         world_id=world_id,
         creator_username=creator_username or "",
+        # Persist permadeath so the death-stakes gate (RFC-0014) can enforce it
+        # every turn, not just render it into the intro prompt.
+        permadeath=body.permadeath,
     )
 
     # Writing the session file is the critical durability step: if

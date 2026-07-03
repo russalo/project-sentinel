@@ -77,6 +77,14 @@ class DMTurnInput:
     # a structured ROLL RESULT block in the prompt so the DM resolves from
     # the margin (never re-rolls, never invents the number).
     roll: dict[str, object] | None = None
+    # RFC-0014 death-stakes: on a `death_save` resolve turn the backend computes
+    # the outcome authoritatively (engine, not DM) and passes the committed
+    # result here as ``{"status": "unconscious|dead", "failed": 0..3,
+    # "stabilized": bool, "died": bool}``. The DM agent renders it as a
+    # DEATH-SAVE RESULT block that tells the DM to *narrate* — not decide — the
+    # outcome (the engine has already written status + the clock). None on any
+    # other turn.
+    death_outcome: dict[str, object] | None = None
     # ADR-0005 progression module (RFC-0009): when the player enacts a
     # DM-proposed level-up, their chosen stat rides here as
     # ``{"stat": "will", "to_level": 2}``. None otherwise. Rendered as a
