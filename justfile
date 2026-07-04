@@ -149,12 +149,20 @@ build-alpha-release:
     dest="$root/releases/$sha"
     tmp="$root/releases/.tmp-$sha.$$"
     mkdir -p "$root/releases"
+    # Releases are immutable: refuse to rebuild a sha that current/staging already
+    # references, so a rebuild can never delete the live-served bytes and
+    # re-deploy without a promote (the build-is-deploy bug this pipeline avoids).
+    for l in current staging; do
+      [ "$(readlink "$root/$l" 2>/dev/null || true)" = "releases/$sha" ] && { echo "refusing: releases/$sha is already referenced by $l — prune it or build a newer commit" >&2; exit 1; }
+    done
     rm -rf "$tmp"
+    trap 'rm -rf "$tmp"' EXIT          # never leave a partial build behind
     echo "▶ building alpha release $sha"
     pnpm --filter @sentinel/ui exec vite build --mode alpha --outDir "$tmp" --emptyOutDir
     # A real alpha build has /alpha/-prefixed asset refs; guard against a stray
-    # base='/' build (the class of bug this pipeline exists to stop).
-    grep -q 'src="/alpha/assets/' "$tmp/index.html" || { echo "refusing: built index.html is not /alpha/-based" >&2; rm -rf "$tmp"; exit 1; }
+    # base='/' build (the class of bug this pipeline exists to stop). Match any
+    # attribute (src=/href=/modulepreload), not just src=.
+    grep -q '"/alpha/assets/' "$tmp/index.html" || { echo "refusing: built index.html is not /alpha/-based" >&2; exit 1; }
     rm -rf "$dest"
     mv "$tmp" "$dest"
     ln -sfn "releases/$sha" "$root/staging"
@@ -169,10 +177,17 @@ promote-alpha:
     [ -L "$root/staging" ] || { echo "no staging release — run just build-alpha-release" >&2; exit 1; }
     target="$(readlink "$root/staging")"
     [ -d "$root/$target" ] || { echo "staging target $target missing" >&2; exit 1; }
-    if [ -L "$root/current" ]; then readlink "$root/current" > "$root/.previous"; fi
+    current_target="$(readlink "$root/current" 2>/dev/null || echo "")"
+    # No-op re-promote guard: if current already points at the staging release,
+    # do NOT overwrite .previous with current (that would make rollback a self-loop).
+    if [ "$target" = "$current_target" ]; then
+      echo "✓ current already → $target (no-op)"
+      exit 0
+    fi
+    [ -n "$current_target" ] && printf '%s\n' "$current_target" > "$root/.previous"
     ln -sfn "$target" "$root/.current.new"
     mv -Tf "$root/.current.new" "$root/current"
-    echo "✓ promoted: current → $target  (previous: $(cat "$root/.previous" 2>/dev/null || echo none))"
+    echo "✓ promoted: current → $target  (previous: ${current_target:-none})"
     echo "  rollback: just rollback-alpha"
 
 # Roll production back to the previously-promoted release (reversible).
@@ -186,7 +201,9 @@ rollback-alpha:
     cur="$(readlink "$root/current" 2>/dev/null || echo none)"
     ln -sfn "$prev" "$root/.current.new"
     mv -Tf "$root/.current.new" "$root/current"
-    printf '%s\n' "$cur" > "$root/.previous"
+    # Swap .previous so rollback is reversible — but if there was no valid current
+    # to swap back to, drop .previous rather than record the sentinel "none".
+    if [ "$cur" != "none" ]; then printf '%s\n' "$cur" > "$root/.previous"; else rm -f "$root/.previous"; fi
     echo "✓ rolled back: current → $prev  (was $cur)"
 
 # Show the alpha serve tree state (current / staging / previous + releases).
@@ -207,6 +224,7 @@ prune-alpha-releases keep="5":
     set -euo pipefail
     root="{{ alpha_serve_root }}"
     keep="{{ keep }}"
+    [ -d "$root/releases" ] || { echo "no releases dir at $root/releases — nothing to prune" >&2; exit 0; }
     cd "$root/releases"
     protected="$(for l in current staging; do readlink "$root/$l" 2>/dev/null | sed 's:.*/::'; done | sort -u)"
     kept=0
