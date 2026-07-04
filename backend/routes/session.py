@@ -80,7 +80,9 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
             60 * 60,
             detail="too many world creations; try again later",
         )
-        enforce_llm_ceiling(limiter, settings.llm_daily_ceiling)
+        # RFC-0016: mock DM makes no LLM call — don't charge the daily ceiling.
+        if settings.dm_mode != "mock":
+            enforce_llm_ceiling(limiter, settings.llm_daily_ceiling)
     except HTTPException as exc:
         if exc.status_code == 429:
             admin_metrics.rate_limited()

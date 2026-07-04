@@ -57,12 +57,16 @@ def test_every_world_update_survives_the_real_extractor(settings, turns):
         raw = mock_dm._raw_for_turn(turns[n])
         result = fact_extractor.extract(raw, session_id=_UUID, turn_number=n)
         real_errors = [e for e in result.errors if "check_request" not in e]
-        assert real_errors == [], f"turn {n} produced non-benign extractor errors: {real_errors}"
+        assert real_errors == [], (
+            f"turn {n} produced non-benign extractor errors: {real_errors}"
+        )
         # Turns whose only state is a check_request (no characters/locations/world)
         # legitimately dispatch nothing -> payload is None. Turns that mutate state
         # must yield a schema-valid, non-empty payload.
         wu = turns[n].get("world_update") or {}
-        dispatchable = any(k in wu for k in ("world", "characters", "locations", "factions", "items"))
+        dispatchable = any(
+            k in wu for k in ("world", "characters", "locations", "factions", "items")
+        )
         if dispatchable:
             assert result.payload is not None, f"turn {n} should dispatch a payload"
             assert result.payload["updates"], f"turn {n} payload has no updates"
@@ -114,7 +118,8 @@ def test_arc_create_to_death(turns):
 
     # Exactly one turn takes the PC unconscious at 0 HP.
     unconscious = [
-        n for n in turns
+        n
+        for n in turns
         for c in (turns[n]["world_update"] or {}).get("characters", []) or []
         if c.get("name") == "Kaelen" and c.get("status") == "unconscious"
     ]
@@ -122,10 +127,31 @@ def test_arc_create_to_death(turns):
 
     # A 3-save death chain: three death_save check_requests are emitted.
     death_saves = [
-        n for n in turns
-        if ((turns[n]["world_update"] or {}).get("check_request") or {}).get("kind") == "death_save"
+        n
+        for n in turns
+        if ((turns[n]["world_update"] or {}).get("check_request") or {}).get("kind")
+        == "death_save"
     ]
     assert len(death_saves) == 3, f"expected a 3-save death chain, got {death_saves}"
 
     # The terminal turn emits no further check_request (the run is over).
     assert (turns[max(turns)]["world_update"] or {}).get("check_request") is None
+
+
+def test_pc_updates_carry_the_full_sheet(turns):
+    """fs-manager's `operation: update` is a shallow top-level merge, so a Kaelen
+    entry that emits only hp would ERASE stats.will + combat — breaking the
+    death-save resolve (which reads the stored Will). Every PC update that touches
+    the character_sheet must therefore re-emit the full sheet (stats + hp).
+    """
+    for n in sorted(turns):
+        for c in (turns[n]["world_update"] or {}).get("characters", []) or []:
+            if c.get("name") != "Kaelen":
+                continue
+            sheet = c.get("module_data", {}).get("character_sheet")
+            if sheet is None:
+                continue  # a pure status/location update that doesn't touch the sheet
+            assert "stats" in sheet and sheet["stats"].get("will") == 4, (
+                f"turn {n}: Kaelen sheet update dropped stats.will "
+                f"(shallow merge would erase it before the death chain)"
+            )

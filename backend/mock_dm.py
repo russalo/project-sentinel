@@ -20,6 +20,7 @@ lives inside the ``world_update`` block; the resolve turn carries the roll resul
 from __future__ import annotations
 
 import json
+from functools import lru_cache
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -39,10 +40,25 @@ def fixture_path(settings: Any) -> Path:
     return Path(raw) if raw else _DEFAULT_FIXTURE
 
 
+@lru_cache(maxsize=4)
+def _load_turns_from_path(path: Path) -> dict[int, dict]:
+    # Parsed once per path (the fixture is static in mock mode); type-validated
+    # so a malformed fixture fails loud here rather than as an AttributeError deep
+    # in a turn.
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict) or not isinstance(data.get("turns"), list):
+        raise TypeError("mock DM fixture must be an object with a 'turns' list")
+    turns = {
+        int(t["turn"]): t for t in data["turns"] if isinstance(t, dict) and "turn" in t
+    }
+    if not turns:
+        raise ValueError("mock DM fixture has no usable turns")
+    return turns
+
+
 def load_turns(settings: Any) -> dict[int, dict]:
-    """Load the fixture and index its turns by ``turn`` number."""
-    data = json.loads(fixture_path(settings).read_text(encoding="utf-8"))
-    return {int(t["turn"]): t for t in data["turns"]}
+    """Load the fixture and index its turns by ``turn`` number (cached by path)."""
+    return _load_turns_from_path(fixture_path(settings))
 
 
 def _raw_for_turn(turn: dict) -> str:

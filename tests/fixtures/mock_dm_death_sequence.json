@@ -81,7 +81,7 @@
       "world_update": {
         "characters": [
           { "name": "Gravemaw", "action": "upsert", "module_data": { "character_sheet": { "hp": { "current": 26, "max": 40 } } } },
-          { "name": "Kaelen", "action": "upsert", "status": "alive", "module_data": { "character_sheet": { "hp": { "current": 42, "max": 56 } } } }
+          { "name": "Kaelen", "action": "upsert", "status": "alive", "module_data": { "character_sheet": { "stats": { "body": 7, "mind": 5, "heart": 6, "will": 4 }, "hp": { "current": 42, "max": 56 } }, "combat": { "death_saves_failed": 0 } } }
         ],
         "check_request": {
           "stat": "body",
@@ -99,7 +99,7 @@
       "world_update": {
         "characters": [
           { "name": "Gravemaw", "action": "upsert", "module_data": { "character_sheet": { "hp": { "current": 12, "max": 40 } } } },
-          { "name": "Kaelen", "action": "upsert", "status": "alive", "module_data": { "character_sheet": { "hp": { "current": 28, "max": 56 } } } }
+          { "name": "Kaelen", "action": "upsert", "status": "alive", "module_data": { "character_sheet": { "stats": { "body": 7, "mind": 5, "heart": 6, "will": 4 }, "hp": { "current": 28, "max": 56 } }, "combat": { "death_saves_failed": 0 } } }
         ],
         "check_request": {
           "stat": "body",
@@ -117,7 +117,7 @@
       "world_update": {
         "characters": [
           { "name": "Gravemaw", "action": "upsert", "status": "dead", "module_data": { "character_sheet": { "hp": { "current": 0, "max": 40 } } } },
-          { "name": "Kaelen", "action": "upsert", "status": "alive", "module_data": { "character_sheet": { "hp": { "current": 14, "max": 56 } } } }
+          { "name": "Kaelen", "action": "upsert", "status": "alive", "module_data": { "character_sheet": { "stats": { "body": 7, "mind": 5, "heart": 6, "will": 4 }, "hp": { "current": 14, "max": 56 } }, "combat": { "death_saves_failed": 0 } } }
         ]
       }
     },
@@ -155,7 +155,7 @@
             "name": "Kaelen",
             "action": "upsert",
             "status": "unconscious",
-            "module_data": { "character_sheet": { "hp": { "current": 0, "max": 56 } } }
+            "module_data": { "character_sheet": { "stats": { "body": 7, "mind": 5, "heart": 6, "will": 4 }, "hp": { "current": 0, "max": 56 } }, "combat": { "death_saves_failed": 0 } }
           }
         ],
         "check_request": {

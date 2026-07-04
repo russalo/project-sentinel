@@ -277,7 +277,10 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
             60,
             detail="too many turns; slow down",
         )
-        enforce_llm_ceiling(limiter, settings.llm_daily_ceiling)
+        # RFC-0016: mock DM makes no LLM call, so the smoke must not consume the
+        # daily ceiling (or 429 partway through the fixture).
+        if settings.dm_mode != "mock":
+            enforce_llm_ceiling(limiter, settings.llm_daily_ceiling)
     except HTTPException as exc:
         # 429 is the only HTTPException these enforce calls raise. Count it
         # before re-raising so the dashboard sees rate-limit pressure.
