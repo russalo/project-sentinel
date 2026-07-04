@@ -265,6 +265,53 @@ The default `pnpm build` flow for the tailnet dev site is unchanged.
 
 See `CLAUDE.md` § "Common Commands" for the full reference.
 
+### Alpha deployment (staging → production) — RFC-0015
+
+**The alpha is NOT deployed by building into `dist/`.** Per RFC-0015, origin-core's
+Caddy roots `/alpha/` at a serve tree *outside* the code repo, so a build never
+touches the live path:
+
+```
+/srv/serve/sentinel-alpha/          # SENTINEL_ALPHA_SERVE_ROOT (default)
+  releases/<git-sha>/               # each = one build:alpha output, immutable
+  current  -> releases/<sha>        # what production serves
+  staging  -> releases/<sha>        # what the staging URL serves (the candidate)
+```
+
+Deploy is three deliberate steps, all from `master` in a patch window:
+
+```bash
+# 1. Build a release into the serve tree + point `staging` at it (no prod change).
+just build-alpha-release
+#    Refuses off master / on a dirty tree. Byte-faithful to `build:alpha`.
+
+# 2. Verify the candidate in a real browser at the tailnet-only staging host:
+#    https://sentinel-staging.dev.russalo.com/alpha/
+#    (no blank page; assets /alpha/-prefixed; the actual change works).
+
+# 3. Promote — atomically repoint `current` at the verified release (zero downtime).
+just promote-alpha
+```
+
+- **Rollback:** `just rollback-alpha` repoints `current` at the previous release.
+- **Inspect:** `just alpha-status` shows current / staging / previous + releases.
+- **Prune:** `just prune-alpha-releases [keep=5]` (never deletes current/staging).
+
+The staging host serves the same `/alpha/*` shape as prod (`/alpha/api → :8001`,
+same `/alpha` strip), rooted at `staging` — so the *same build bytes* verify on
+staging and promote to prod. It runs the candidate **frontend against the prod
+backend** (`:8001`) this slice; a staging-own backend is a future slice.
+
+**Frontend/backend coupling:** when a release depends on new backend behavior
+(e.g. an RFC-0014 field), deploy the **backend first** (`systemctl restart
+sentinel-backend`), then `build-alpha-release` → verify → promote — the staging
+step is where a frontend/backend mismatch gets caught before prod.
+
+**Lane split:** Sentinel owns the serve tree contents (releases / the symlinks /
+the promote) and these recipes; tailnet owns the edge — Caddy rooting `/alpha/` at
+`current`, the staging host, and the invite gate. See
+`infrastructure/caddy/Caddyfile.example` (SERVE MODEL note) and RFC-0015.
+
 ## Production deployment (origin-core) — ADR 0003 Slice C
 
 Templates live in `infrastructure/`; the live config is applied by hand on

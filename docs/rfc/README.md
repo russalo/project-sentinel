@@ -229,7 +229,7 @@ _None._
 
 ### Accepted
 
-_None._
+- [RFC 0015 — Alpha deploy pipeline (dev → staging → production)](0015-alpha-deploy-pipeline.md) — _opened 2026-07-03. Replaces build-in-place (Caddy rooted `/alpha/` at `apps/sentinel-ui/dist`, so build == deploy, no staging, no rollback) with a sentinel-owned serve tree (`/srv/serve/sentinel-alpha/` — versioned `releases/<sha>/` + `current`/`staging` symlinks). `just` recipes build→stage→promote (atomic symlink repoint); `build-alpha-release` refuses off-master/dirty; a tailnet-only `sentinel-staging.dev.russalo.com/alpha/` host verifies the byte-identical candidate before promote. Frontend-only slice. Remaining: the operational cutover window (Option A — byte-identical no-op repoint, then first pipeline deploy ships RFC-0014 + #175)._
 
 ### Implemented
 

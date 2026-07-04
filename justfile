@@ -29,6 +29,13 @@ venv_python := \
     else if path_exists(".venv/Scripts/python.exe") == "true" { ".venv/Scripts/python.exe" } \
     else { python_bin }
 
+# Serve tree for the closed-alpha frontend deploy pipeline (RFC-0015). The
+# build→stage→promote recipes manage releases/ + the current/staging symlinks
+# inside it; Caddy roots /alpha/ at `<root>/current` (a symlink), never at
+# apps/sentinel-ui/dist. Default is the origin-core path tailnet provisions
+# (russellp-owned, outside the code repo); overridable for other hosts.
+alpha_serve_root := env_var_or_default("SENTINEL_ALPHA_SERVE_ROOT", "/srv/serve/sentinel-alpha")
+
 # Show all available recipes (default when you run `just` with no args)
 default:
     @just --list --unsorted
@@ -119,6 +126,95 @@ build:
 # apps/sentinel-ui/.env.production so the served UI calls the same origin.
 build-site:
     pnpm --filter @sentinel/ui build
+
+# ─── Alpha deploy pipeline (RFC-0015) ─────────────────────────────────────────
+# dev → staging → production for the closed-alpha frontend. Caddy roots /alpha/
+# at {{ alpha_serve_root }}/current (a symlink), so a build NEVER touches the
+# live-served path. These are deploy-host (origin-core) recipes — they need the
+# serve tree and GNU coreutils. Full runbook: docs/WORKSPACE.md § "Alpha
+# deployment (staging → production)". build-alpha-release is byte-faithful to
+# `build:alpha` (same `vite build --mode alpha`, different outDir), so it never
+# writes apps/sentinel-ui/dist; it refuses on a dirty tree or off master.
+
+# Build an alpha release into the serve tree and point staging at it (no promote).
+build-alpha-release:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    root="{{ alpha_serve_root }}"
+    branch="$(git rev-parse --abbrev-ref HEAD)"
+    [ "$branch" = "master" ] || { echo "refusing: on '$branch' — deploy from master only" >&2; exit 1; }
+    [ -z "$(git status --porcelain)" ] || { echo "refusing: working tree is dirty" >&2; exit 1; }
+    [ -d "$root" ] || { echo "serve tree $root missing (RFC-0015 provisioning)" >&2; exit 1; }
+    sha="$(git rev-parse --short HEAD)"
+    dest="$root/releases/$sha"
+    tmp="$root/releases/.tmp-$sha.$$"
+    mkdir -p "$root/releases"
+    rm -rf "$tmp"
+    echo "▶ building alpha release $sha"
+    pnpm --filter @sentinel/ui exec vite build --mode alpha --outDir "$tmp" --emptyOutDir
+    # A real alpha build has /alpha/-prefixed asset refs; guard against a stray
+    # base='/' build (the class of bug this pipeline exists to stop).
+    grep -q 'src="/alpha/assets/' "$tmp/index.html" || { echo "refusing: built index.html is not /alpha/-based" >&2; rm -rf "$tmp"; exit 1; }
+    rm -rf "$dest"
+    mv "$tmp" "$dest"
+    ln -sfn "releases/$sha" "$root/staging"
+    echo "✓ staged: $root/staging → releases/$sha"
+    echo "  verify → https://sentinel-staging.dev.russalo.com/alpha/   then: just promote-alpha"
+
+# Promote the staging release to production (atomic current repoint; records previous).
+promote-alpha:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    root="{{ alpha_serve_root }}"
+    [ -L "$root/staging" ] || { echo "no staging release — run just build-alpha-release" >&2; exit 1; }
+    target="$(readlink "$root/staging")"
+    [ -d "$root/$target" ] || { echo "staging target $target missing" >&2; exit 1; }
+    if [ -L "$root/current" ]; then readlink "$root/current" > "$root/.previous"; fi
+    ln -sfn "$target" "$root/.current.new"
+    mv -Tf "$root/.current.new" "$root/current"
+    echo "✓ promoted: current → $target  (previous: $(cat "$root/.previous" 2>/dev/null || echo none))"
+    echo "  rollback: just rollback-alpha"
+
+# Roll production back to the previously-promoted release (reversible).
+rollback-alpha:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    root="{{ alpha_serve_root }}"
+    [ -f "$root/.previous" ] || { echo "no previous release recorded" >&2; exit 1; }
+    prev="$(cat "$root/.previous")"
+    [ -d "$root/$prev" ] || { echo "previous release $prev is gone (pruned?)" >&2; exit 1; }
+    cur="$(readlink "$root/current" 2>/dev/null || echo none)"
+    ln -sfn "$prev" "$root/.current.new"
+    mv -Tf "$root/.current.new" "$root/current"
+    printf '%s\n' "$cur" > "$root/.previous"
+    echo "✓ rolled back: current → $prev  (was $cur)"
+
+# Show the alpha serve tree state (current / staging / previous + releases).
+alpha-status:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    root="{{ alpha_serve_root }}"
+    [ -d "$root" ] || { echo "serve tree $root missing" >&2; exit 1; }
+    echo "current  → $(readlink "$root/current" 2>/dev/null || echo '(none)')"
+    echo "staging  → $(readlink "$root/staging" 2>/dev/null || echo '(none)')"
+    echo "previous : $(cat "$root/.previous" 2>/dev/null || echo '(none)')"
+    echo "releases (newest first):"
+    ls -1dt "$root"/releases/*/ 2>/dev/null | sed 's#/*$##; s#.*/#  #' || echo "  (none)"
+
+# Prune old releases, keeping the newest N (default 5); never deletes current/staging.
+prune-alpha-releases keep="5":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    root="{{ alpha_serve_root }}"
+    keep="{{ keep }}"
+    cd "$root/releases"
+    protected="$(for l in current staging; do readlink "$root/$l" 2>/dev/null | sed 's:.*/::'; done | sort -u)"
+    kept=0
+    for d in $(ls -1dt */ 2>/dev/null | sed 's:/*$::'); do
+      if printf '%s\n' "$protected" | grep -qx "$d"; then echo "keep (in use): $d"; continue; fi
+      kept=$((kept + 1))
+      if [ "$kept" -le "$keep" ]; then echo "keep: $d"; else echo "prune: $d"; rm -rf -- "$d"; fi
+    done
 
 # Export recorded mock sessions → datasets/ (schema JSONL + raw chatlogs).
 # Schema examples train narrative→world_update recognition; chatlogs are
