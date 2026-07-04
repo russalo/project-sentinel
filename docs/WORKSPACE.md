@@ -312,6 +312,15 @@ the promote) and these recipes; tailnet owns the edge — Caddy rooting `/alpha/
 `current`, the staging host, and the invite gate. See
 `infrastructure/caddy/Caddyfile.example` (SERVE MODEL note) and RFC-0015.
 
+**`dist` after cutover:** only the two `/alpha` roots repoint to `current`. The
+tailnet dev site (`sentinel.dev.russalo.com/`, bare path) keeps its own root at
+`apps/sentinel-ui/dist` — it's a *different* build (`pnpm build`, `base:'/'`, via
+`just build-site`), not the alpha. So post-cutover the alpha leaves `dist`
+entirely and `dist` reverts to being **exclusively the dev site's** — ending the
+long-standing contention where the two builds fought over one `dist`. (If `dist`
+currently holds a `build:alpha` output, run `just build-site` to restore the dev
+site to its `base:'/'` build.)
+
 ## Production deployment (origin-core) — ADR 0003 Slice C
 
 Templates live in `infrastructure/`; the live config is applied by hand on
