@@ -430,6 +430,28 @@ in `GEMINI.md`.
   prerequisite regenerates `.env` and clobbers the value (and the LLM
   key). See `docs/WORKSPACE.md` § "Local dev: keep gameplay out of the
   code repo".
+- **The alpha deploy is BUILD-IN-PLACE into the live-served dir — do not
+  build `sentinel-ui` on origin-core except an intentional deploy.**
+  origin-core's Caddy serves `/alpha/*` **directly from
+  `apps/sentinel-ui/dist`** (verified via the Caddy admin API: `root` = that
+  dist, `strip_path_prefix /alpha`). The Vite **build output dir IS the
+  live-served dir**, so any `pnpm --filter @sentinel/ui build*` on origin-core
+  instantly mutates the live closed alpha. **The only correct deploy is
+  `git checkout master && pnpm --filter @sentinel/ui build:alpha`** (mode
+  `alpha` → `base:'/alpha/'`; App.jsx's wouter Router base reads
+  `import.meta.env.BASE_URL`, and Caddy `handle_path /alpha/*` strips the
+  prefix), then `sudo systemctl restart sentinel-backend`, in a patch window.
+  **Never run a `sentinel-ui` build to "verify" a change** — use vitest
+  (`pnpm --filter @sentinel/ui test`) + typecheck. Two ways this bites (both
+  blank-page, both hit 2026-07-03): a plain `pnpm build` uses `base:'/'` →
+  assets resolve to the domain root, outside `/alpha/` → 404 → blank; and a
+  build on a **feature branch** ships unreleased frontend to prod (whose new
+  fields, e.g. an RFC-0014 `RollResult.kind`, the live master backend may
+  422 on). Diagnose a blank alpha by checking the served `index.html`'s asset
+  refs are `/alpha/`-prefixed AND the bundle exists in `dist/assets/`. The
+  external gate (tailnet's Caddy, TLS+basic_auth) is a separate caching hop —
+  their lane. BACKLOG: give the alpha a staging-dir + atomic-swap deploy so a
+  stray build can't reach prod. See `project_alpha_deploy_is_build_in_place`.
 - **Live alpha features shipped this week (cohort feedback channels +
   ambient surfaces).** As of 2026-06-12, the closed alpha at
   `sentinel.russalo.com/alpha/` has these shipped surfaces in addition to
