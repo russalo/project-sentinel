@@ -1,0 +1,207 @@
+{
+  "_comment": "RFC-0016 mock-DM deploy-smoke fixture. Seeded by the live DM (2026-07-04), reconciled to the real emit shape (fact_extractor's friendly <world_update>: top-level world/characters/locations + a top-level check_request) and the real two-round-trip cadence (a check_request turn, then its roll-resolve turn). Walks the Fantasy mechanics stack — stats/HP -> a skill check -> combat to 0 HP -> unconscious -> the 3-save death chain -> dead. Death is server-authoritative (engine.death_stakes force-writes the clock+status over the mock's narrative), so the harness drives the death_save rolls; the mock supplies narrative + the next check_request. PC = Kaelen, Warrior, Body 7 -> HP 56.",
+  "turns": [
+    {
+      "turn": 0,
+      "player_action": "<intro>",
+      "narrative": "The realm of Aerth opens before you, Kaelen — a stalwart Warrior, blade at your hip, the old forest road ahead. Ancient runes are carved into a mossy standing stone where the path forks.",
+      "world_update": {
+        "world": { "currentLocation": "The Forked Road", "tension": 2 },
+        "characters": [
+          {
+            "name": "Kaelen",
+            "action": "upsert",
+            "role": "player",
+            "class": "Warrior",
+            "race": "Human",
+            "status": "alive",
+            "currentLocation": "The Forked Road",
+            "description": "A stalwart Warrior at the outset of the journey.",
+            "module_data": {
+              "character_sheet": {
+                "stats": { "body": 7, "mind": 5, "heart": 6, "will": 4 },
+                "hp": { "current": 56, "max": 56 }
+              },
+              "combat": { "death_saves_failed": 0 }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "turn": 1,
+      "player_action": "I examine the ancient runes carved into the standing stone.",
+      "narrative": "You crouch to read the worn glyphs. The meaning hovers just out of reach — a name, a warning. Make sense of it.",
+      "world_update": {
+        "check_request": {
+          "stat": "mind",
+          "target": 60,
+          "label": "Decipher the runes",
+          "prompt": "Roll Mind to read the ancient warning."
+        }
+      }
+    },
+    {
+      "turn": 2,
+      "player_action": "<roll:mind>",
+      "narrative": "The glyphs resolve: 'Beyond lies the Gravemaw — turn back.' You do not. The left path darkens as you press on.",
+      "world_update": {
+        "world": { "currentLocation": "The Darkening Wood", "tension": 4 }
+      }
+    },
+    {
+      "turn": 3,
+      "player_action": "I draw my sword and advance into the wood.",
+      "narrative": "Branches snap. A gaunt, long-limbed horror unfolds from the dark — the Gravemaw. It lunges. Strike!",
+      "world_update": {
+        "world": { "currentLocation": "The Darkening Wood", "tension": 7 },
+        "characters": [
+          {
+            "name": "Gravemaw",
+            "action": "upsert",
+            "role": "enemy",
+            "status": "alive",
+            "description": "A gaunt, long-limbed forest horror.",
+            "module_data": { "character_sheet": { "hp": { "current": 40, "max": 40 } } }
+          }
+        ],
+        "check_request": {
+          "stat": "body",
+          "target": 61,
+          "effect_die": "d8",
+          "label": "Strike the Gravemaw",
+          "prompt": "Roll Body to attack (Defense 61)."
+        }
+      }
+    },
+    {
+      "turn": 4,
+      "player_action": "<roll:body>",
+      "narrative": "Your blade bites deep — but the Gravemaw's claws rake across your chest in answer. It reels; so do you.",
+      "world_update": {
+        "characters": [
+          { "name": "Gravemaw", "action": "upsert", "module_data": { "character_sheet": { "hp": { "current": 26, "max": 40 } } } },
+          { "name": "Kaelen", "action": "upsert", "status": "alive", "module_data": { "character_sheet": { "stats": { "body": 7, "mind": 5, "heart": 6, "will": 4 }, "hp": { "current": 42, "max": 56 } }, "combat": { "death_saves_failed": 0 } } }
+        ],
+        "check_request": {
+          "stat": "body",
+          "target": 61,
+          "effect_die": "d8",
+          "label": "Strike again",
+          "prompt": "Roll Body to attack (Defense 61)."
+        }
+      }
+    },
+    {
+      "turn": 5,
+      "player_action": "<roll:body>",
+      "narrative": "Steel and claw meet again. The horror shudders but will not fall, and its talons open you further.",
+      "world_update": {
+        "characters": [
+          { "name": "Gravemaw", "action": "upsert", "module_data": { "character_sheet": { "hp": { "current": 12, "max": 40 } } } },
+          { "name": "Kaelen", "action": "upsert", "status": "alive", "module_data": { "character_sheet": { "stats": { "body": 7, "mind": 5, "heart": 6, "will": 4 }, "hp": { "current": 28, "max": 56 } }, "combat": { "death_saves_failed": 0 } } }
+        ],
+        "check_request": {
+          "stat": "body",
+          "target": 61,
+          "effect_die": "d8",
+          "label": "Finish it",
+          "prompt": "Roll Body to attack (Defense 61)."
+        }
+      }
+    },
+    {
+      "turn": 6,
+      "player_action": "<roll:body>",
+      "narrative": "You drive your blade home — the Gravemaw folds, but with its last strength it buries a claw in your side. You stagger, bleeding hard.",
+      "world_update": {
+        "characters": [
+          { "name": "Gravemaw", "action": "upsert", "status": "dead", "module_data": { "character_sheet": { "hp": { "current": 0, "max": 40 } } } },
+          { "name": "Kaelen", "action": "upsert", "status": "alive", "module_data": { "character_sheet": { "stats": { "body": 7, "mind": 5, "heart": 6, "will": 4 }, "hp": { "current": 14, "max": 56 } }, "combat": { "death_saves_failed": 0 } } }
+        ]
+      }
+    },
+    {
+      "turn": 7,
+      "player_action": "I bind my wound and push on, deeper into the wood.",
+      "narrative": "You have not gone twenty paces when a second horror drops from the canopy. You are already bleeding, already spent — and it is on you.",
+      "world_update": {
+        "world": { "tension": 9 },
+        "characters": [
+          {
+            "name": "Second Gravemaw",
+            "action": "upsert",
+            "role": "enemy",
+            "status": "alive",
+            "module_data": { "character_sheet": { "hp": { "current": 40, "max": 40 } } }
+          }
+        ],
+        "check_request": {
+          "stat": "body",
+          "target": 61,
+          "effect_die": "d8",
+          "label": "Fight for your life",
+          "prompt": "Roll Body to attack (Defense 61)."
+        }
+      }
+    },
+    {
+      "turn": 8,
+      "player_action": "<roll:body>",
+      "narrative": "Too slow. The horror's claws tear through your guard and open your throat-side. The world tilts; your sword falls from numb fingers. You drop to the leaf-mould and do not rise.",
+      "world_update": {
+        "characters": [
+          {
+            "name": "Kaelen",
+            "action": "upsert",
+            "status": "unconscious",
+            "module_data": { "character_sheet": { "stats": { "body": 7, "mind": 5, "heart": 6, "will": 4 }, "hp": { "current": 0, "max": 56 } }, "combat": { "death_saves_failed": 0 } }
+          }
+        ],
+        "check_request": {
+          "stat": "will",
+          "kind": "death_save",
+          "target": 60,
+          "label": "Cling to life",
+          "prompt": "Roll Will to hold on."
+        }
+      }
+    },
+    {
+      "turn": 9,
+      "player_action": "<roll:death_save>",
+      "narrative": "Cold spreads from the wound. You claw at consciousness — and slip. Darkness gains.",
+      "world_update": {
+        "check_request": {
+          "stat": "will",
+          "kind": "death_save",
+          "target": 60,
+          "label": "Cling to life",
+          "prompt": "Roll Will to hold on."
+        }
+      }
+    },
+    {
+      "turn": 10,
+      "player_action": "<roll:death_save>",
+      "narrative": "Your breath rattles, shallow and slowing. Somewhere far away the second horror circles. Hold on — if you can.",
+      "world_update": {
+        "check_request": {
+          "stat": "will",
+          "kind": "death_save",
+          "target": 60,
+          "label": "Cling to life",
+          "prompt": "Roll Will to hold on."
+        }
+      }
+    },
+    {
+      "turn": 11,
+      "player_action": "<roll:death_save>",
+      "narrative": "The dark closes over Kaelen for the last time. The forest keeps its silence. Here the journey ends.",
+      "world_update": {
+        "world": { "tension": 10 }
+      }
+    }
+  ]
+}

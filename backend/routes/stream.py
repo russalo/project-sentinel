@@ -37,6 +37,8 @@ from engine import death_stakes
 from engine.agents import dm as dm_agent
 from engine.agents import fact_extractor
 
+from .. import mock_dm
+
 from ..auth.access import enforce_world_token
 from ..concurrency import StreamSlotLimiter
 from ..config import Settings
@@ -275,7 +277,10 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
             60,
             detail="too many turns; slow down",
         )
-        enforce_llm_ceiling(limiter, settings.llm_daily_ceiling)
+        # RFC-0016: mock DM makes no LLM call, so the smoke must not consume the
+        # daily ceiling (or 429 partway through the fixture).
+        if settings.dm_mode != "mock":
+            enforce_llm_ceiling(limiter, settings.llm_daily_ceiling)
     except HTTPException as exc:
         # 429 is the only HTTPException these enforce calls raise. Count it
         # before re-raising so the dashboard sees rate-limit pressure.
@@ -365,7 +370,15 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
         buffer: list[str] = []
 
         try:
-            for token in dm_agent.stream_turn(config, turn_input):
+            # RFC-0016: in mock-DM mode, inject the fixture client for this turn
+            # in place of the live LLM. Built inside the try so a fixture over-run
+            # (KeyError) surfaces as the generic "DM agent failed" SSE, not a 500.
+            dm_client = (
+                mock_dm.client_for_turn(settings, next_turn_number)
+                if settings.dm_mode == "mock"
+                else None
+            )
+            for token in dm_agent.stream_turn(config, turn_input, client=dm_client):
                 buffer.append(token)
                 yield _sse_event({"type": "token", "content": token})
         except Exception:  # pragma: no cover - network/OpenAI failure
