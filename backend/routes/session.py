@@ -36,6 +36,8 @@ import engine
 from engine.agents import dm as dm_agent
 from engine.agents import fact_extractor
 
+from .. import mock_dm
+
 from ..auth.access import extract_basic_auth_user, issue_token
 from ..config import Settings
 from ..engine_bridge import build_engine_config
@@ -164,7 +166,11 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
 
     # 1. Run the intro through the engine.
     try:
-        intro_result = dm_agent.generate_intro(config, intro_input)
+        # RFC-0016: mock-DM mode serves the fixture's turn 0 as the intro.
+        intro_client = (
+            mock_dm.client_for_turn(settings, 0) if settings.dm_mode == "mock" else None
+        )
+        intro_result = dm_agent.generate_intro(config, intro_input, client=intro_client)
     except Exception as exc:  # pragma: no cover - network/OpenAI failure
         # Log the full traceback server-side (exc_info=True); do NOT leak it to
         # the client — the upstream string can carry the provider org id + quota
