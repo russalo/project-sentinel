@@ -87,6 +87,14 @@ export function GenreSelector({ value, onChange, genres = [] }) {
               {tile ? (
                 motion && !reducedMotion ? (
                   <video
+                    // Force the muted *property* (not just the attribute):
+                    // browsers block autoplay unless the element is truly
+                    // muted, and React does not always reflect `muted` to the
+                    // property. Without this the tile silently shows only the
+                    // poster in some browsers.
+                    ref={(el) => {
+                      if (el) el.muted = true;
+                    }}
                     src={motion}
                     poster={tile}
                     width={512}
