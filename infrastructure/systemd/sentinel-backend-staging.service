@@ -1,0 +1,44 @@
+# Sentinel STAGING FastAPI backend (RFC-0016). TEMPLATE.
+# The staging pre-prod backend — its own world store, gate off, tailnet-only
+# (tailnet's sentinel-staging.dev proxies /alpha/api here). Part of the staging
+# trio (see sentinel-fs-manager-staging.service). Install on origin-core:
+#   1. Replace <REPO_ROOT>, <USER>, <STAGING_WORLDS_ROOT> (same value as the two
+#      staging MCP units; MUST differ from prod SENTINEL_WORLDS_ROOT).
+#   2. sudo cp this to /etc/systemd/system/sentinel-backend-staging.service
+#   3. sudo systemctl daemon-reload && sudo systemctl enable --now sentinel-backend-staging
+# Linux-only; for local dev use `just staging-backend`.
+#
+# CANDIDATE CODE (RFC-0016 slice 3): to run the candidate rather than prod's
+# master, point WorkingDirectory + the ExecStart venv/python at a git worktree
+# checked out at the candidate ref (`just stage-candidate <ref>`); this template
+# defaults to <REPO_ROOT> (same checkout as prod) for the base staging stack.
+[Unit]
+Description=Sentinel STAGING FastAPI backend (:8101, staging world store)
+# Order after the STAGING MCP servers so the config-agreement check finds them.
+After=network.target sentinel-fs-manager-staging.service sentinel-git-sync-staging.service
+Wants=sentinel-fs-manager-staging.service sentinel-git-sync-staging.service
+
+[Service]
+Type=simple
+User=<USER>
+WorkingDirectory=<REPO_ROOT>
+# Shared bits (LLM key) come from .env; infrastructure/.env.staging (loaded AFTER,
+# so it WINS — a later EnvironmentFile overrides an earlier one, per systemd.exec)
+# makes this a STAGING backend: its own world store, its own MCP ports (:8110/:8112),
+# the session gate OFF (tailnet membership is the access control on
+# sentinel-staging.dev — worlds open without a token), and a small own LLM ceiling.
+# Using .env.staging rather than Environment= is deliberate: EnvironmentFile
+# OVERRIDES Environment=, so Environment= assignments would silently lose to the
+# prod .env and the backend would come up against the PROD store with the gate on.
+# A missing .env.staging fails the unit — so it never falls back to prod.
+EnvironmentFile=<REPO_ROOT>/infrastructure/.env
+EnvironmentFile=<REPO_ROOT>/infrastructure/.env.staging
+# DM_MODE is intentionally left at .env's value (live) so staging serves a real
+# DM for interactive verification against the candidate. The deterministic mock
+# smoke (RFC-0016 slice 3) runs with SENTINEL_DM_MODE=mock as a separate step.
+ExecStart=<REPO_ROOT>/.venv/bin/uvicorn backend.main:app --host 127.0.0.1 --port 8101 --no-proxy-headers
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

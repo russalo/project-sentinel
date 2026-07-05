@@ -321,6 +321,56 @@ long-standing contention where the two builds fought over one `dist`. (If `dist`
 currently holds a `build:alpha` output, run `just build-site` to restore the dev
 site to its `base:'/'` build.)
 
+## Staging pre-prod (RFC-0016)
+
+Staging is a **parallel backend + MCP trio** with its **own world store**, so
+staging worlds never touch the prod store (`SENTINEL_WORLDS_ROOT`). It's tailnet-only
+(`sentinel-staging.dev.russalo.com`), the session-token gate is **off** (tailnet
+membership is the access control — worlds open without a token), and it has its
+own small LLM ceiling so staging play can't drain prod's daily budget.
+
+| service | prod | staging | world store |
+|---|---|---|---|
+| backend | :8001 | :8101 | `<STAGING_WORLDS_ROOT>` |
+| fs-manager | :8010 | :8110 | (same) |
+| git-sync | :8012 | :8112 | (same) |
+
+The staging store is `SENTINEL_STAGING_WORLDS_ROOT` (default `~/sentinel-worlds-staging`)
+— it **must differ** from the prod `SENTINEL_WORLDS_ROOT`; `just staging-check`
+and `wipe-staging-worlds` both resolve the prod root (from the shell env or
+`infrastructure/.env`) and compare canonical paths, refusing if they match.
+
+**Local dev / verification:**
+```bash
+just staging-fs-manager     # :8110, staging store
+just staging-git-sync       # :8112, staging store
+just staging-backend        # :8101, gate off, points at the staging MCP ports
+just staging-health         # ping all three
+just staging-check          # assert staging store != prod store
+just wipe-staging-worlds     # delete all staging worlds (never prod)
+```
+Verify isolation cheaply with **mock mode** (RFC-0016 slice 1, zero LLM):
+run the trio with `SENTINEL_DM_MODE=mock` + a temp `SENTINEL_STAGING_WORLDS_ROOT`,
+create a session, and confirm the world lands in the staging store while prod is
+untouched. (The backend only comes up if the **config-agreement check** finds all
+three on the same staging root.)
+
+**On origin-core:** first create `infrastructure/.env.staging` from
+`infrastructure/.env.staging.example` (fill `<STAGING_WORLDS_ROOT>`; gitignored).
+Then run the trio as systemd units —
+`infrastructure/systemd/sentinel-{backend,fs-manager,git-sync}-staging.service`
+(substitute `<REPO_ROOT>`, `<USER>`; `sudo cp` to `/etc/systemd/system/`,
+`daemon-reload`, `enable --now`). The units load `.env` then `.env.staging`; the
+latter wins (a later `EnvironmentFile` overrides an earlier one, **and**
+`EnvironmentFile` overrides `Environment=` — so `.env.staging`, not
+`Environment=`, is what repoints `SENTINEL_WORLDS_ROOT` off the prod store). A
+missing `.env.staging` fails the units on purpose, so they never fall back to prod.
+
+**Remaining RFC-0016 slices:** candidate code via a git worktree
+(`stage-candidate <ref>`) + the `stage-smoke` deploy gate (the live roll-driven
+mock run), and tailnet's repoint of `sentinel-staging.dev/alpha/api/*` → `:8101`
+(their lane). See `docs/rfc/0016`.
+
 ## Production deployment (origin-core) — ADR 0003 Slice C
 
 Templates live in `infrastructure/`; the live config is applied by hand on

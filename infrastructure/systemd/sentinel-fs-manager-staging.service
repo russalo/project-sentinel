@@ -1,0 +1,33 @@
+# Sentinel STAGING fs-manager MCP server (RFC-0016). TEMPLATE.
+# The staging trio (backend :8101 + fs-manager :8110 + git-sync :8112) is a
+# parallel stack pointed at its OWN world store (<STAGING_WORLDS_ROOT>), so
+# staging worlds never touch prod (~/sentinel-worlds). Install on origin-core:
+#   1. Replace <REPO_ROOT>, <USER>, <STAGING_WORLDS_ROOT> (e.g.
+#      /home/<USER>/sentinel-worlds-staging — MUST differ from the prod
+#      SENTINEL_WORLDS_ROOT in infrastructure/.env).
+#   2. sudo cp this to /etc/systemd/system/sentinel-fs-manager-staging.service
+#   3. sudo systemctl daemon-reload && sudo systemctl enable --now sentinel-fs-manager-staging
+# Linux-only; for local dev use `just staging-fs-manager`.
+[Unit]
+Description=Sentinel STAGING fs-manager MCP server (:8110, staging world store)
+After=network.target
+
+[Service]
+Type=simple
+User=<USER>
+WorkingDirectory=<REPO_ROOT>
+# .env provides the shared bits (LLM key); .env.staging (loaded AFTER, so it
+# WINS — a later EnvironmentFile overrides an earlier one, and EnvironmentFile
+# overrides Environment=, per systemd.exec) repoints SENTINEL_WORLDS_ROOT at the
+# staging tree. All three staging units load the same .env.staging (same
+# SENTINEL_WORLDS_ROOT), or the backend's config-agreement check refuses. A
+# missing .env.staging fails the unit — deliberate, so it never falls back to prod.
+EnvironmentFile=<REPO_ROOT>/infrastructure/.env
+EnvironmentFile=<REPO_ROOT>/infrastructure/.env.staging
+# No --host → 127.0.0.1 (the A2 bind guard refuses all-interfaces).
+ExecStart=<REPO_ROOT>/.venv/bin/python mcp-servers/fs-manager/server.py --port 8110
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

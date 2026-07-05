@@ -36,6 +36,12 @@ venv_python := \
 # (russellp-owned, outside the code repo); overridable for other hosts.
 alpha_serve_root := env_var_or_default("SENTINEL_ALPHA_SERVE_ROOT", "/srv/serve/sentinel-alpha")
 
+# Staging world store (RFC-0016). The staging trio (backend :8101 + fs-manager
+# :8110 + git-sync :8112) routes here — a SEPARATE tree from the prod
+# SENTINEL_WORLDS_ROOT, so staging worlds never touch prod. Overridable; the
+# default is a home-dir sibling of the prod store.
+staging_worlds_root := env_var_or_default("SENTINEL_STAGING_WORLDS_ROOT", env_var_or_default("HOME", ".") / "sentinel-worlds-staging")
+
 # Show all available recipes (default when you run `just` with no args)
 default:
     @just --list --unsorted
@@ -113,7 +119,7 @@ fs-manager:
 
 # Start the git-sync MCP server on :8012 (verbose dev mode)
 git-sync:
-    "{{ python_bin }}" mcp-servers/git-sync/server.py --port 8012 --dev
+    "{{ python_bin }}" mcp-servers/git-sync/server.py --port 8012
 
 # ─── Build & Type Checks ──────────────────────────────────────────────────────
 
@@ -233,6 +239,76 @@ prune-alpha-releases keep="5":
       kept=$((kept + 1))
       if [ "$kept" -le "$keep" ]; then echo "keep: $d"; else echo "prune: $d"; rm -rf -- "$d"; fi
     done
+
+# ─── Staging pre-prod trio (RFC-0016) ─────────────────────────────────────────
+# A parallel backend + MCP stack on alt ports pointed at {{ staging_worlds_root }}
+# (a SEPARATE world store from prod), so staging worlds never touch prod. On
+# origin-core the trio runs as systemd units (infrastructure/systemd/*-staging.service);
+# these recipes run it locally for dev + verification. Runbook: docs/WORKSPACE.md
+# § "Staging pre-prod (RFC-0016)".
+
+# Guard: the staging world store MUST differ from the prod SENTINEL_WORLDS_ROOT.
+# Resolves the prod root from the shell env OR infrastructure/.env (origin-core
+# stores it there for systemd, so it's usually NOT exported), and compares
+# CANONICAL paths (realpath + ~ expansion) so tilde/relative/trailing-slash
+# spellings can't sneak past.
+staging-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    canon() { "{{ python_bin }}" -c "import os,sys;print(os.path.realpath(os.path.expanduser(sys.argv[1])))" "$1"; }
+    prod_raw="${SENTINEL_WORLDS_ROOT:-}"
+    if [ -z "$prod_raw" ] && [ -f infrastructure/.env ]; then
+      prod_raw=$(grep -E '^[[:space:]]*SENTINEL_WORLDS_ROOT[[:space:]]*=' infrastructure/.env | tail -1 | sed -E 's/^[^=]*=[[:space:]]*//; s/^"//; s/"$//; s/^'\''//; s/'\''$//')
+    fi
+    prod=$(canon "${prod_raw:-$HOME/sentinel-worlds}")
+    staging=$(canon "{{ staging_worlds_root }}")
+    echo "staging worlds root: $staging"
+    echo "prod    worlds root: $prod"
+    [ "$staging" = "$prod" ] && { echo "FAIL: staging store == prod store" >&2; exit 1; }
+    echo "OK: staging is isolated from prod"
+
+# Run the staging fs-manager MCP server (:8110, staging world store).
+staging-fs-manager:
+    SENTINEL_WORLDS_ROOT="{{ staging_worlds_root }}" "{{ python_bin }}" mcp-servers/fs-manager/server.py --port 8110 --dev
+
+# Run the staging git-sync MCP server (:8112, staging world store).
+# (git-sync's server.py takes only --port/--host — no --dev.)
+staging-git-sync:
+    SENTINEL_WORLDS_ROOT="{{ staging_worlds_root }}" "{{ python_bin }}" mcp-servers/git-sync/server.py --port 8112
+
+# Run the staging backend (:8101) against the staging MCP ports + world store, gate OFF.
+# (Loads .env for the LLM key; the inline staging env wins via load_dotenv override=False.)
+staging-backend:
+    SENTINEL_WORLDS_ROOT="{{ staging_worlds_root }}" FS_MANAGER_URL=http://127.0.0.1:8110 GIT_SYNC_URL=http://127.0.0.1:8112 SENTINEL_SESSION_TOKEN_SECRET= SENTINEL_LLM_DAILY_CEILING=200 "{{ venv_python }}" -m uvicorn backend.main:app --host 127.0.0.1 --port 8101 --reload --no-proxy-headers
+
+# Health of the staging trio.
+staging-health:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for p in "backend :8101/healthz" "fs-manager :8110/health" "git-sync :8112/health"; do
+      name="${p%% *}"; path="${p##* }"
+      code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 "http://127.0.0.1${path}" 2>/dev/null || echo 000)
+      echo "  $name -> $code (http://127.0.0.1${path})"
+    done
+
+# Delete ALL staging worlds (never the prod store). Resolves + canonicalizes the
+# prod root from the shell env OR infrastructure/.env before wiping, and REFUSES
+# if it equals the staging root (so a mistyped SENTINEL_STAGING_WORLDS_ROOT can't
+# nuke prod — the origin-core prod root lives in .env, not the shell).
+wipe-staging-worlds:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    canon() { "{{ python_bin }}" -c "import os,sys;print(os.path.realpath(os.path.expanduser(sys.argv[1])))" "$1"; }
+    prod_raw="${SENTINEL_WORLDS_ROOT:-}"
+    if [ -z "$prod_raw" ] && [ -f infrastructure/.env ]; then
+      prod_raw=$(grep -E '^[[:space:]]*SENTINEL_WORLDS_ROOT[[:space:]]*=' infrastructure/.env | tail -1 | sed -E 's/^[^=]*=[[:space:]]*//; s/^"//; s/"$//; s/^'\''//; s/'\''$//')
+    fi
+    prod=$(canon "${prod_raw:-$HOME/sentinel-worlds}")
+    staging=$(canon "{{ staging_worlds_root }}")
+    [ "$staging" = "$prod" ] && { echo "refusing: staging store == prod store ($staging)" >&2; exit 1; }
+    [ -d "$staging" ] || { echo "no staging store at $staging — nothing to wipe"; exit 0; }
+    find "$staging" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+    echo "wiped all staging worlds under $staging"
 
 # Export recorded mock sessions → datasets/ (schema JSONL + raw chatlogs).
 # Schema examples train narrative→world_update recognition; chatlogs are

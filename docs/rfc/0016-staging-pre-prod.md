@@ -83,14 +83,17 @@ Repoint `sentinel-staging.dev.russalo.com/alpha/api/*` → `:8101`.
 - [x] Every fixture `world_update` survives the real `fact_extractor` with a
       schema-valid payload; the arc (create → 0 HP → unconscious → 3-save chain →
       dead) is test-guarded. *(slice 1)*
-- [ ] Staging trio (backend :8101 + fs-manager :8110 + git-sync :8112) on
-      `~/sentinel-worlds-staging`, config-agreement green, token gate off; systemd
-      units enabled.
+- [x] Staging trio (backend :8101 + fs-manager :8110 + git-sync :8112) on
+      `<STAGING_WORLDS_ROOT>` — systemd unit templates + `just staging-*` recipes;
+      config-agreement verified green in mock mode, a session lands in the staging
+      store with prod untouched. Origin-core `enable --now` is the ops step. *(slice 2)*
+- [x] `just wipe-staging-worlds` + `just staging-check` guard that staging root ≠
+      prod root (both refuse a match). *(slice 2)*
 - [ ] `just stage-candidate <ref>` (worktree) + `just stage-smoke` (drives the
       fixture rolls to a verified death) as the deploy gate.
 - [ ] tailnet repoints `sentinel-staging.dev/alpha/api/*` → :8101.
-- [ ] A staging world appears ONLY in staging's `/api/worlds`; opens with content.
-- [ ] `just wipe-staging-worlds`; a guard that staging root ≠ prod root.
+- [ ] A staging world appears ONLY in staging's `/api/worlds`; opens with content
+      (once the edge repoint lands).
 
 ## Out of Scope
 - CI-driven staging deploys.
