@@ -42,6 +42,12 @@ alpha_serve_root := env_var_or_default("SENTINEL_ALPHA_SERVE_ROOT", "/srv/serve/
 # default is a home-dir sibling of the prod store.
 staging_worlds_root := env_var_or_default("SENTINEL_STAGING_WORLDS_ROOT", env_var_or_default("HOME", ".") / "sentinel-worlds-staging")
 
+# Git worktree the staging trio runs from (RFC-0016 candidate flow). `stage-candidate
+# <ref>` checks this worktree out at the candidate ref; the staging systemd units'
+# WorkingDirectory points here, so a restart runs the candidate. Default is a
+# sibling of the checkout.
+staging_worktree := env_var_or_default("SENTINEL_STAGING_WORKTREE", justfile_directory() / ".." / "sentinel-staging-worktree")
+
 # Show all available recipes (default when you run `just` with no args)
 default:
     @just --list --unsorted
@@ -309,6 +315,69 @@ wipe-staging-worlds:
     [ -d "$staging" ] || { echo "no staging store at $staging — nothing to wipe"; exit 0; }
     find "$staging" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
     echo "wiped all staging worlds under $staging"
+
+# The deploy GATE (RFC-0016). Spins up an EPHEMERAL mock trio (own ports :82xx +
+# a throwaway world store), drives the committed death-sequence fixture through it
+# with scripts/stage_smoke.py, and asserts the PC ends DEAD — deterministic, zero
+# LLM. Reaching death end-to-end proves the whole chain (mock DM -> fact_extractor
+# -> fs-manager dispatch -> engine death_stakes) wired up for real. Self-contained:
+# doesn't touch prod, the persistent staging trio, or the code repo's data/.
+stage-smoke:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Gate the CANDIDATE: run the trio + driver from the staging worktree if it
+    # exists (so `stage-candidate <ref>` then `stage-smoke` validates the CANDIDATE
+    # code, not the checkout just ran from — Codex P1), else the current checkout.
+    # The venv is always the main checkout's (worktrees share it).
+    code={{ quote(staging_worktree) }}; [ -d "$code/backend" ] || code="{{ justfile_directory() }}"
+    PYBIN="{{ justfile_directory() }}/.venv/bin/python"; [ -x "$PYBIN" ] || PYBIN="{{ python_bin }}"
+    echo "gating code at: $code"
+    ROOT=$(mktemp -d)
+    FS=""; GIT=""; BE=""
+    trap 'kill $FS $GIT $BE 2>/dev/null || true; rm -rf "$ROOT"' EXIT
+    # Free ephemeral ports (bind 3 sockets at once so they differ), to avoid
+    # colliding with other origin-core services on fixed ports.
+    read BEP FSP GITP < <("$PYBIN" -c "import socket;s=[socket.socket() for _ in range(3)];[x.bind(('127.0.0.1',0)) for x in s];print(*[x.getsockname()[1] for x in s]);[x.close() for x in s]")
+    hp() { curl -sS -o /dev/null -w '%{http_code}' --max-time 2 "$1" 2>/dev/null || echo 000; }
+    ( cd "$code" && SENTINEL_WORLDS_ROOT="$ROOT" "$PYBIN" mcp-servers/fs-manager/server.py --port $FSP --dev ) >"$ROOT/fs.log" 2>&1 & FS=$!
+    ( cd "$code" && SENTINEL_WORLDS_ROOT="$ROOT" "$PYBIN" mcp-servers/git-sync/server.py --port $GITP ) >"$ROOT/git.log" 2>&1 & GIT=$!
+    # Both MCP servers must be up BEFORE the backend (its config-agreement check
+    # runs once at startup and has no retry here).
+    for hpurl in "http://127.0.0.1:$FSP/health" "http://127.0.0.1:$GITP/health"; do
+      for i in $(seq 1 40); do [ "$(hp "$hpurl")" = "200" ] && break; sleep 0.5; done
+    done
+    ( cd "$code" && SENTINEL_WORLDS_ROOT="$ROOT" FS_MANAGER_URL=http://127.0.0.1:$FSP GIT_SYNC_URL=http://127.0.0.1:$GITP \
+      SENTINEL_SESSION_TOKEN_SECRET= SENTINEL_DM_MODE=mock SENTINEL_SKIP_ENV_CHECK=1 \
+      "$PYBIN" -m uvicorn backend.main:app --host 127.0.0.1 --port $BEP --no-proxy-headers ) >"$ROOT/be.log" 2>&1 & BE=$!
+    for i in $(seq 1 40); do [ "$(hp "http://127.0.0.1:$BEP/healthz")" = "200" ] && break; sleep 0.5; done
+    # The DRIVER is gate tooling — run it from the current checkout (it always has
+    # scripts/stage_smoke.py, even when gating an older candidate worktree); only
+    # the SERVERS above run the candidate code.
+    "$PYBIN" scripts/stage_smoke.py --base "http://127.0.0.1:$BEP" --worlds-root "$ROOT" \
+      || { echo "--- backend log ---"; tail -20 "$ROOT/be.log"; exit 1; }
+
+# Check the staging worktree out at a candidate ref (branch or sha), so the
+# staging trio runs the CANDIDATE (RFC-0016). Creates the worktree on first use.
+# Restart the staging units afterward (their WorkingDirectory is the worktree) to
+# pick it up — printed at the end. Verify the candidate at sentinel-staging.dev,
+# then `just stage-smoke` as the deterministic gate before promoting.
+stage-candidate ref:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # quote() shell-escapes so a crafted ref/path can't inject into the git calls.
+    wt={{ quote(staging_worktree) }}
+    ref={{ quote(ref) }}
+    git fetch --all --quiet || true
+    if git worktree list --porcelain | grep -qx "worktree $(cd "$wt" 2>/dev/null && pwd || echo /nonexistent)"; then
+      git -C "$wt" checkout --quiet --detach "$ref"
+      git -C "$wt" reset --hard --quiet "$ref"
+    else
+      git worktree add --detach --force "$wt" "$ref"
+    fi
+    echo "✓ staging worktree $wt → $ref ($(git -C "$wt" rev-parse --short HEAD))"
+    echo "  restart the staging trio to run it:"
+    echo "    sudo systemctl restart sentinel-fs-manager-staging sentinel-git-sync-staging sentinel-backend-staging"
+    echo "  then verify at sentinel-staging.dev/alpha/ and gate on: just stage-smoke"
 
 # Export recorded mock sessions → datasets/ (schema JSONL + raw chatlogs).
 # Schema examples train narrative→world_update recognition; chatlogs are

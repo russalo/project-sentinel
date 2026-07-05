@@ -348,7 +348,21 @@ just staging-backend        # :8101, gate off, points at the staging MCP ports
 just staging-health         # ping all three
 just staging-check          # assert staging store != prod store
 just wipe-staging-worlds     # delete all staging worlds (never prod)
+just stage-candidate <ref>  # check the staging worktree out at a candidate ref
+just stage-smoke            # the deploy GATE — drives the fixture to a verified death
 ```
+
+**The deploy gate — `just stage-smoke`:** spins up an *ephemeral* mock trio (free
+ephemeral ports + a throwaway world store), drives the committed death-sequence
+fixture through it (`scripts/stage_smoke.py`, sending failing death-save rolls),
+and asserts the PC persists as `dead`. Deterministic and zero-LLM; reaching death
+proves the whole chain (mock DM → `fact_extractor` → fs-manager dispatch →
+`death_stakes`) end-to-end. It's self-contained — no prod, staging, or code-repo
+`data/` impact. **`just stage-candidate <ref>`** checks the staging worktree
+(`SENTINEL_STAGING_WORKTREE`) out at the candidate ref; the staging units'
+`WorkingDirectory` is that worktree, so a restart runs the candidate. Deploy flow:
+`stage-candidate <ref>` → restart staging trio → verify at `sentinel-staging.dev`
+→ `stage-smoke` gate → promote.
 Verify isolation cheaply with **mock mode** (RFC-0016 slice 1, zero LLM):
 run the trio with `SENTINEL_DM_MODE=mock` + a temp `SENTINEL_STAGING_WORLDS_ROOT`,
 create a session, and confirm the world lands in the staging store while prod is
@@ -366,10 +380,10 @@ latter wins (a later `EnvironmentFile` overrides an earlier one, **and**
 `Environment=`, is what repoints `SENTINEL_WORLDS_ROOT` off the prod store). A
 missing `.env.staging` fails the units on purpose, so they never fall back to prod.
 
-**Remaining RFC-0016 slices:** candidate code via a git worktree
-(`stage-candidate <ref>`) + the `stage-smoke` deploy gate (the live roll-driven
-mock run), and tailnet's repoint of `sentinel-staging.dev/alpha/api/*` → `:8101`
-(their lane). See `docs/rfc/0016`.
+**Remaining RFC-0016 work:** tailnet's repoint of
+`sentinel-staging.dev/alpha/api/*` → `:8101` (their lane) so the staging FRONTEND
+talks to the staging BACKEND, and the origin-core `enable --now` of the units.
+See `docs/rfc/0016`.
 
 ## Production deployment (origin-core) — ADR 0003 Slice C
 

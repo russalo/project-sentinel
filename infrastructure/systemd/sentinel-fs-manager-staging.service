@@ -15,7 +15,7 @@ After=network.target
 [Service]
 Type=simple
 User=<USER>
-WorkingDirectory=<REPO_ROOT>
+WorkingDirectory=<STAGING_WORKTREE>
 # .env provides the shared bits (LLM key); .env.staging (loaded AFTER, so it
 # WINS — a later EnvironmentFile overrides an earlier one, and EnvironmentFile
 # overrides Environment=, per systemd.exec) repoints SENTINEL_WORLDS_ROOT at the
