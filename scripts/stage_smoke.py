@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import sys
 import urllib.request
 from pathlib import Path
@@ -26,6 +25,7 @@ from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from backend import mock_dm  # noqa: E402
+from engine.agents.fact_extractor import _slugify  # noqa: E402
 
 _PC_NAME = "Kaelen"  # must match the fixture's PC (death_stakes finds it by name)
 
@@ -133,8 +133,9 @@ def main() -> int:
         tag = f" check={pending.get('kind', 'skill')}" if pending else ""
         print(f"  turn {n:>2}{tag}")
 
-    # 3. Assert the PC persisted as dead in the STAGING store.
-    slug = re.sub(r"[^a-z0-9_-]", "", _PC_NAME.lower().replace(" ", "_"))
+    # 3. Assert the PC persisted as dead in the STAGING store. Use the engine's
+    # canonical slugify so the path matches exactly what fs-manager wrote.
+    slug = _slugify(_PC_NAME)
     entity = (
         Path(args.worlds_root) / world_id / "data/state/core/entities" / f"{slug}.json"
     )
