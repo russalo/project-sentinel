@@ -89,8 +89,11 @@ Repoint `sentinel-staging.dev.russalo.com/alpha/api/*` → `:8101`.
       store with prod untouched. Origin-core `enable --now` is the ops step. *(slice 2)*
 - [x] `just wipe-staging-worlds` + `just staging-check` guard that staging root ≠
       prod root (both refuse a match). *(slice 2)*
-- [ ] `just stage-candidate <ref>` (worktree) + `just stage-smoke` (drives the
-      fixture rolls to a verified death) as the deploy gate.
+- [x] `just stage-smoke` — ephemeral mock trio (free ports) + `scripts/stage_smoke.py`
+      drives the fixture (failing death-save rolls) to a **verified death**
+      (`status == "dead"` persisted), proving mock DM → fact_extractor → fs-manager
+      dispatch → death_stakes end-to-end. `just stage-candidate <ref>` checks the
+      staging worktree out at a candidate ref; the staging units run from it. *(slice 3)*
 - [ ] tailnet repoints `sentinel-staging.dev/alpha/api/*` → :8101.
 - [ ] A staging world appears ONLY in staging's `/api/worlds`; opens with content
       (once the edge repoint lands).
