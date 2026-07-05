@@ -329,7 +329,7 @@ stage-smoke:
     # exists (so `stage-candidate <ref>` then `stage-smoke` validates the CANDIDATE
     # code, not the checkout just ran from — Codex P1), else the current checkout.
     # The venv is always the main checkout's (worktrees share it).
-    code="{{ staging_worktree }}"; [ -d "$code/backend" ] || code="{{ justfile_directory() }}"
+    code={{ quote(staging_worktree) }}; [ -d "$code/backend" ] || code="{{ justfile_directory() }}"
     PYBIN="{{ justfile_directory() }}/.venv/bin/python"; [ -x "$PYBIN" ] || PYBIN="{{ python_bin }}"
     echo "gating code at: $code"
     ROOT=$(mktemp -d)
@@ -364,8 +364,9 @@ stage-smoke:
 stage-candidate ref:
     #!/usr/bin/env bash
     set -euo pipefail
-    wt="{{ staging_worktree }}"
-    ref="{{ ref }}"
+    # quote() shell-escapes so a crafted ref/path can't inject into the git calls.
+    wt={{ quote(staging_worktree) }}
+    ref={{ quote(ref) }}
     git fetch --all --quiet || true
     if git worktree list --porcelain | grep -qx "worktree $(cd "$wt" 2>/dev/null && pwd || echo /nonexistent)"; then
       git -C "$wt" checkout --quiet --detach "$ref"

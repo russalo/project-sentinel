@@ -128,7 +128,8 @@ def main() -> int:
         if wu:
             data = wu[-1].get("data")
             if isinstance(data, dict):
-                pending = data.get("check_request")
+                check = data.get("check_request")
+                pending = check if isinstance(check, dict) else None
         tag = f" check={pending.get('kind', 'skill')}" if pending else ""
         print(f"  turn {n:>2}{tag}")
 
