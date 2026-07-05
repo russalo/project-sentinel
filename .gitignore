@@ -67,6 +67,7 @@ datasets/
 
 # Secrets — never commit environment files
 infrastructure/.env
+infrastructure/.env.staging
 
 # Claude Code conversation transcripts — captured locally by the
 # PreCompact hook in .claude/settings.json before compaction, so

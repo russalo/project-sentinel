@@ -248,11 +248,20 @@ prune-alpha-releases keep="5":
 # § "Staging pre-prod (RFC-0016)".
 
 # Guard: the staging world store MUST differ from the prod SENTINEL_WORLDS_ROOT.
+# Resolves the prod root from the shell env OR infrastructure/.env (origin-core
+# stores it there for systemd, so it's usually NOT exported), and compares
+# CANONICAL paths (realpath + ~ expansion) so tilde/relative/trailing-slash
+# spellings can't sneak past.
 staging-check:
     #!/usr/bin/env bash
     set -euo pipefail
-    staging="{{ staging_worlds_root }}"
-    prod="${SENTINEL_WORLDS_ROOT:-<unset>}"
+    canon() { "{{ python_bin }}" -c "import os,sys;print(os.path.realpath(os.path.expanduser(sys.argv[1])))" "$1"; }
+    prod_raw="${SENTINEL_WORLDS_ROOT:-}"
+    if [ -z "$prod_raw" ] && [ -f infrastructure/.env ]; then
+      prod_raw=$(grep -E '^[[:space:]]*SENTINEL_WORLDS_ROOT[[:space:]]*=' infrastructure/.env | tail -1 | sed -E 's/^[^=]*=[[:space:]]*//; s/^"//; s/"$//; s/^'\''//; s/'\''$//')
+    fi
+    prod=$(canon "${prod_raw:-$HOME/sentinel-worlds}")
+    staging=$(canon "{{ staging_worlds_root }}")
     echo "staging worlds root: $staging"
     echo "prod    worlds root: $prod"
     [ "$staging" = "$prod" ] && { echo "FAIL: staging store == prod store" >&2; exit 1; }
@@ -282,13 +291,21 @@ staging-health:
       echo "  $name -> $code (http://127.0.0.1${path})"
     done
 
-# Delete ALL staging worlds (never the prod store — refuses if roots match).
+# Delete ALL staging worlds (never the prod store). Resolves + canonicalizes the
+# prod root from the shell env OR infrastructure/.env before wiping, and REFUSES
+# if it equals the staging root (so a mistyped SENTINEL_STAGING_WORLDS_ROOT can't
+# nuke prod — the origin-core prod root lives in .env, not the shell).
 wipe-staging-worlds:
     #!/usr/bin/env bash
     set -euo pipefail
-    staging="{{ staging_worlds_root }}"
-    prod="${SENTINEL_WORLDS_ROOT:-}"
-    [ -n "$prod" ] && [ "$staging" = "$prod" ] && { echo "refusing: staging store == prod SENTINEL_WORLDS_ROOT ($staging)" >&2; exit 1; }
+    canon() { "{{ python_bin }}" -c "import os,sys;print(os.path.realpath(os.path.expanduser(sys.argv[1])))" "$1"; }
+    prod_raw="${SENTINEL_WORLDS_ROOT:-}"
+    if [ -z "$prod_raw" ] && [ -f infrastructure/.env ]; then
+      prod_raw=$(grep -E '^[[:space:]]*SENTINEL_WORLDS_ROOT[[:space:]]*=' infrastructure/.env | tail -1 | sed -E 's/^[^=]*=[[:space:]]*//; s/^"//; s/"$//; s/^'\''//; s/'\''$//')
+    fi
+    prod=$(canon "${prod_raw:-$HOME/sentinel-worlds}")
+    staging=$(canon "{{ staging_worlds_root }}")
+    [ "$staging" = "$prod" ] && { echo "refusing: staging store == prod store ($staging)" >&2; exit 1; }
     [ -d "$staging" ] || { echo "no staging store at $staging — nothing to wipe"; exit 0; }
     find "$staging" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
     echo "wiped all staging worlds under $staging"

@@ -324,7 +324,7 @@ site to its `base:'/'` build.)
 ## Staging pre-prod (RFC-0016)
 
 Staging is a **parallel backend + MCP trio** with its **own world store**, so
-staging worlds never touch prod (`~/sentinel-worlds`). It's tailnet-only
+staging worlds never touch the prod store (`SENTINEL_WORLDS_ROOT`). It's tailnet-only
 (`sentinel-staging.dev.russalo.com`), the session-token gate is **off** (tailnet
 membership is the access control — worlds open without a token), and it has its
 own small LLM ceiling so staging play can't drain prod's daily budget.
@@ -335,9 +335,10 @@ own small LLM ceiling so staging play can't drain prod's daily budget.
 | fs-manager | :8010 | :8110 | (same) |
 | git-sync | :8012 | :8112 | (same) |
 
-`STAGING_WORLDS_ROOT` = `SENTINEL_STAGING_WORLDS_ROOT` (default `~/sentinel-worlds-staging`)
+The staging store is `SENTINEL_STAGING_WORLDS_ROOT` (default `~/sentinel-worlds-staging`)
 — it **must differ** from the prod `SENTINEL_WORLDS_ROOT`; `just staging-check`
-guards this and `wipe-staging-worlds` refuses if they match.
+and `wipe-staging-worlds` both resolve the prod root (from the shell env or
+`infrastructure/.env`) and compare canonical paths, refusing if they match.
 
 **Local dev / verification:**
 ```bash
@@ -354,13 +355,16 @@ create a session, and confirm the world lands in the staging store while prod is
 untouched. (The backend only comes up if the **config-agreement check** finds all
 three on the same staging root.)
 
-**On origin-core:** run the trio as systemd units —
+**On origin-core:** first create `infrastructure/.env.staging` from
+`infrastructure/.env.staging.example` (fill `<STAGING_WORLDS_ROOT>`; gitignored).
+Then run the trio as systemd units —
 `infrastructure/systemd/sentinel-{backend,fs-manager,git-sync}-staging.service`
-(mirror the prod templates; substitute `<REPO_ROOT>`, `<USER>`, `<STAGING_WORLDS_ROOT>`;
-`sudo cp` to `/etc/systemd/system/`, `daemon-reload`, `enable --now`). The units
-override `SENTINEL_WORLDS_ROOT` (+ the backend's MCP ports and gate) via
-`Environment=` on top of `.env`, so they reuse the shared LLM key without
-inheriting the prod world store.
+(substitute `<REPO_ROOT>`, `<USER>`; `sudo cp` to `/etc/systemd/system/`,
+`daemon-reload`, `enable --now`). The units load `.env` then `.env.staging`; the
+latter wins (a later `EnvironmentFile` overrides an earlier one, **and**
+`EnvironmentFile` overrides `Environment=` — so `.env.staging`, not
+`Environment=`, is what repoints `SENTINEL_WORLDS_ROOT` off the prod store). A
+missing `.env.staging` fails the units on purpose, so they never fall back to prod.
 
 **Remaining RFC-0016 slices:** candidate code via a git worktree
 (`stage-candidate <ref>`) + the `stage-smoke` deploy gate (the live roll-driven

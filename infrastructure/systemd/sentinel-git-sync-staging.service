@@ -14,8 +14,11 @@ After=network.target
 Type=simple
 User=<USER>
 WorkingDirectory=<REPO_ROOT>
+# .env.staging loads AFTER .env and wins (see the fs-manager-staging unit's note);
+# it repoints SENTINEL_WORLDS_ROOT at the staging store. Missing → unit fails
+# (never falls back to prod).
 EnvironmentFile=<REPO_ROOT>/infrastructure/.env
-Environment=SENTINEL_WORLDS_ROOT=<STAGING_WORLDS_ROOT>
+EnvironmentFile=<REPO_ROOT>/infrastructure/.env.staging
 ExecStart=<REPO_ROOT>/.venv/bin/python mcp-servers/git-sync/server.py --port 8112
 Restart=on-failure
 RestartSec=2

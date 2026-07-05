@@ -16,13 +16,14 @@ After=network.target
 Type=simple
 User=<USER>
 WorkingDirectory=<REPO_ROOT>
-# EnvironmentFile provides the shared bits (LLM key etc.); the Environment=
-# override below repoints the world store at the staging tree. systemd applies
-# Environment= AFTER EnvironmentFile=, so the override wins over the prod
-# SENTINEL_WORLDS_ROOT in .env. All three staging units MUST set the same value
-# (the backend's config-agreement check refuses per-world mode otherwise).
+# .env provides the shared bits (LLM key); .env.staging (loaded AFTER, so it
+# WINS — a later EnvironmentFile overrides an earlier one, and EnvironmentFile
+# overrides Environment=, per systemd.exec) repoints SENTINEL_WORLDS_ROOT at the
+# staging tree. All three staging units load the same .env.staging (same
+# SENTINEL_WORLDS_ROOT), or the backend's config-agreement check refuses. A
+# missing .env.staging fails the unit — deliberate, so it never falls back to prod.
 EnvironmentFile=<REPO_ROOT>/infrastructure/.env
-Environment=SENTINEL_WORLDS_ROOT=<STAGING_WORLDS_ROOT>
+EnvironmentFile=<REPO_ROOT>/infrastructure/.env.staging
 # No --host → 127.0.0.1 (the A2 bind guard refuses all-interfaces).
 ExecStart=<REPO_ROOT>/.venv/bin/python mcp-servers/fs-manager/server.py --port 8110
 Restart=on-failure

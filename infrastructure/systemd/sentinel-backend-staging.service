@@ -22,18 +22,17 @@ Wants=sentinel-fs-manager-staging.service sentinel-git-sync-staging.service
 Type=simple
 User=<USER>
 WorkingDirectory=<REPO_ROOT>
-# Shared bits (LLM key) come from .env; the Environment= overrides below make
-# this a STAGING backend: its own world store, its own MCP ports, the session
-# gate OFF (tailnet membership is the access control on sentinel-staging.dev, so
-# worlds open without a token — no reauth/basic_auth needed), and its own small
-# LLM ceiling so staging play can't drain prod's daily budget. systemd applies
-# Environment= after EnvironmentFile=, so these win over .env.
+# Shared bits (LLM key) come from .env; infrastructure/.env.staging (loaded AFTER,
+# so it WINS — a later EnvironmentFile overrides an earlier one, per systemd.exec)
+# makes this a STAGING backend: its own world store, its own MCP ports (:8110/:8112),
+# the session gate OFF (tailnet membership is the access control on
+# sentinel-staging.dev — worlds open without a token), and a small own LLM ceiling.
+# Using .env.staging rather than Environment= is deliberate: EnvironmentFile
+# OVERRIDES Environment=, so Environment= assignments would silently lose to the
+# prod .env and the backend would come up against the PROD store with the gate on.
+# A missing .env.staging fails the unit — so it never falls back to prod.
 EnvironmentFile=<REPO_ROOT>/infrastructure/.env
-Environment=SENTINEL_WORLDS_ROOT=<STAGING_WORLDS_ROOT>
-Environment=FS_MANAGER_URL=http://127.0.0.1:8110
-Environment=GIT_SYNC_URL=http://127.0.0.1:8112
-Environment=SENTINEL_SESSION_TOKEN_SECRET=
-Environment=SENTINEL_LLM_DAILY_CEILING=200
+EnvironmentFile=<REPO_ROOT>/infrastructure/.env.staging
 # DM_MODE is intentionally left at .env's value (live) so staging serves a real
 # DM for interactive verification against the candidate. The deterministic mock
 # smoke (RFC-0016 slice 3) runs with SENTINEL_DM_MODE=mock as a separate step.
