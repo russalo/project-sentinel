@@ -101,6 +101,12 @@ def main() -> int:
             },
         )
     )
+    if not isinstance(created, dict):
+        print(
+            f"FAIL: session/new returned {type(created).__name__}, expected an object",
+            file=sys.stderr,
+        )
+        return 1
     session_id = created.get("sessionId") or created["session_id"]
     world_id = created.get("worldId") or created["world_id"]
     print(f"session {session_id[:8]}  world {world_id[:8]}")
@@ -118,7 +124,11 @@ def main() -> int:
         wu = [
             e for e in events if isinstance(e, dict) and e.get("type") == "world_update"
         ]
-        pending = wu[-1]["data"].get("check_request") if wu else None
+        pending = None
+        if wu:
+            data = wu[-1].get("data")
+            if isinstance(data, dict):
+                pending = data.get("check_request")
         tag = f" check={pending.get('kind', 'skill')}" if pending else ""
         print(f"  turn {n:>2}{tag}")
 
@@ -130,7 +140,13 @@ def main() -> int:
     if not entity.exists():
         print(f"FAIL: PC entity {entity} was never written", file=sys.stderr)
         return 1
-    pc = json.loads(entity.read_text())
+    pc = json.loads(entity.read_text(encoding="utf-8"))
+    if not isinstance(pc, dict):
+        print(
+            f"FAIL: PC entity is {type(pc).__name__}, expected an object",
+            file=sys.stderr,
+        )
+        return 1
     status = pc.get("status") or pc.get("module_data", {}).get(
         "character_sheet", {}
     ).get("status")

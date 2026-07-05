@@ -325,25 +325,35 @@ wipe-staging-worlds:
 stage-smoke:
     #!/usr/bin/env bash
     set -euo pipefail
+    # Gate the CANDIDATE: run the trio + driver from the staging worktree if it
+    # exists (so `stage-candidate <ref>` then `stage-smoke` validates the CANDIDATE
+    # code, not the checkout just ran from — Codex P1), else the current checkout.
+    # The venv is always the main checkout's (worktrees share it).
+    code="{{ staging_worktree }}"; [ -d "$code/backend" ] || code="{{ justfile_directory() }}"
+    PYBIN="{{ justfile_directory() }}/.venv/bin/python"; [ -x "$PYBIN" ] || PYBIN="{{ python_bin }}"
+    echo "gating code at: $code"
     ROOT=$(mktemp -d)
     FS=""; GIT=""; BE=""
     trap 'kill $FS $GIT $BE 2>/dev/null || true; rm -rf "$ROOT"' EXIT
     # Free ephemeral ports (bind 3 sockets at once so they differ), to avoid
     # colliding with other origin-core services on fixed ports.
-    read BEP FSP GITP < <("{{ venv_python }}" -c "import socket;s=[socket.socket() for _ in range(3)];[x.bind(('127.0.0.1',0)) for x in s];print(*[x.getsockname()[1] for x in s]);[x.close() for x in s]")
+    read BEP FSP GITP < <("$PYBIN" -c "import socket;s=[socket.socket() for _ in range(3)];[x.bind(('127.0.0.1',0)) for x in s];print(*[x.getsockname()[1] for x in s]);[x.close() for x in s]")
     hp() { curl -sS -o /dev/null -w '%{http_code}' --max-time 2 "$1" 2>/dev/null || echo 000; }
-    SENTINEL_WORLDS_ROOT="$ROOT" "{{ venv_python }}" mcp-servers/fs-manager/server.py --port $FSP --dev >"$ROOT/fs.log" 2>&1 & FS=$!
-    SENTINEL_WORLDS_ROOT="$ROOT" "{{ venv_python }}" mcp-servers/git-sync/server.py --port $GITP >"$ROOT/git.log" 2>&1 & GIT=$!
+    ( cd "$code" && SENTINEL_WORLDS_ROOT="$ROOT" "$PYBIN" mcp-servers/fs-manager/server.py --port $FSP --dev ) >"$ROOT/fs.log" 2>&1 & FS=$!
+    ( cd "$code" && SENTINEL_WORLDS_ROOT="$ROOT" "$PYBIN" mcp-servers/git-sync/server.py --port $GITP ) >"$ROOT/git.log" 2>&1 & GIT=$!
     # Both MCP servers must be up BEFORE the backend (its config-agreement check
     # runs once at startup and has no retry here).
     for hpurl in "http://127.0.0.1:$FSP/health" "http://127.0.0.1:$GITP/health"; do
       for i in $(seq 1 40); do [ "$(hp "$hpurl")" = "200" ] && break; sleep 0.5; done
     done
-    SENTINEL_WORLDS_ROOT="$ROOT" FS_MANAGER_URL=http://127.0.0.1:$FSP GIT_SYNC_URL=http://127.0.0.1:$GITP \
+    ( cd "$code" && SENTINEL_WORLDS_ROOT="$ROOT" FS_MANAGER_URL=http://127.0.0.1:$FSP GIT_SYNC_URL=http://127.0.0.1:$GITP \
       SENTINEL_SESSION_TOKEN_SECRET= SENTINEL_DM_MODE=mock SENTINEL_SKIP_ENV_CHECK=1 \
-      "{{ venv_python }}" -m uvicorn backend.main:app --host 127.0.0.1 --port $BEP --no-proxy-headers >"$ROOT/be.log" 2>&1 & BE=$!
+      "$PYBIN" -m uvicorn backend.main:app --host 127.0.0.1 --port $BEP --no-proxy-headers ) >"$ROOT/be.log" 2>&1 & BE=$!
     for i in $(seq 1 40); do [ "$(hp "http://127.0.0.1:$BEP/healthz")" = "200" ] && break; sleep 0.5; done
-    "{{ venv_python }}" scripts/stage_smoke.py --base "http://127.0.0.1:$BEP" --worlds-root "$ROOT" \
+    # The DRIVER is gate tooling — run it from the current checkout (it always has
+    # scripts/stage_smoke.py, even when gating an older candidate worktree); only
+    # the SERVERS above run the candidate code.
+    "$PYBIN" scripts/stage_smoke.py --base "http://127.0.0.1:$BEP" --worlds-root "$ROOT" \
       || { echo "--- backend log ---"; tail -20 "$ROOT/be.log"; exit 1; }
 
 # Check the staging worktree out at a candidate ref (branch or sha), so the
