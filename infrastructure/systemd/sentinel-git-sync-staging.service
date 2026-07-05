@@ -1,0 +1,24 @@
+# Sentinel STAGING git-sync MCP server (RFC-0016). TEMPLATE.
+# Part of the staging trio (see sentinel-fs-manager-staging.service). Commits
+# per-turn world state into the STAGING world store, not prod. Install:
+#   1. Replace <REPO_ROOT>, <USER>, <STAGING_WORLDS_ROOT> (same value as the
+#      other two staging units; MUST differ from prod SENTINEL_WORLDS_ROOT).
+#   2. sudo cp this to /etc/systemd/system/sentinel-git-sync-staging.service
+#   3. sudo systemctl daemon-reload && sudo systemctl enable --now sentinel-git-sync-staging
+# Linux-only; for local dev use `just staging-git-sync`.
+[Unit]
+Description=Sentinel STAGING git-sync MCP server (:8112, staging world store)
+After=network.target
+
+[Service]
+Type=simple
+User=<USER>
+WorkingDirectory=<REPO_ROOT>
+EnvironmentFile=<REPO_ROOT>/infrastructure/.env
+Environment=SENTINEL_WORLDS_ROOT=<STAGING_WORLDS_ROOT>
+ExecStart=<REPO_ROOT>/.venv/bin/python mcp-servers/git-sync/server.py --port 8112
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
