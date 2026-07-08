@@ -94,6 +94,21 @@ def authoritative_progression(
     return level, stats
 
 
+def authoritative_for_pc(
+    stored_characters: list[dict[str, Any]],
+    player_name: str,
+    choice: dict[str, Any] | None,
+) -> tuple[int, dict[str, int]] | None:
+    """The (level, stats) the engine will commit for the PC, or None if the PC
+    can't be resolved. Used to mirror the committed values into the SSE hint (so the
+    player sees a level-up live, not only after hydration) AND — recomputed —
+    enforced at dispatch; deterministic, so both agree."""
+    pc = find_player_character(stored_characters, player_name)
+    if pc is None:
+        return None
+    return authoritative_progression(stored_level(pc), stored_stats(pc), choice)
+
+
 def _pc_entity_op(op: Any, player_name: str, slug: str | None) -> bool:
     """True if this op writes the player character's entity.
 
@@ -197,6 +212,11 @@ def enforce_progression(
         merged["character_sheet"] = sheet
         data["module_data"] = merged
         data["level"] = auth_level
+        # Accumulate across multiple same-turn PC ops: fs-manager applies them in
+        # order with a shallow merge, so a later op must carry the earlier ops'
+        # module_data changes (e.g. an hp bump) or it would revert them to stored
+        # (codex). `merged` is a fresh dict — no aliasing back to `pc`.
+        base_md = merged
 
     notices: list[str] = []
     if dm_attempted:

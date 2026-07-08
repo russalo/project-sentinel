@@ -273,7 +273,9 @@ def test_unresolvable_pc_is_not_force_zeroed():
             "name": "Sir Kael",  # != session player_name "Kael"
             "level": 3,
             "module_data": {
-                "character_sheet": {"stats": {"body": 8, "mind": 5, "heart": 6, "will": 4}}
+                "character_sheet": {
+                    "stats": {"body": 8, "mind": 5, "heart": 6, "will": 4}
+                }
             },
         }
     ]
@@ -285,10 +287,35 @@ def test_unresolvable_pc_is_not_force_zeroed():
     assert not notices
 
 
+def test_authoritative_for_pc_resolves_and_returns_none():
+    assert progression.authoritative_for_pc([_pc()], "Kael", None) == (
+        2,
+        {"body": 7, "mind": 5, "heart": 6, "will": 4},
+    )
+    assert progression.authoritative_for_pc([], "Kael", None) is None
+
+
+def test_multi_op_accumulates_earlier_module_data():
+    # Two PC ops in one turn: op1 bumps hp, op2 doesn't. fs-manager applies them in
+    # order with a shallow merge, so op2 must carry op1's hp or it reverts it to
+    # stored (codex). The last op should hold the accumulated hp.
+    op1 = _op(module_data={"character_sheet": {"hp": {"current": 64, "max": 64}}})
+    op2 = _op(status="wounded")
+    payload = _payload([op1, op2])
+    progression.enforce_progression(
+        payload, stored_characters=[_pc()], player_name="Kael", choice=None
+    )
+    last_hp = payload["updates"][-1]["data"]["module_data"]["character_sheet"]["hp"]
+    assert last_hp == {"current": 64, "max": 64}  # op1's bump survives into op2
+
+
 def test_malformed_payload_and_stored_degrade():
-    assert progression.enforce_progression(
-        None, stored_characters=[], player_name="Kael", choice=None
-    ) == []
+    assert (
+        progression.enforce_progression(
+            None, stored_characters=[], player_name="Kael", choice=None
+        )
+        == []
+    )
     # malformed stored PC (module_data a string) must not raise
     bad = [{"role": "player", "name": "Kael", "level": 2, "module_data": "oops"}]
     payload = _payload([_op(level=9)])

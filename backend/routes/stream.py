@@ -155,45 +155,70 @@ def _parse_frontend_hint(raw: str) -> dict:
     return parsed if isinstance(parsed, dict) else {}
 
 
+def _locate_pc_in_hint(hint: dict, player_name: str, *, create: bool) -> dict | None:
+    """Find the PC's entry in the SSE ``world_update`` hint (prefer ``role ==
+    "player"``, else name). With ``create``, add a minimal entry when absent so a
+    committed change reaches the UI even if the DM emitted no PC entry. Tolerant of
+    a malformed hint (returns None)."""
+    if not isinstance(hint, dict) or not isinstance(player_name, str):
+        return None
+    chars = hint.get("characters")
+    if not isinstance(chars, list):
+        if not create:
+            return None
+        chars = []
+        hint["characters"] = chars
+    lowered = player_name.strip().lower()
+    for char in chars:
+        if isinstance(char, dict) and str(char.get("role", "")).lower() == "player":
+            return char
+    for char in chars:
+        if (
+            isinstance(char, dict)
+            and str(char.get("name", "")).strip().lower() == lowered
+        ):
+            return char
+    if not create:
+        return None
+    pc = {"name": player_name, "role": "player", "action": "upsert"}
+    chars.append(pc)
+    return pc
+
+
 def _mirror_death_outcome_to_hint(
     hint: dict, player_name: str, outcome_hint: dict
 ) -> None:
     """Patch the PC's entry in the SSE ``world_update`` hint to the committed
     death-save status + clock (RFC-0014), so the UI never renders the DM's stale
-    version. If the DM emitted no PC entry (e.g. no ``<world_update>`` at all —
-    the synth-payload case), ADD one so the committed death still reaches the UI
-    without a refresh (codex P2 on PR #172). In-place; tolerant of a malformed
-    hint."""
-    if not isinstance(hint, dict) or not isinstance(player_name, str):
+    version. Adds a PC entry if the DM emitted none (the synth-payload case), so the
+    committed death reaches the UI without a refresh (codex P2 on PR #172)."""
+    pc = _locate_pc_in_hint(hint, player_name, create=True)
+    if pc is None:
         return
-    chars = hint.get("characters")
-    if not isinstance(chars, list):
-        chars = []
-        hint["characters"] = chars
-    lowered = player_name.strip().lower()
-    pc = None
-    for char in chars:
-        if isinstance(char, dict) and str(char.get("role", "")).lower() == "player":
-            pc = char
-            break
-    if pc is None:
-        for char in chars:
-            if (
-                isinstance(char, dict)
-                and str(char.get("name", "")).strip().lower() == lowered
-            ):
-                pc = char
-                break
-    if pc is None:
-        # No PC entry to correct — add a minimal one carrying the committed death.
-        pc = {"name": player_name, "role": "player", "action": "upsert"}
-        chars.append(pc)
     pc["status"] = outcome_hint.get("status", pc.get("status"))
     module_data = pc.setdefault("module_data", {})
     if isinstance(module_data, dict):
         combat = module_data.setdefault("combat", {})
         if isinstance(combat, dict):
             combat["death_saves_failed"] = outcome_hint.get("failed")
+
+
+def _mirror_progression_to_hint(
+    hint: dict, player_name: str, level: int, stats: dict
+) -> None:
+    """Patch the PC's entry in the SSE hint to the engine-committed ``level`` +
+    ``stats`` (RFC-0017), so a level-up shows live instead of only after hydration —
+    the same UI-truthfulness the death mirror provides. Adds a PC entry if the DM
+    emitted none. In-place; tolerant of a malformed hint."""
+    pc = _locate_pc_in_hint(hint, player_name, create=True)
+    if pc is None:
+        return
+    pc["level"] = level
+    module_data = pc.setdefault("module_data", {})
+    if isinstance(module_data, dict):
+        sheet = module_data.setdefault("character_sheet", {})
+        if isinstance(sheet, dict):
+            sheet["stats"] = dict(stats)
 
 
 @router.post("/stream")
@@ -412,6 +437,22 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
             _mirror_death_outcome_to_hint(
                 frontend_hint, session.player_character_name, death_outcome_hint
             )
+
+        # RFC-0017: on an enacted level-up, mirror the engine-committed level + stats
+        # into the SSE hint so the player sees the advance live — the DM no longer
+        # writes them, so without this the level-up wouldn't show until a refresh
+        # re-hydrates the committed state (codex). Deterministic: enforce_progression
+        # recomputes the same values at the dispatch seam below.
+        if body.level_up is not None:
+            _prog = progression.authoritative_for_pc(
+                world_context.characters,
+                session.player_character_name,
+                body.level_up.model_dump(),
+            )
+            if _prog is not None:
+                _mirror_progression_to_hint(
+                    frontend_hint, session.player_character_name, _prog[0], _prog[1]
+                )
 
         # Emit the world_update event in the shape the frontend
         # expects (DM hint shape, not the fs-manager schema shape).
