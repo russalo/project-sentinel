@@ -188,17 +188,21 @@ invariant worth defending.
 
 - **The reserved lane is open.** RFC-0009's progression hard-enforcement — a
   dispatch guard so the DM cannot write `level`/`stats` outside an enacted
-  advancement — is the next concrete slice; it was explicitly deferred here.
-  (`docs/BACKLOG.md` → RFC-0009 sovereignty-wall follow-up.)
+  advancement — **landed as RFC-0017 (Slice 1)**. Note the mechanism: this is
+  **(a) recompute-and-inject**, NOT (b) — RFC-0017's code map showed a write-boundary
+  guard structurally can't do it (the authorized and attack writes are byte-identical
+  `world_update` ops, `stats` is nested where the top-level check can't see it, and
+  the authorized delta needs `body.level_up` context fs-manager lacks). `hp`/`magic`
+  authority is the deferred Slice 1b.
 - **Per-subsystem "engine-owned fields" declaration** extends the ADR-0005 module
   contract (the `combat` module's `schema.json`, introduced by RFC-0014, is the
   first instance — generalize it).
-- **Generalize the fs-manager protected-field guard** from identity fields toward
-  mechanically-owned fields (`level`/`hp`/`status`/`stats`) gated by an
-  engine-set authorization scope (analogous to the trusted `namespace=core` query
-  param — set by the backend, never LLM-asserted), so a DM write to those outside
-  an enacted mechanic is rejected. The guard exists (red-team #1); today it only
-  covers identity fields.
+- **The write-boundary guard (b) is for genuinely *immutable* fields** — the
+  identity set fs-manager `check_protected_fields` already covers, and (later) the
+  authored-but-unenforced entity-schema *shape* validation (RFC-0006 OQ1). Fields
+  that are engine-owned but *conditionally* writable (a `level` rises on an enacted
+  level-up) can't be enforced there — a payload-only check can't tell an authorized
+  write from a hallucinated one — so they take mechanism (a) instead (RFC-0017).
 - **Shared "narrate, not decide" prompt convention** for committed-outcome blocks,
   factored so subsystems reuse it.
 - The **Fantasy-flagship core-systems** initiative (`docs/BACKLOG.md`) inherits

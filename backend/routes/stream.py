@@ -34,6 +34,7 @@ from fastapi.responses import StreamingResponse
 
 import engine
 from engine import death_stakes
+from engine import progression
 from engine.agents import dm as dm_agent
 from engine.agents import fact_extractor
 
@@ -427,13 +428,16 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
         )
 
         payload = extracted.payload
-        # RFC-0014: a death-save resolve turn MUST write the engine's committed
-        # outcome even if the DM emitted no <world_update> — synthesize a minimal
-        # payload so the status/clock still land authoritatively.
-        if death_outcome_obj is not None and payload is None:
+        # RFC-0014 / RFC-0017: a turn carrying an engine-authoritative outcome (a
+        # death-save resolution, or an enacted level-up) MUST write that outcome
+        # even if the DM emitted no <world_update> — synthesize a minimal payload so
+        # the status/clock or the level/stats still land authoritatively.
+        if (death_outcome_obj is not None or body.level_up is not None) and (
+            payload is None
+        ):
             # log_entry has a schema minLength of 10 — a short DM narrative would
             # make fs-manager reject the whole payload and silently drop the
-            # committed death (swarm HIGH on PR #172). Fall back to a fixed
+            # committed outcome (swarm HIGH on PR #172). Fall back to a fixed
             # >=10-char entry whenever the narrative is too short.
             _narrative = narrative[:200]
             payload = {
@@ -441,7 +445,7 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
                 "log_entry": (
                     _narrative
                     if len(_narrative.strip()) >= 10
-                    else f"Turn {next_turn_number} — death save resolved."
+                    else f"Turn {next_turn_number} — outcome committed."
                 ),
                 "updates": [],
             }
@@ -460,6 +464,22 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
                     # erase character_sheet (stats/HP) behind the death clock.
                     stored_module_data=death_pc_module_data,
                 )
+            # RFC-0017 / ADR-0004 Slice 1: level + stats are engine-owned. On every
+            # turn, force the PC's `level` + `module_data.character_sheet.stats` to
+            # the authoritative value (stored, or the enacted level-up delta), so a
+            # DM that raises them on its own initiative is overridden. A DM attempt
+            # surfaces as a player notice. (hp/magic stay prompt-applied — Slice 1b.)
+            progression_notices = progression.enforce_progression(
+                payload,
+                stored_characters=world_context.characters,
+                player_name=session.player_character_name,
+                choice=(
+                    body.level_up.model_dump() if body.level_up is not None else None
+                ),
+            )
+            for notice in progression_notices:
+                yield _sse_event({"type": "error", "content": notice})
+
             # Permadeath gate (Q2): on EVERY turn, refuse to revive a stored-dead
             # PC when the world's permadeath flag is set. Rejections surface to
             # the player and the state stays dead — the DM sees it unchanged next
