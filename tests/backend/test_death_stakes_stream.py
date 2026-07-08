@@ -174,7 +174,11 @@ def test_no_death_save_when_pc_not_unconscious(
     _ = resp.text
     op = _pc_op(fake_dispatch_log[0]["payload"])
     assert op is not None and op["data"]["status"] == "alive"
-    assert "combat" not in op["data"].get("module_data", {})
+    # No death save was recorded — the clock stays 0. (RFC-0017's progression guard
+    # now writes the full stored module_data on every PC op to protect stats from
+    # the shallow-merge wipe, so `combat` is present but unchanged, not absent.)
+    combat = op["data"].get("module_data", {}).get("combat", {})
+    assert combat.get("death_saves_failed", 0) == 0
 
 
 def test_death_save_preserves_stored_character_sheet(
