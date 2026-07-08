@@ -54,6 +54,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ..schema import validate
+from ..textsafe import scrub_control_bytes
 
 # Regex for pulling the <world_update>...</world_update> block out of
 # raw DM text. Matches the same pattern backend/api/dm_ai.py used, so
@@ -319,11 +320,12 @@ def _build_updates(hint: dict, errors: list[str]) -> list[dict]:
 def _build_log_entry(narrative: str, session_id: str, turn_number: int) -> str:
     """Derive a schema-compliant log_entry from the narrative.
 
-    Schema requires minLength=10, maxLength=4000. Short narratives are
-    prefixed with a session/turn tag. Long narratives are truncated
-    with an ellipsis.
+    Schema requires minLength=10, maxLength=4000 and (red-team #1c) no control/
+    RTL/zero-width bytes. Short narratives are prefixed with a session/turn tag;
+    long ones are truncated. Control bytes are scrubbed first so the schema's
+    self-validation doesn't reject a turn whose narrative carried a stray one.
     """
-    entry = narrative.strip() or "(no narrative emitted)"
+    entry = scrub_control_bytes(narrative).strip() or "(no narrative emitted)"
     if len(entry) < _LOG_ENTRY_MIN:
         prefix_source = session_id[:8] if session_id else "session"
         entry = f"[session {prefix_source} turn {turn_number}] {entry}".strip()

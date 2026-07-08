@@ -65,6 +65,71 @@ def test_path_traversal_fails():
         _validate(payload, WORLD_UPDATE_SCHEMA)
 
 
+# ── red-team #1: operation/extension/data-type coupling + control-byte guard ──
+
+_SID = "3f0c1e2d-4a5b-4c6d-8e9f-0a1b2c3d4e5f"
+_JSON = "data/state/core/entities/kael.json"
+_MD = "data/lore/core/sessions/s.md"
+
+
+def _wu(target_file, operation, data, log_entry="a valid ten-plus char entry"):
+    return {
+        "session_id": _SID,
+        "log_entry": log_entry,
+        "updates": [{"target_file": target_file, "operation": operation, "data": data}],
+    }
+
+
+def test_schema_rejects_scalar_data_on_json_target():
+    # #1a — a string/scalar to a .json target would str(data) and brick the file.
+    with pytest.raises(jsonschema.ValidationError):
+        _validate(_wu(_JSON, "update", "oops"), WORLD_UPDATE_SCHEMA)
+
+
+def test_schema_allows_array_data_on_json_target():
+    _validate(_wu(_JSON, "update", [{"turn": 1}]), WORLD_UPDATE_SCHEMA)
+
+
+def test_schema_rejects_append_to_json_target():
+    # #1b — append is Markdown-only; append to .json corrupts state.
+    with pytest.raises(jsonschema.ValidationError):
+        _validate(_wu(_JSON, "append", "x"), WORLD_UPDATE_SCHEMA)
+
+
+def test_schema_rejects_control_bytes_in_log_entry():
+    # #1c — an RTL override (U+202E) in log_entry corrupts the transcript.
+    with pytest.raises(jsonschema.ValidationError):
+        _validate(
+            _wu(_JSON, "update", {}, log_entry="bad " + chr(0x202E) + " text"),
+            WORLD_UPDATE_SCHEMA,
+        )
+
+
+def test_schema_rejects_control_bytes_in_append_data():
+    with pytest.raises(jsonschema.ValidationError):
+        _validate(
+            _wu(_MD, "append", "a line" + chr(0x00) + " nul"), WORLD_UPDATE_SCHEMA
+        )
+
+
+def test_schema_allows_clean_append_to_md_and_tab_newline():
+    _validate(_wu(_MD, "append", "clean line\n\twith tab"), WORLD_UPDATE_SCHEMA)
+
+
+def test_schema_rejects_control_bytes_in_create_md_string():
+    # Sibling-path gap (review of #1c): a create/update writing a control-byte
+    # STRING to a .md target must also be rejected, not only append.
+    with pytest.raises(jsonschema.ValidationError):
+        _validate(_wu(_MD, "create", "bad " + chr(0x202E) + " x"), WORLD_UPDATE_SCHEMA)
+
+
+def test_schema_rejects_dict_data_on_md_target():
+    # Symmetric completeness (gemini): a .md target ⇒ string data, so a dict isn't
+    # json.dumps'd into a Markdown doc.
+    with pytest.raises(jsonschema.ValidationError):
+        _validate(_wu(_MD, "update", {"not": "markdown"}), WORLD_UPDATE_SCHEMA)
+
+
 # ── community_manifest schema tests ───────────────────────────────────────────
 
 

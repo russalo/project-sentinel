@@ -157,6 +157,9 @@ def _build_session_payload(session: Session, log_entry: str, turn_number: int) -
     """
     return {
         "session_id": session.session_id,
+        # log_entry is scrubbed of control/RTL/zero-width bytes at the dispatch
+        # chokepoint (engine.apply_world_update) so every producer is covered in
+        # one place (red-team #1c) — no per-producer scrub needed here.
         "log_entry": log_entry,
         "updates": [
             {

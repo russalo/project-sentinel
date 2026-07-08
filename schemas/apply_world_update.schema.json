@@ -4,6 +4,14 @@
   "title": "Apply World Update Payload",
   "description": "Strict contract for the fs-manager MCP server to execute safe, zero-touch filesystem modifications across hybrid storage layers. The Inference Node must conform to this schema exactly — any deviation is rejected before execution.",
   "type": "object",
+  "$defs": {
+    "noControlChars": {
+      "description": "Rejects C0 control bytes (except tab/newline), DEL, bidi RTL overrides/isolates, zero-width chars, and BOM — they corrupt the operator-facing session log + the training corpus + file-observer's chatlog detector (red-team #1c).",
+      "not": {
+        "pattern": "[\\u0000-\\u0008\\u000B-\\u001F\\u007F\\u202A-\\u202E\\u2066-\\u2069\\u200B-\\u200D\\uFEFF]"
+      }
+    }
+  },
   "properties": {
     "session_id": {
       "type": "string",
@@ -14,6 +22,7 @@
       "type": "string",
       "minLength": 10,
       "maxLength": 4000,
+      "allOf": [{ "$ref": "#/$defs/noControlChars" }],
       "description": "Human-readable narrative summary of the action. Appended to the session's Markdown transcript in data/lore/core/sessions/."
     },
     "updates": {
@@ -36,11 +45,53 @@
           },
           "data": {
             "type": ["object", "string", "array"],
-            "description": "The payload. Must be a JSON object or array for data/state/ targets. Must be a string for data/lore/ append operations."
+            "allOf": [
+              {
+                "description": "ANY string data (append to .md, or a create/update writing a .md) is control-byte-free — not just append (red-team #1c; closes the create/update-to-.md sibling gap).",
+                "if": { "type": "string" },
+                "then": { "$ref": "#/$defs/noControlChars" }
+              }
+            ],
+            "description": "The payload. Must be a JSON object or array for a .json target; must be a string for an 'append' (Markdown) operation. The items-level allOf couples the type to the operation/extension so a schema-valid-but-file-bricking payload is rejected (red-team #1a/#1b)."
           }
         },
         "required": ["target_file", "operation", "data"],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "description": "append ⇒ a .md (lore) target AND string data with no control bytes.",
+            "if": {
+              "properties": { "operation": { "const": "append" } },
+              "required": ["operation"]
+            },
+            "then": {
+              "properties": {
+                "target_file": { "pattern": "\\.md$" },
+                "data": { "type": "string" }
+              }
+            }
+          },
+          {
+            "description": "a .json (state) target ⇒ object or array data (a string/scalar would be written as str(data) and brick the file's next json.loads).",
+            "if": {
+              "properties": { "target_file": { "pattern": "\\.json$" } },
+              "required": ["target_file"]
+            },
+            "then": {
+              "properties": { "data": { "type": ["object", "array"] } }
+            }
+          },
+          {
+            "description": "a .md (lore) target ⇒ string data — symmetric with the .json rule, so a dict/array isn't json.dumps'd into a Markdown doc regardless of operation (sibling-path completeness).",
+            "if": {
+              "properties": { "target_file": { "pattern": "\\.md$" } },
+              "required": ["target_file"]
+            },
+            "then": {
+              "properties": { "data": { "type": "string" } }
+            }
+          }
+        ]
       }
     },
     "metadata": {

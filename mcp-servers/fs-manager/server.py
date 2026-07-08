@@ -161,6 +161,23 @@ ALLOWED_PATH_PATTERN = re.compile(
     r"|data/lore/(core/sessions|community/[a-zA-Z0-9_-]+/[a-zA-Z0-9_-]+)/[a-zA-Z0-9_-]+\.md)$"
 )
 
+# C0 control bytes (except tab/newline), DEL, bidi RTL overrides/isolates,
+# zero-width chars, and BOM — corrupt the operator-facing session log, the
+# training corpus, and file-observer's chatlog detector (red-team #1c). The
+# schema rejects these for HTTP callers; this scrub is the write-boundary
+# catch-all for any path that reaches execute_update without schema validation
+# (direct-MCP / migration scripts). Must match schemas/apply_world_update.schema.json
+# #/$defs/noControlChars.
+_CONTROL_BYTE_RE = re.compile(
+    r"[\x00-\x08\x0b-\x1f\x7f\u202a-\u202e\u2066-\u2069\u200b-\u200d\ufeff]"
+)
+
+
+def scrub_control_bytes(text: str) -> str:
+    """Strip control/RTL/zero-width bytes from operator- and corpus-facing text."""
+    return _CONTROL_BYTE_RE.sub("", text)
+
+
 # Paths that require payload-level `"namespace": "core"` authorization.
 # Per ARCHITECTURE.md §2, writes to data/state/core/ and data/lore/core/
 # are restricted to core-authorized payloads. The one exception is
@@ -304,7 +321,12 @@ def check_protected_fields(data: Any, target_file: str) -> None:
     for item in items:
         if not isinstance(item, dict):
             continue
-        violations = [f for f in PROTECTED_FIELDS if f in item]
+        # Case-fold: PROTECTED_FIELDS is a lowercase set, so an exact-membership
+        # check let case-variant keys (`Unique_Id`, `WORLD_SEED`, `Namespace`)
+        # write through unchecked (red-team #1d). Match case-insensitively and
+        # report the original-cased key.
+        lowered = {str(k).lower(): k for k in item}
+        violations = [lowered[f] for f in PROTECTED_FIELDS if f in lowered]
         if violations:
             raise HTTPException(
                 status_code=403,
@@ -419,6 +441,46 @@ def execute_update(
     abs_path = base / target_file
     abs_path.parent.mkdir(parents=True, exist_ok=True)
 
+    # Belt-and-suspenders coupling of operation/extension/data-type, mirroring
+    # the schema's if-then (red-team #1a/#1b). This is the catch-all for callers
+    # that reach execute_update WITHOUT schema validation (direct-MCP / migration
+    # scripts): a scalar written to a .json target would `str(data)` and brick the
+    # file's next json.loads; an append to a .json target corrupts it likewise.
+    if operation == "append" and not target_file.endswith(".md"):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "VALIDATION_ERROR",
+                "detail": "append requires a Markdown (.md) target.",
+            },
+        )
+    if (
+        target_file.endswith(".json")
+        and operation in ("create", "update")
+        and not isinstance(data, (dict, list))
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "VALIDATION_ERROR",
+                "detail": "a .json target requires object or array data, not a scalar.",
+            },
+        )
+    if (
+        target_file.endswith(".md")
+        and operation in ("create", "update")
+        and not isinstance(data, str)
+    ):
+        # Symmetric with the .json rule — don't json.dumps a dict/array into a
+        # Markdown doc (append is string-checked in its own branch).
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "VALIDATION_ERROR",
+                "detail": "a .md target requires string data.",
+            },
+        )
+
     if operation == "create":
         if abs_path.exists():
             raise HTTPException(
@@ -429,8 +491,13 @@ def execute_update(
                 },
             )
         check_protected_fields(data, target_file)
+        # Scrub the string-data path too (a .md create/update) — the append branch
+        # and log_entry already scrub, but create/update of a .md target with
+        # control-byte string data was a sibling-path gap (review of red-team #1c).
         content = (
-            json.dumps(data, indent=2) if isinstance(data, (dict, list)) else str(data)
+            json.dumps(data, indent=2)
+            if isinstance(data, (dict, list))
+            else scrub_control_bytes(str(data))
         )
         # Pin utf-8 on every read/write: payloads carry LLM-generated text
         # (emoji, smart quotes, non-ASCII names), and the project targets
@@ -443,12 +510,26 @@ def execute_update(
         check_protected_fields(data, target_file)
 
         if abs_path.exists() and target_file.endswith(".json"):
-            existing = json.loads(abs_path.read_text(encoding="utf-8"))
+            try:
+                existing = json.loads(abs_path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, ValueError):
+                # A pre-existing corrupted state file (a JSONDecodeError is a
+                # ValueError, NOT an OSError, so it escaped the only handler and
+                # surfaced as a bare 500) → structured 500 instead (red-team #1a).
+                raise HTTPException(
+                    status_code=500,
+                    detail={
+                        "code": "CORRUPTED_STATE",
+                        "detail": f"{target_file} is not valid JSON; refusing to merge.",
+                    },
+                )
             if isinstance(existing, dict) and isinstance(data, dict):
                 existing.update(data)
                 data = existing
         abs_path.write_text(
-            json.dumps(data, indent=2) if isinstance(data, (dict, list)) else str(data),
+            json.dumps(data, indent=2)
+            if isinstance(data, (dict, list))
+            else scrub_control_bytes(str(data)),
             encoding="utf-8",
         )
         return {"status": "updated", "path": target_file}
@@ -463,7 +544,7 @@ def execute_update(
                 },
             )
         with open(abs_path, "a", encoding="utf-8") as f:
-            f.write("\n" + data)
+            f.write("\n" + scrub_control_bytes(data))
         return {"status": "appended", "path": target_file}
 
     else:
@@ -577,7 +658,7 @@ async def apply_world_update(request: Request):
         abs_log = _resolve_session_log_path(payload["session_id"], root=world_root)
         abs_log.parent.mkdir(parents=True, exist_ok=True)
         with open(abs_log, "a", encoding="utf-8") as f:
-            f.write(f"\n\n---\n\n{payload['log_entry']}")
+            f.write(f"\n\n---\n\n{scrub_control_bytes(payload['log_entry'])}")
     except OSError as e:
         # Filesystem failure (permissions, disk full, a dir removed mid-write) →
         # a structured 500 rather than a raw traceback. Validation errors raise
