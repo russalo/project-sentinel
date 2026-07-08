@@ -94,7 +94,7 @@ Repoint `sentinel-staging.dev.russalo.com/alpha/api/*` → `:8101`.
       (`status == "dead"` persisted), proving mock DM → fact_extractor → fs-manager
       dispatch → death_stakes end-to-end. `just stage-candidate <ref>` checks the
       staging worktree out at a candidate ref; the staging units run from it. *(slice 3)*
-- [x] tailnet repoints `sentinel-staging.dev/alpha/api/*` + `/alpha/healthz` →
+- [x] tailnet repoints `sentinel-staging.dev.russalo.com/alpha/api/*` + `/alpha/healthz` →
       :8101 (done 2026-07-08, block-scoped, invariant held). *(bring-up)*
 - [x] A staging world appears ONLY in staging's `/api/worlds`, not prod's —
       verified on the live trio (session on :8101 → staging store; prod untouched
