@@ -57,6 +57,22 @@ def test_authoritative_stat_cap():
     assert stats["body"] == 10  # already at cap, stays
 
 
+def test_client_cannot_jump_levels():
+    # A crafted client enacts from level 2 with a spoofed to_level=5 — the engine
+    # commits exactly +1, not the client's value (gemini security-high).
+    level, _ = progression.authoritative_progression(
+        2, {"body": 7}, {"stat": "body", "to_level": 5}
+    )
+    assert level == 3
+
+
+def test_level_capped_at_max():
+    level, _ = progression.authoritative_progression(
+        5, {"body": 7}, {"stat": "body", "to_level": 5}
+    )
+    assert level == 5  # re-enacting at the cap is a no-op
+
+
 # ── enforcement (the dispatch-seam override) ──────────────────────────────────
 
 
@@ -147,16 +163,26 @@ def test_npc_writes_pass_through_untouched():
     assert not notices
 
 
-def test_normal_pc_write_without_level_stats_is_left_untouched():
-    # A turn that writes the PC (status/location) but doesn't touch level/stats and
-    # has no enactment must be left alone — no gratuitous module_data/combat inject.
+def test_normal_pc_write_freezes_level_stats_and_preserves_siblings():
+    # A turn that writes the PC (status) without touching level/stats: no notice,
+    # but the stats owner still freezes level/stats to stored AND writes the full
+    # stored module_data so a partial write can't let the shallow merge wipe
+    # siblings (finder issue 3).
     payload = _payload([_op(status="wounded")])
     notices = progression.enforce_progression(
         payload, stored_characters=[_pc()], player_name="Kael", choice=None
     )
     data = payload["updates"][0]["data"]
-    assert data == {"name": "Kael", "status": "wounded"}  # unchanged
-    assert not notices
+    assert data["status"] == "wounded"  # DM's narrative field preserved
+    assert data["level"] == 2  # frozen to stored
+    assert data["module_data"]["character_sheet"]["stats"] == {
+        "body": 7,
+        "mind": 5,
+        "heart": 6,
+        "will": 4,
+    }
+    assert data["module_data"]["combat"] == {"death_saves_failed": 1}  # sibling kept
+    assert not notices  # the DM didn't attempt a level/stats change
 
 
 def test_no_pc_op_no_enactment_is_a_noop():
@@ -165,6 +191,98 @@ def test_no_pc_op_no_enactment_is_a_noop():
         payload, stored_characters=[_pc()], player_name="Kael", choice=None
     )
     assert payload["updates"] == [] and not notices
+
+
+def test_does_not_mutate_stored_characters():
+    import copy
+
+    stored = [_pc()]
+    before = copy.deepcopy(stored)
+    payload = _payload(
+        [_op(module_data={"character_sheet": {"hp": {"current": 64, "max": 64}}})]
+    )
+    progression.enforce_progression(
+        payload,
+        stored_characters=stored,
+        player_name="Kael",
+        choice={"stat": "body", "to_level": 3},
+    )
+    assert stored == before  # the shared read-state is untouched
+
+
+def test_malformed_stats_and_level_are_overridden():
+    # A non-dict `stats` + a string `level` with no enactment must be forced back
+    # to stored, not silently written (malformed-LLM-output).
+    payload = _payload(
+        [_op(level="99", module_data={"character_sheet": {"stats": "hacked"}})]
+    )
+    notices = progression.enforce_progression(
+        payload, stored_characters=[_pc()], player_name="Kael", choice=None
+    )
+    data = payload["updates"][0]["data"]
+    assert data["level"] == 2
+    assert data["module_data"]["character_sheet"]["stats"] == {
+        "body": 7,
+        "mind": 5,
+        "heart": 6,
+        "will": 4,
+    }
+    assert notices
+
+
+def test_create_op_imposter_pc_is_neutralized():
+    # Defense-in-depth (finder issue 1): a direct-MCP `create` op impersonating the
+    # PC (name match) can't grant level/stats — forced to the real stored baseline.
+    # (Not LLM-reachable: fact_extractor only emits `update`.)
+    op = {
+        "target_file": "data/state/core/entities/0-imposter.json",
+        "operation": "create",
+        "data": {
+            "name": "Kael",
+            "role": "player",
+            "level": 5,
+            "module_data": {
+                "character_sheet": {
+                    "stats": {"body": 10, "mind": 10, "heart": 10, "will": 10}
+                }
+            },
+        },
+    }
+    payload = _payload([op])
+    notices = progression.enforce_progression(
+        payload, stored_characters=[_pc()], player_name="Kael", choice=None
+    )
+    data = payload["updates"][0]["data"]
+    assert data["level"] == 2
+    assert data["module_data"]["character_sheet"]["stats"] == {
+        "body": 7,
+        "mind": 5,
+        "heart": 6,
+        "will": 4,
+    }
+    assert notices
+
+
+def test_unresolvable_pc_is_not_force_zeroed():
+    # Fail-safe (finder issue 2): when the PC can't be resolved (no role=="player"
+    # AND name mismatch), enforcement skips rather than forcing a real sheet to
+    # level 1 / stats 0.
+    mislabeled = [
+        {
+            "role": "hero",
+            "name": "Sir Kael",  # != session player_name "Kael"
+            "level": 3,
+            "module_data": {
+                "character_sheet": {"stats": {"body": 8, "mind": 5, "heart": 6, "will": 4}}
+            },
+        }
+    ]
+    payload = _payload([_op(level=3)])
+    notices = progression.enforce_progression(
+        payload, stored_characters=mislabeled, player_name="Kael", choice=None
+    )
+    assert payload["updates"][0]["data"]["level"] == 3  # untouched, NOT forced to 1
+    assert not notices
 
 
 def test_malformed_payload_and_stored_degrade():

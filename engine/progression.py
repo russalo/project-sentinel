@@ -18,6 +18,7 @@ home — see RFC-0017 § Out of Scope. Those DM-written derived fields are prese
 here, not stripped.
 """
 
+import copy
 from typing import Any
 
 from .agents.fact_extractor import _slugify as _slugify_entity
@@ -25,6 +26,7 @@ from .death_stakes import find_player_character
 
 STATS = ("body", "mind", "heart", "will")
 STAT_CAP = 10  # tracks the four-stat module cap; rises with it
+MAX_LEVEL = 5  # tracks the milestone module's v0.1 level cap; rises with it
 
 
 def _as_dict(value: Any) -> dict[str, Any]:
@@ -81,9 +83,11 @@ def authoritative_progression(
     stats = dict(cur_stats)
     choice = _as_dict(choice)
     if choice:
-        to_level = choice.get("to_level")
-        if isinstance(to_level, int):
-            level = to_level
+        # The engine advances by EXACTLY one level. The client-supplied `to_level`
+        # is advisory (display/prompt) and NOT trusted for the commit — otherwise a
+        # crafted client could jump straight to level 5 (gemini security-high). Capped
+        # at the module max so re-enacting at the cap is a no-op.
+        level = min(cur_level + 1, MAX_LEVEL)
         stat = choice.get("stat")
         if stat in STATS:
             stats[stat] = min(cur_stats.get(stat, 0) + 1, STAT_CAP)
@@ -91,8 +95,14 @@ def authoritative_progression(
 
 
 def _pc_entity_op(op: Any, player_name: str, slug: str | None) -> bool:
-    """True if this update op targets the player character's entity file."""
-    if not isinstance(op, dict) or str(op.get("operation")) != "update":
+    """True if this op writes the player character's entity.
+
+    Matches ``update`` AND ``create``: the DM path only ever emits ``update``
+    (fact_extractor), but a direct-MCP caller could ``create`` an imposter PC file —
+    gate that too so `level`/`stats` can't be granted through it (defense in depth;
+    the broader "an imposter shadows the real PC in resolution" hole is filed
+    separately — see the BACKLOG entity-identity item)."""
+    if not isinstance(op, dict) or str(op.get("operation")) not in ("update", "create"):
         return False
     target = str(op.get("target_file", ""))
     if "/entities/" not in target:
@@ -133,10 +143,19 @@ def enforce_progression(
         return []
 
     pc = find_player_character(stored_characters, player_name)
+    if pc is None:
+        # Can't resolve the PC's baseline (a real PC carries role=="player"; None
+        # means identity drift). Fail SAFE — never force a real sheet to level 1 /
+        # stats 0 on a mis-resolution (gemini/finder). The drift itself is a
+        # separate entity-identity concern (filed in BACKLOG).
+        return []
     cur_level = stored_level(pc)
     cur_stats = stored_stats(pc)
     auth_level, auth_stats = authoritative_progression(cur_level, cur_stats, choice)
-    base_md = _as_dict(_as_dict(pc).get("module_data"))
+    # Deep-copy: `pc` is an element of the caller's stored_characters
+    # (world_context.characters). Merging/mutating below must not write back into
+    # that shared read-state (gemini).
+    base_md = copy.deepcopy(_as_dict(_as_dict(pc).get("module_data")))
     slug = _slugify_entity(player_name) if player_name else None
 
     matching = [op for op in updates if _pc_entity_op(op, player_name, slug)]
@@ -160,22 +179,18 @@ def enforce_progression(
                 continue  # malformed op can't carry a level/stats attack
             data = {"name": player_name}
             op["data"] = data
-        level_bad = "level" in data and _to_int(data["level"], auth_level) != auth_level
-        dm_stats = _as_dict(
-            _as_dict(data.get("module_data")).get("character_sheet")
-        ).get("stats")
-        stats_bad = isinstance(dm_stats, dict) and any(
-            stat in dm_stats and _to_int(dm_stats.get(stat)) != auth_stats[stat]
-            for stat in STATS
-        )
-        # Only rewrite when there's something to enforce: an enactment to commit,
-        # or a DM level/stats change to override. A turn that doesn't touch
-        # level/stats is left untouched — no gratuitous module_data injection.
-        if not (choice or level_bad or stats_bad):
-            continue
+        # Note a DM override attempt (for the player notice). Direct comparison so a
+        # malformed write — a string `level`, a non-dict or partial `stats` — counts
+        # as an attempt (malformed-LLM-output intolerance; gemini).
+        level_bad = "level" in data and data["level"] != auth_level
+        cs_in = _as_dict(_as_dict(data.get("module_data")).get("character_sheet"))
+        stats_bad = "stats" in cs_in and cs_in["stats"] != auth_stats
         dm_attempted = dm_attempted or level_bad or stats_bad
-        # Full module_data so the shallow fs-manager merge preserves the sheet:
-        # stored module_data <- this op's same-turn changes <- authoritative stats.
+        # Force on EVERY PC op — as the stats owner, protect them on the common turn
+        # too (a plain damage turn writing only hp would otherwise let fs-manager's
+        # shallow merge wipe stored stats/combat; finder issue 3). Write the FULL
+        # module_data so the shallow merge preserves siblings: stored module_data <-
+        # this op's same-turn changes <- authoritative stats.
         merged = _deep_merge(base_md, _as_dict(data.get("module_data")))
         sheet = _as_dict(merged.get("character_sheet"))
         sheet["stats"] = dict(auth_stats)

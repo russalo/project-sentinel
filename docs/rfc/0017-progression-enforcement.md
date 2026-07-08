@@ -73,14 +73,18 @@ this slice **preserves** those DM-written derived fields rather than stripping t
 
 - **`engine/progression.py`** (pure + inject, mirrors `engine/death_stakes.py`):
   `authoritative_progression(cur_level, cur_stats, choice)` computes the committed
-  `(level, stats)` — stored (frozen) with no enactment, or `to_level` + the chosen
-  stat +1 (capped) with one. `enforce_progression(payload, *, stored_characters,
-  player_name, choice)` forces every PC entity op's `level` +
+  `(level, stats)` — stored (frozen) with no enactment, or with one: `level` =
+  **exactly `cur_level + 1`** (the client's `to_level` is advisory only — never
+  trusted, so a crafted client can't jump levels) capped at the module max, and the
+  chosen stat +1 (capped). `enforce_progression(payload, *, stored_characters,
+  player_name, choice)` forces **every** PC entity op's `level` +
   `module_data.character_sheet.stats` to the authoritative value, deep-merging the
   stored `module_data` so siblings (`combat`, `magic`, the DM's hp) survive the
-  shallow fs-manager merge; appends a PC op if an enactment emitted none; returns
-  SSE notices on a DM override attempt. Only rewrites an op that touches level/stats
-  or on an enactment (a normal turn is left untouched). PC-scoped.
+  shallow fs-manager merge on the common turn too; appends a PC op if an enactment
+  emitted none; returns SSE notices on a DM override attempt. Matches `update` AND
+  `create` ops (defense-in-depth), and fails safe (no enforcement, never a
+  force-to-zero) when the PC can't be resolved. PC-scoped; deep-copies the stored
+  sheet so the shared read-state isn't mutated.
 - **`backend/routes/stream.py`**: at the dispatch seam (beside death-stakes), call
   `enforce_progression` with `body.level_up.model_dump()`; synthesize a minimal
   payload when an enactment lands but the DM emitted no `<world_update>` (extends
@@ -110,6 +114,12 @@ this slice **preserves** those DM-written derived fields rather than stripping t
 
 - **Slice 1b** — derived hp/magic engine-authority + the class-factor code home.
 - NPC progression / stat authority (decision 4 — a known future slice).
+- **Entity-identity hardening** (red-team follow-up) — an imposter entity that
+  sorts before the real PC can *shadow* it in `find_player_character`'s
+  first-`role=="player"` resolution (direct-MCP/loopback only, not LLM-reachable;
+  shared with death-stakes). This slice neutralizes the level/stats *grant* on any
+  PC-matching op and fails safe on an unresolvable PC, but the shadowing + the
+  `None` fail-open want a stable-identity PC resolver — its own slice (BACKLOG).
 - fs-manager entity-schema *shape* enforcement (the authored-but-unenforced
   `four-stat-v1/schema.json`, RFC-0006 OQ1) — validates shape, not authorization.
 - XP/point tracking (rejected in RFC-0009).
