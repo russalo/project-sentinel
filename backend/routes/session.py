@@ -36,6 +36,8 @@ import engine
 from engine.agents import dm as dm_agent
 from engine.agents import fact_extractor
 
+from .. import mock_dm
+
 from ..auth.access import extract_basic_auth_user, issue_token
 from ..config import Settings
 from ..engine_bridge import build_engine_config
@@ -78,7 +80,9 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
             60 * 60,
             detail="too many world creations; try again later",
         )
-        enforce_llm_ceiling(limiter, settings.llm_daily_ceiling)
+        # RFC-0016: mock DM makes no LLM call — don't charge the daily ceiling.
+        if settings.dm_mode != "mock":
+            enforce_llm_ceiling(limiter, settings.llm_daily_ceiling)
     except HTTPException as exc:
         if exc.status_code == 429:
             admin_metrics.rate_limited()
@@ -164,7 +168,11 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
 
     # 1. Run the intro through the engine.
     try:
-        intro_result = dm_agent.generate_intro(config, intro_input)
+        # RFC-0016: mock-DM mode serves the fixture's turn 0 as the intro.
+        intro_client = (
+            mock_dm.client_for_turn(settings, 0) if settings.dm_mode == "mock" else None
+        )
+        intro_result = dm_agent.generate_intro(config, intro_input, client=intro_client)
     except Exception as exc:  # pragma: no cover - network/OpenAI failure
         # Log the full traceback server-side (exc_info=True); do NOT leak it to
         # the client — the upstream string can carry the provider org id + quota
@@ -220,6 +228,9 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
         mood=body.mood or "",
         world_id=world_id,
         creator_username=creator_username or "",
+        # Persist permadeath so the death-stakes gate (RFC-0014) can enforce it
+        # every turn, not just render it into the intro prompt.
+        permadeath=body.permadeath,
     )
 
     # Writing the session file is the critical durability step: if

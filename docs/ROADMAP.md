@@ -4,7 +4,7 @@
 > stack and architecture assumed fixed. For the long-term direction and
 > open stack questions, see [`VISION.md`](./VISION.md).
 
-_Last updated: 2026-06-13_
+_Last updated: 2026-07-03_
 
 ---
 
@@ -101,68 +101,43 @@ _Last updated: 2026-06-13_
 Ordered by what unblocks what. Each item links to a `docs/BACKLOG.md` entry
 or an RFC for the full technical detail; the roadmap stays short on purpose.
 
-**Note on process (2026-06-13):** non-trivial designs now go through an
-**RFC** (Request For Comments) — a lighter sibling to ADRs. ADRs cover
-long-lived architectural commitments; RFCs cover per-feature designs and
-minor iterations. The RFC system itself (`docs/rfc/` + README +
-TEMPLATE) is item #1 below — once it lands, items #2+ each cite the
-RFC that drives them.
+**Process (established 2026-06-13, in steady state):** non-trivial designs go
+through an **RFC** (`docs/rfc/`) — a lighter sibling to ADRs. The RFC file lands
+committed at **Accepted, in the same PR as its implementation** (no "Draft RFC"
+PRs). `docs/BACKLOG.md` is the harvest pool that matures into RFCs.
 
-`docs/BACKLOG.md` remains the harvest pool for ideas that mature into
-RFCs. Russell's 2026-06-13 directive is that BACKLOG will eventually be
-gitignored (treated as a personal scratch) once the current entries have
-either landed as code, graduated into RFCs, or been pruned. Defer that
-transition until the migration is complete; until then BACKLOG stays
-tracked and links to it stay valid.
+**Landed since this list was written (2026-06-13 → 2026-07-03):**
+- The **RFC system** + `RFC 0001 PlayerVitals vitality-fill` (former items #1–#2).
+- The **entire Fantasy core-systems arc** (former item #3): RFC-0005 (module
+  infra) → 0006 (d100 resolution + four-stat sheet) → 0007 (class + combat) →
+  0008 (magic) → 0009 (progression) → 0010 (time + rest) → 0013 (encounter
+  mechanics) → **0014 (death-stakes enforcement, PR #172)**. Every
+  `CANONICAL_SUBSYSTEM_ORDER` slot is filled, and death is now
+  **engine-enforced**. The canonical home for this layer is
+  **[`CORE_SYSTEMS.md`](./CORE_SYSTEMS.md)** (it supersedes the BACKLOG section).
+- The **Lorekeeper fold** (DM cites canon via poggio) — **armed + live** on the
+  alpha since 2026-07-01 (RFC-0011/0012 + ADR-0006).
 
-### 1. **Adopt the RFC system + initial bootstrapping**
+> **Deploy note (2026-07-03):** RFC-0014 is **merged to master but not yet
+> deployed** — the live alpha runs the pre-RFC-0014 backend + frontend build.
+> Deploy is a next-patch-window step: `build:alpha` from master + restart
+> `sentinel-backend` (see `CLAUDE.md` on the build-in-place alpha deploy).
 
-`docs/rfc/` lands as a new doc surface alongside `docs/adr/`. Includes the
-README (conventions, lifecycle, BACKLOG-feeds-in pattern) + `TEMPLATE.md` +
-the first RFC (`RFC 0001 — PlayerVitals vitality-fill model`, see item #2).
+### Next candidates (from `CORE_SYSTEMS.md`)
 
-The BACKLOG gitignore transition is a downstream step — deferred until the
-current BACKLOG entries have either landed as code, been migrated into
-RFCs, or been pruned. Tracked separately; not part of this item's exit
-criteria.
+The core-systems skeleton is complete; the remaining flagship gaps, each its own
+RFC when picked up:
 
-- Exit criteria: `docs/rfc/README.md` + `docs/rfc/TEMPLATE.md` + at least
-  `docs/rfc/0001-player-vitals-vitality-fill.md` (Draft status) on disk
-  and reachable from the ADR index / README.
+- **Death-stakes *consequences*** — the follow-up RFC-0014 deferred: session
+  end-state, an in-world memorial, what a dead PC does to an in-flight world.
+- **Faction / economy basics** — a new subsystem slot; factions carry no
+  mechanical standing yet.
+- **Weather / environment ambient rules** — beyond RFC-0013's weather encounter
+  frame (travel, visibility, exposure, resource drain).
+- **2–3 genre overrides** (Sci-Fi + Cyberpunk) to validate the
+  1-template-+-overrides model against the shipped Fantasy skeleton.
 
-### 2. **PlayerVitals vitality-fill flip (RFC 0001)**
-
-Russell visual feedback 2026-06-13: the current "wound spreads from the head
-as HP drops" wash should be inverted — a vessel-of-vitality that drains from
-the head down as HP falls. Plus distinct visual states for **unconscious**
-(HP=0 recoverable) vs **dead** (terminal), which is a status enum expansion
-beyond the current `alive | dead | unknown | missing`. Solid-fill replaces
-the radial gradient.
-
-- RFC: `docs/rfc/0001-player-vitals-vitality-fill.md` (lands with item #1).
-- Open questions in the RFC: unconscious/dead pose artwork; status enum
-  spelling (just `"unconscious"`, or also `"dying"` / `"stable"`).
-- Exit criteria: RFC Accepted; implementation PR(s) flip the math + drop
-  the gradient + add status-keyed dispatch.
-
-### 3. **Core Systems — Fantasy as flagship genre**
-
-Russell directive 2026-06-12: define Sentinel's core systems (combat,
-healing, magic, encounter mechanics, progression, time, weather, faction,
-death stakes) for the **Fantasy** genre first as the canonical reference,
-then other genres inherit via per-genre flavor overrides. The ambient
-surfaces shipping this week (tension meter, HP silhouette) increasingly
-imply a systemic layer that doesn't exist yet — each new surface widens the
-gap between what testers see and what the world actually models.
-
-- Approach (from BACKLOG): planning RFC to set scope → Fantasy v1 spec →
-  pilot one system end-to-end (combat is the obvious first proof) → 2–3
-  genre overrides (Sci-Fi + Cyberpunk) to validate the template.
-- Backlog: `docs/BACKLOG.md` § "Core Systems — Fantasy as Flagship Model"
-- Exit criteria: scope-RFC Accepted; combat-resolution RFC follow-up
-  drafted.
-
-### 4. **Tester self-signup page (Tuesday-window-ish)**
+### Tester self-signup page
 
 Per-tester reauth (PR #125) closed the recovery story; provisioning is still
 operator-as-relay. Self-signup replaces that with operator green-lights a
@@ -180,14 +155,12 @@ audit-log credential-id pattern). RFC follow-up.
 
 Work that's actionable but waiting on a specific trigger or decision:
 
-- **Lorekeeper agent + ChromaDB indexing.** The one remaining engine agent
-  stub. ChromaDB is still in the infrastructure stack specifically so this
-  can land, but it's non-trivial work — needs an indexer for
-  `data/lore/**/*.md`, the `engine/agents/lorekeeper.py` agent itself, and
-  an integration point in the DM prompt. The honest precondition (per
-  `VISION.md`) is "enough lore to query to make the RAG earn its complexity,"
-  which isn't satisfied today. An RFC-sized design decision before any
-  implementation.
+- **Lorekeeper fold — SHIPPED + LIVE (2026-07-01), not unscheduled.** The DM
+  now cites established canon: the backend subprocesses **`poggio`** (vendoring
+  `trellis`, not ChromaDB — retired by **ADR-0006**) to retrieve ranked,
+  provenance-carrying canon, and `engine/agents/lorekeeper.py` renders it into
+  the DM prompt (RFC-0011 + RFC-0012). Armed + behaviorally verified on the
+  alpha. Deferred follow-up: Slice 3 (member/relationship expansion).
 - **Entity Sweeper second-pass extraction** — design captured in memory,
   implementation deferred. Waiting on: the first few live sessions that
   produce enough "DM mentioned it but didn't emit state" examples to
@@ -196,9 +169,9 @@ Work that's actionable but waiting on a specific trigger or decision:
   to AT, `prefers-reduced-motion` not respected on inline SVG transitions,
   global SVG IDs (`vitals-body-clip` / `vitals-damage`) need `useId()`
   scoping for multi-instance safety, same-named NPC + DM role-strip can
-  surface NPC HP as the player's. Each is its own focused PR;
-  collectively waiting on the RFC-0001 vitality-fill flip landing first
-  to avoid rework.
+  surface NPC HP as the player's. Each is its own focused PR; the RFC-0001
+  vitality-fill flip they were gated behind has landed, so these are now
+  unblocked.
 
 (Suggested Actions — previously listed here — shipped in PRs #112/#113.
 DM emits `<action>label</action>` tags inline + a structured

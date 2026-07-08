@@ -146,4 +146,19 @@ describe('CheckRequestRail', () => {
     render(<CheckRequestRail />);
     expect(screen.getByTestId('check-roll-button')).toBeDisabled();
   });
+
+  it('renders a death save as a distinct affordance and sends kind on resolve (RFC-0014)', async () => {
+    stubD100(30); // 30 + (will 8 ×5 = 40) = 70 vs 60 → margin +10 (survives)
+    useChatStore.setState({
+      checkRequest: { stat: 'will', target: 60, label: 'Cling to life', kind: 'death_save' },
+    });
+    render(<CheckRequestRail />);
+    expect(screen.getByText(/Death save/)).toBeInTheDocument();
+    const rollBtn = screen.getByTestId('check-roll-button');
+    expect(rollBtn).toHaveTextContent('Cling to life');
+    await userEvent.click(rollBtn);
+    await userEvent.click(screen.getByTestId('check-resolve-button'));
+    expect(sendRoll).toHaveBeenCalledTimes(1);
+    expect(sendRoll.mock.calls[0][0].kind).toBe('death_save');
+  });
 });

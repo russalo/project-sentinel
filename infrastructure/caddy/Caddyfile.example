@@ -25,9 +25,25 @@
 #   1. caddy hash-password            # prompts for the shared invite password
 #   2. put the bcrypt hash in $SENTINEL_INVITE_HASH (env / chezmoi-managed,
 #      NEVER committed) — e.g. via the caddy unit's EnvironmentFile.
-#   3. pnpm --filter @sentinel/ui build:alpha   # produces dist/ with /alpha/-prefixed assets
-#   4. substitute <REPO_ROOT> below with the absolute checkout path
-#   5. caddy reload --config /etc/caddy/Caddyfile
+#   3. substitute <ALPHA_SERVE_ROOT> below with the serve-tree path (default
+#      /srv/serve/sentinel-alpha — see the SERVE MODEL note).
+#   4. caddy reload --config /etc/caddy/Caddyfile
+#
+# SERVE MODEL (RFC-0015 — dev→staging→production): the `root` is NOT the Vite
+# build output dir. It is `<ALPHA_SERVE_ROOT>/current`, a symlink the deploy
+# pipeline repoints atomically. This is what decouples "build" from "deploy" —
+# a build writes an immutable `<ALPHA_SERVE_ROOT>/releases/<sha>/`, gets verified
+# at the tailnet-only staging host (sentinel-staging.dev.russalo.com/alpha/,
+# which mirrors this block's /alpha/* shape but roots at
+# `<ALPHA_SERVE_ROOT>/staging`), then `just promote-alpha` flips `current` — no
+# build ever runs in the live path. Deploy = `just build-alpha-release` → verify
+# staging → `just promote-alpha`; rollback = `just rollback-alpha`. Runbook:
+# docs/WORKSPACE.md § "Alpha deployment (staging → production)".
+#
+# NOTE (deployed Caddyfile, tailnet's lane): origin-core serves TWO /alpha roots
+# — this public apex block AND the tailnet dev block (sentinel.dev.russalo.com/
+# alpha/*). BOTH must root at `<ALPHA_SERVE_ROOT>/current` or the cutover is only
+# half done.
 #
 # URL SHAPE: the alpha lives at sentinel.russalo.com/alpha/ — the SPA, its
 # assets, and the API all sit under that prefix. The hostname root
@@ -159,12 +175,14 @@ http://sentinel.russalo.com {
 			}
 		}
 
-		# Everything else (gated): the built SPA. <REPO_ROOT> is the absolute
-		# path to the checkout on origin-core (e.g. /srv/projects/project-sentinel).
-		# Build with `pnpm --filter @sentinel/ui build:alpha` to emit
-		# /alpha/-prefixed asset URLs (Vite `base: '/alpha/'`).
+		# Everything else (gated): the built SPA, served from the deploy
+		# pipeline's `current` symlink (RFC-0015), NOT the Vite output dir.
+		# <ALPHA_SERVE_ROOT> is the serve tree on origin-core (default
+		# /srv/serve/sentinel-alpha); `current` points at the promoted
+		# releases/<sha>/, each a `build:alpha` (Vite `base: '/alpha/'`).
+		# See the SERVE MODEL note at the top of this file.
 		handle {
-			root * <REPO_ROOT>/apps/sentinel-ui/dist
+			root * <ALPHA_SERVE_ROOT>/current
 			# Cache policy (stale-cache-after-redeploy guard): Vite emits
 			# content-hashed bundles under /assets/ — immutable, cache hard.
 			# Everything else resolves to index.html via the SPA fallback;

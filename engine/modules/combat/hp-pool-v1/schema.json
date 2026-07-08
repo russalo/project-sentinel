@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinel.local/schemas/modules/combat/hp-pool-v1.json",
+  "title": "Combat state (module_data.combat)",
+  "description": "Schema for a character entity's module_data.combat sub-object under the core/hp-pool-v1 module (ADR-0005 / RFC-0007, RFC-0014). Contract of record: module schema fragments are declarative today (not composed into apply-time validation per RFC-0014 Out of Scope). The HP pool itself lives under module_data.character_sheet.hp (RFC-0007); this object holds combat state that is not a derived sheet field.",
+  "type": "object",
+  "properties": {
+    "death_saves_failed": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 3,
+      "description": "The three-strike death clock (RFC-0014). Advances by one on each failed death save while unconscious at 0 HP; reset to 0 on a stabilizing save or any healing; 3 = dead. Written authoritatively by the engine (not the DM) on a death_save resolve turn."
+    }
+  },
+  "additionalProperties": true
+}

@@ -63,9 +63,11 @@ export function CheckRequestRail() {
 
   if (!checkRequest) return null;
 
-  const { stat, target, label, prompt, effectDie } = checkRequest;
+  const { stat, target, label, prompt, effectDie, kind } = checkRequest;
   const statLabel = STAT_LABEL[stat] || stat;
   const targetLabel = TARGET_LABEL[target] || `Target ${target}`;
+  // RFC-0014: a death save reads as a distinct, higher-stakes affordance.
+  const isDeathSave = kind === 'death_save';
 
   // Beat 2: roll the d100 and show the result. PLAYER-PACED — this does NOT
   // resend or log the scroll line; the reveal just sits until the player taps
@@ -79,7 +81,8 @@ export function CheckRequestRail() {
     const statValue = playerStatValue(characters, playerName, stat);
     // effectDie present → a magnitude check (attack weapon die / spell die):
     // roll it alongside the d100. (RFC-0007 combat, RFC-0008 magic.)
-    setRevealed(computeRoll({ stat, statValue, target, effectDie }));
+    // `kind` routes a death save to engine-authoritative resolution (RFC-0014).
+    setRevealed(computeRoll({ stat, statValue, target, effectDie, kind }));
   };
 
   // Beat 3: the player has read the roll and tapped Resolve. NOW lock the
@@ -108,8 +111,10 @@ export function CheckRequestRail() {
         {!revealed ? (
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
-              <div className="text-xs font-cinzel text-amber uppercase tracking-wide">
-                🎲 {statLabel} check — {targetLabel} ({target})
+              <div className={`text-xs font-cinzel uppercase tracking-wide ${isDeathSave ? 'text-blood' : 'text-amber'}`}>
+                {isDeathSave
+                  ? `☠ Death save — ${statLabel} vs ${targetLabel} (${target})`
+                  : `🎲 ${statLabel} check — ${targetLabel} (${target})`}
               </div>
               {prompt && (
                 <div className="text-sm text-dust mt-0.5 truncate">{prompt}</div>
@@ -120,9 +125,9 @@ export function CheckRequestRail() {
               data-testid="check-roll-button"
               onClick={handleRoll}
               disabled={isStreaming}
-              className="shrink-0 px-4 py-1.5 bg-amber text-void rounded font-medium hover:bg-amber/90 transition-colors disabled:opacity-50"
+              className={`shrink-0 px-4 py-1.5 text-void rounded font-medium transition-colors disabled:opacity-50 ${isDeathSave ? 'bg-blood hover:bg-blood/90' : 'bg-amber hover:bg-amber/90'}`}
             >
-              Roll
+              {isDeathSave ? 'Cling to life' : 'Roll'}
             </button>
           </div>
         ) : (

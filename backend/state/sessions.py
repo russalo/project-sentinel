@@ -83,6 +83,11 @@ class Session:
     # sessions written before this field existed — legacy worlds get TOFU on
     # first authenticated reauth (the creator slot is claimed atomically).
     creator_username: str = ""
+    # World Generation permadeath flag (RFC-0014). Set at creation and persisted
+    # so the death-stakes gate can enforce it every turn — previously it was a
+    # label-only intro flag that was dropped after session creation. Defaults
+    # False on legacy sessions written before this field existed.
+    permadeath: bool = False
 
 
 def session_file_path(data_dir: Path, session_id: str) -> Path:
@@ -135,6 +140,7 @@ def read_session(data_dir: Path, session_id: str) -> Session | None:
         mood=raw.get("mood", ""),
         world_id=raw.get("world_id", ""),
         creator_username=raw.get("creator_username", ""),
+        permadeath=bool(raw.get("permadeath", False)),
     )
 
 
@@ -169,6 +175,7 @@ def _build_session_payload(session: Session, log_entry: str, turn_number: int) -
                     "mood": session.mood,
                     "world_id": session.world_id,
                     "creator_username": session.creator_username,
+                    "permadeath": session.permadeath,
                 },
             }
         ],

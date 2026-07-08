@@ -33,8 +33,11 @@ from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 
 import engine
+from engine import death_stakes
 from engine.agents import dm as dm_agent
 from engine.agents import fact_extractor
+
+from .. import mock_dm
 
 from ..auth.access import enforce_world_token
 from ..concurrency import StreamSlotLimiter
@@ -151,6 +154,47 @@ def _parse_frontend_hint(raw: str) -> dict:
     return parsed if isinstance(parsed, dict) else {}
 
 
+def _mirror_death_outcome_to_hint(
+    hint: dict, player_name: str, outcome_hint: dict
+) -> None:
+    """Patch the PC's entry in the SSE ``world_update`` hint to the committed
+    death-save status + clock (RFC-0014), so the UI never renders the DM's stale
+    version. If the DM emitted no PC entry (e.g. no ``<world_update>`` at all —
+    the synth-payload case), ADD one so the committed death still reaches the UI
+    without a refresh (codex P2 on PR #172). In-place; tolerant of a malformed
+    hint."""
+    if not isinstance(hint, dict) or not isinstance(player_name, str):
+        return
+    chars = hint.get("characters")
+    if not isinstance(chars, list):
+        chars = []
+        hint["characters"] = chars
+    lowered = player_name.strip().lower()
+    pc = None
+    for char in chars:
+        if isinstance(char, dict) and str(char.get("role", "")).lower() == "player":
+            pc = char
+            break
+    if pc is None:
+        for char in chars:
+            if (
+                isinstance(char, dict)
+                and str(char.get("name", "")).strip().lower() == lowered
+            ):
+                pc = char
+                break
+    if pc is None:
+        # No PC entry to correct — add a minimal one carrying the committed death.
+        pc = {"name": player_name, "role": "player", "action": "upsert"}
+        chars.append(pc)
+    pc["status"] = outcome_hint.get("status", pc.get("status"))
+    module_data = pc.setdefault("module_data", {})
+    if isinstance(module_data, dict):
+        combat = module_data.setdefault("combat", {})
+        if isinstance(combat, dict):
+            combat["death_saves_failed"] = outcome_hint.get("failed")
+
+
 @router.post("/stream")
 def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
     # NOTE: This handler is deliberately `def`, not `async def`.
@@ -233,7 +277,10 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
             60,
             detail="too many turns; slow down",
         )
-        enforce_llm_ceiling(limiter, settings.llm_daily_ceiling)
+        # RFC-0016: mock DM makes no LLM call, so the smoke must not consume the
+        # daily ceiling (or 429 partway through the fixture).
+        if settings.dm_mode != "mock":
+            enforce_llm_ceiling(limiter, settings.llm_daily_ceiling)
     except HTTPException as exc:
         # 429 is the only HTTPException these enforce calls raise. Count it
         # before re-raising so the dashboard sees rate-limit pressure.
@@ -267,6 +314,38 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
     # (a missing/broken poggio degrades to no canon, never breaks the turn).
     retrieved_lore = retrieve_canon(data_dir, world_context, body.action, settings)
 
+    # RFC-0014 death-stakes: a death save is DERIVED FROM SERVER STATE, not the
+    # client's `roll.kind`. The trigger is "there is a roll AND the PC's STORED
+    # status is `unconscious`" — the only state a death save is valid in. Keying
+    # off the client-echoed `kind` would let a crafted/stale client either force
+    # a save when the PC is fine, or send `kind:"skill"` to bypass engine
+    # authority on a real save and reopen the forged-margin path (codex P1 on PR
+    # #172). `kind` stays advisory for the UI only. The engine then computes the
+    # outcome from the validated roll + the PC's STORED `will` and clock (a
+    # crafted client `margin` can't dodge death; only `rolled` is server-
+    # validated), rides it into the prompt as a narrate-not-decide block, and
+    # injects it authoritatively into the write payload below (Q1 = 2a).
+    death_outcome_obj = None
+    death_outcome_hint: dict | None = None
+    death_pc_module_data: dict | None = None
+    if body.roll is not None:
+        _pc = death_stakes.find_player_character(
+            world_context.characters, session.player_character_name
+        )
+        if _pc is not None and str(_pc.get("status", "")).lower() == "unconscious":
+            death_pc_module_data = _pc.get("module_data")
+            death_outcome_obj = death_stakes.resolve_death_save(
+                rolled=body.roll.rolled,
+                will=death_stakes.stored_will(_pc),
+                current_failed=death_stakes.stored_death_clock(_pc),
+            )
+            death_outcome_hint = {
+                "status": death_outcome_obj.status,
+                "failed": death_outcome_obj.failed,
+                "stabilized": death_outcome_obj.stabilized,
+                "died": death_outcome_obj.died,
+            }
+
     turn_input = engine.DMTurnInput(
         session_id=body.session_id,
         player_action=body.action,
@@ -276,6 +355,9 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
         # carries the d100 roll; model_dump() yields the snake-case keys the
         # engine's ROLL RESULT block reads. None on an ordinary turn.
         roll=body.roll.model_dump() if body.roll is not None else None,
+        # RFC-0014: the engine-committed death-save outcome, rendered as a
+        # narrate-not-decide block. None on any non-death-save turn.
+        death_outcome=death_outcome_hint,
         # ADR-0005 progression module (RFC-0009): on a level-up turn the body
         # carries the player's chosen stat; the engine renders it as a
         # LEVEL-UP CHOICE block. None otherwise.
@@ -288,7 +370,15 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
         buffer: list[str] = []
 
         try:
-            for token in dm_agent.stream_turn(config, turn_input):
+            # RFC-0016: in mock-DM mode, inject the fixture client for this turn
+            # in place of the live LLM. Built inside the try so a fixture over-run
+            # (KeyError) surfaces as the generic "DM agent failed" SSE, not a 500.
+            dm_client = (
+                mock_dm.client_for_turn(settings, next_turn_number)
+                if settings.dm_mode == "mock"
+                else None
+            )
+            for token in dm_agent.stream_turn(config, turn_input, client=dm_client):
                 buffer.append(token)
                 yield _sse_event({"type": "token", "content": token})
         except Exception:  # pragma: no cover - network/OpenAI failure
@@ -306,6 +396,15 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
         narrative = _BLOCK_RE.sub("", raw_response).strip()
         frontend_hint = _parse_frontend_hint(raw_response)
 
+        # RFC-0014: mirror the engine-committed death outcome into the SSE hint so
+        # the UI shows the authoritative status immediately — otherwise the DM's
+        # (possibly "alive") version would render until a refresh re-hydrates the
+        # committed state.
+        if death_outcome_hint is not None:
+            _mirror_death_outcome_to_hint(
+                frontend_hint, session.player_character_name, death_outcome_hint
+            )
+
         # Emit the world_update event in the shape the frontend
         # expects (DM hint shape, not the fs-manager schema shape).
         yield _sse_event({"type": "world_update", "data": frontend_hint})
@@ -319,9 +418,56 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
             session_id=body.session_id,
             turn_number=next_turn_number,
         )
-        if extracted.payload is not None:
+
+        payload = extracted.payload
+        # RFC-0014: a death-save resolve turn MUST write the engine's committed
+        # outcome even if the DM emitted no <world_update> — synthesize a minimal
+        # payload so the status/clock still land authoritatively.
+        if death_outcome_obj is not None and payload is None:
+            # log_entry has a schema minLength of 10 — a short DM narrative would
+            # make fs-manager reject the whole payload and silently drop the
+            # committed death (swarm HIGH on PR #172). Fall back to a fixed
+            # >=10-char entry whenever the narrative is too short.
+            _narrative = narrative[:200]
+            payload = {
+                "session_id": body.session_id,
+                "log_entry": (
+                    _narrative
+                    if len(_narrative.strip()) >= 10
+                    else f"Turn {next_turn_number} — death save resolved."
+                ),
+                "updates": [],
+            }
+
+        if payload is not None:
+            # Engine-authoritative death outcome (Q1 = 2a): override any
+            # conflicting DM-emitted status/clock so a hallucinated "you recover"
+            # can't beat a rolled death.
+            if death_outcome_obj is not None:
+                death_stakes.apply_death_outcome(
+                    payload,
+                    player_name=session.player_character_name,
+                    outcome=death_outcome_obj,
+                    # Pass the PC's STORED module_data so the write carries the
+                    # full sheet — fs-manager's shallow merge would otherwise
+                    # erase character_sheet (stats/HP) behind the death clock.
+                    stored_module_data=death_pc_module_data,
+                )
+            # Permadeath gate (Q2): on EVERY turn, refuse to revive a stored-dead
+            # PC when the world's permadeath flag is set. Rejections surface to
+            # the player and the state stays dead — the DM sees it unchanged next
+            # turn.
+            _, permadeath_rejections = death_stakes.enforce_permadeath(
+                payload,
+                stored_characters=world_context.characters,
+                player_name=session.player_character_name,
+                permadeath=session.permadeath,
+            )
+            for rejection in permadeath_rejections:
+                yield _sse_event({"type": "error", "content": rejection})
+
             dispatch = engine.apply_world_update(
-                config, extracted.payload, world_id=session.world_id or None
+                config, payload, world_id=session.world_id or None
             )
             if not dispatch.ok:
                 yield _sse_event(

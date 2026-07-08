@@ -6,13 +6,15 @@
 # infrastructure. RFC-0007.
 
 name = "core/hp-pool-v1"
-version = "1.0.0"
+version = "1.1.0"
 subsystem = "combat"
 interface_version = "1.0"
 
 prompt_fragment = "prompt.md"
 
-schema_fragment = ""
+# RFC-0014: module_data.combat now carries the death-save clock
+# (death_saves_failed). Additive — interface_version stays 1.0.
+schema_fragment = "schema.json"
 preset_paths = []
 # Combat reads the four stats + class HP factor and reuses the d100 check.
 requires = ["core/four-stat-v1", "core/four-class-fantasy-v1", "core/d100-open-v1"]

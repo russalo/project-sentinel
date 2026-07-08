@@ -94,19 +94,27 @@ describe('computeRoll — weapon die (RFC-0007 combat)', () => {
 });
 
 describe('toWirePayload', () => {
-  it('extracts exactly the seven backend fields (1-100 rolled, openEnded camel)', () => {
+  it('extracts exactly the backend fields (1-100 rolled, openEnded camel, kind)', () => {
     stubRolls(47);
     const r = computeRoll({ stat: 'body', statValue: 6, target: 80 });
     const wire = toWirePayload(r);
+    // RFC-0014 adds `kind` (default "skill") to the wire contract.
     expect(Object.keys(wire).sort()).toEqual(
-      ['bonus', 'margin', 'openEnded', 'rolled', 'stat', 'target', 'total'].sort(),
+      ['bonus', 'kind', 'margin', 'openEnded', 'rolled', 'stat', 'target', 'total'].sort(),
     );
+    expect(wire.kind).toBe('skill');
     expect(wire.rolled).toBe(47);
     expect(wire.rolled).toBeGreaterThanOrEqual(1);
     expect(wire.rolled).toBeLessThanOrEqual(100);
     // display-only extras are NOT on the wire
     expect(wire.statValue).toBeUndefined();
     expect(wire.openEndedRoll).toBeUndefined();
+  });
+
+  it('carries kind: "death_save" through to the wire (RFC-0014)', () => {
+    stubRolls(30);
+    const r = computeRoll({ stat: 'will', statValue: 5, target: 60, kind: 'death_save' });
+    expect(toWirePayload(r).kind).toBe('death_save');
   });
 
   it('open-ended rolled stays in 1-100 for the backend validator', () => {

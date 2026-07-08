@@ -77,6 +77,14 @@ class Settings:
     cors_allow_all_origins: bool
     debug: bool
 
+    # RFC-0016: deterministic mock-DM mode for the deploy smoke test. When
+    # ``dm_mode == "mock"`` the backend injects a scripted-fixture client into
+    # the DM agents (engine.agents.dm) instead of the live LLM — zero LLM cost,
+    # fully repeatable. ``dm_mock_fixture`` overrides the committed default
+    # fixture path. Default "live" = the live LLM (no behavior change).
+    dm_mode: str = "live"
+    dm_mock_fixture: str | None = None
+
     # ── ADR 0003 access layer (all opt-in; defaults = disabled) ──────────
     # Every knob below is dormant by default so local & tailnet play stays
     # anonymous and unthrottled — the public edge sets them. Defaults live on
@@ -167,6 +175,8 @@ class Settings:
             openai_base_url=_env("OPENAI_BASE_URL"),
             dm_model=_env("DM_MODEL", "gpt-4o-mini"),
             max_completion_tokens=_int_env("DM_MAX_COMPLETION_TOKENS", "2000"),
+            dm_mode=(_env("SENTINEL_DM_MODE", "live") or "live"),
+            dm_mock_fixture=_env("SENTINEL_DM_MOCK_FIXTURE"),
             fs_manager_url=_env("FS_MANAGER_URL", "http://127.0.0.1:8010"),
             git_sync_url=_env("GIT_SYNC_URL", "http://127.0.0.1:8012"),
             data_dir=DATA_DIR,

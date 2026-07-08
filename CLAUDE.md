@@ -368,6 +368,16 @@ in `GEMINI.md`.
   RPG`, Copyright=`© 2026 Sentinel RPG by Russalo`, Source=`https://sentinelrpg.com`,
   Disclaimer) → hash-verify served bytes. Firefly/Figma preferred for design-grade public
   work. See `reference_genimg_tool` memory.
+- **Game art also via the OpenArt MCP (image + VIDEO gen).** A session-connected
+  MCP (`mcp__claude_ai_openart__*`) — complements `genimg` by adding **video**
+  (Wan 2.7 / Kling / PixVerse / Seedance; image→video, text→video). First use
+  (2026-07-03): the 5 animated genre-tile loops in `apps/sentinel-ui/src/assets/generated/`
+  (PR #175, live on the alpha). Recipe for a locked-framing animated tile:
+  **Wan 2.7 image2video + identical start/end frames + a tripod prompt + camera
+  motion in the negative + strip audio (`ffmpeg -an`)**. Provenance caveat: raw
+  OpenArt output carries NO Sentinel tEXt — gated in-game art is fine, but
+  public/branded art still needs the `genimg` provenance pass. See
+  `reference_openart_animated_tile_recipe` memory.
 - **Lorekeeper fold (DM cites canon) is BUILT + DORMANT (since 2026-07-01).**
   RFC-0011 (Slice 1) + RFC-0012 (Slice 2) + ADR-0006 landed a lore-retrieval
   step in the turn loop: the backend (`backend/state/lorekeeper.py`, IO)
@@ -437,6 +447,43 @@ in `GEMINI.md`.
   prerequisite regenerates `.env` and clobbers the value (and the LLM
   key). See `docs/WORKSPACE.md` § "Local dev: keep gameplay out of the
   code repo".
+- **The alpha deploys via the RFC-0015 dev→staging→prod PIPELINE (live since
+  2026-07-04) — NOT build-in-place.** origin-core's Caddy roots `/alpha/*` at a
+  sentinel-owned serve tree `/srv/serve/sentinel-alpha/` — `releases/<git-sha>/`
+  (immutable `build:alpha` outputs) + a `current` symlink (what prod serves) + a
+  `staging` symlink (the candidate). **`dist` is no longer the alpha's live dir**
+  (it reverted to the tailnet dev site). **Deploy = three `just` recipes, from
+  master, in a patch window:** `just build-alpha-release` (build:alpha →
+  `releases/<sha>/` via `--outDir` + repoint `staging`; refuses off-master/dirty;
+  never writes `dist`) → verify in a real browser at
+  `https://sentinel-staging.dev.russalo.com/alpha/` → `just promote-alpha` (atomic
+  `current` repoint, zero-downtime). Rollback = `just rollback-alpha`; inspect =
+  `just alpha-status`. **The alpha build-in-place footgun is GONE** (only
+  `promote-alpha` flips prod; build-alpha-release refuses to clobber a
+  `current`/`staging`-referenced sha). **BUT NOTE:** only `just build-alpha-release`
+  creates a release — a **raw** `pnpm --filter @sentinel/ui build:alpha` still
+  writes Vite's default `apps/sentinel-ui/dist`, which now belongs to the **tailnet
+  dev site** (`sentinel.dev.russalo.com/`), so a raw build:alpha overwrites the
+  dev-site root with `/alpha/`-based assets → breaks the dev site (fix with
+  `just build-site`). So: use the recipe, not the raw script.
+  Still verify frontend logic with vitest (`pnpm --filter @sentinel/ui test`) +
+  typecheck, not a build. Lane split unchanged: sentinel owns the serve-tree +
+  recipes; tailnet owns Caddy's root → `current`, the staging host, the gate.
+  See RFC-0015, `docs/WORKSPACE.md` § "Alpha deployment", `project_alpha_deploy_pipeline`.
+- **Staging is a true pre-prod (RFC-0016, slices 1-3 landed 2026-07-04).** A
+  parallel backend `:8101` + fs-manager `:8110` + git-sync `:8112` trio with its
+  OWN world store (`~/sentinel-worlds-staging`, gate off) — so staging worlds
+  never touch prod. `just staging-*` / `just stage-*` recipes + `infrastructure/systemd/sentinel-*-staging.service`
+  units (which use a second `EnvironmentFile=<REPO_ROOT>/infrastructure/.env.staging`
+  — absolute path — NOT `Environment=`,
+  because per systemd.exec EnvironmentFile OVERRIDES Environment=). **Deterministic
+  deploy GATE: `just stage-smoke`** — an ephemeral **mock-DM** trio
+  (`SENTINEL_DM_MODE=mock`, `backend/mock_dm.py`, zero LLM) drives a scripted
+  death-sequence fixture to a *verified* death, proving the full mechanics chain.
+  `just stage-candidate <ref>` runs the trio from a git worktree at the candidate.
+  Remaining (in the memory inbox): the origin-core bring-up + tailnet's
+  `sentinel-staging.dev/alpha/api → :8101` repoint. See RFC-0016,
+  `project_rfc0016_staging_preprod`.
 - **Live alpha features shipped this week (cohort feedback channels +
   ambient surfaces).** As of 2026-06-12, the closed alpha at
   `sentinel.russalo.com/alpha/` has these shipped surfaces in addition to

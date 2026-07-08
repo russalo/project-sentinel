@@ -66,16 +66,34 @@ def _apply(client, payload, namespace=None):
     return client.post("/tools/apply_world_update", json=payload, params=params)
 
 
+def _is_lock_artifact(p: Path) -> bool:
+    """A cross-process ``filelock`` file is bookkeeping, not world state.
+
+    fs-manager acquires the per-world / shared lock *before* it validates a
+    write, so even a REJECTED op leaves a lock file under the tmp ``REPO_ROOT``
+    — ``<root>/.sentinel-locks/shared.lock`` in shared mode, ``.locks/<id>.lock``
+    per-world. Whether that file lingers on disk is a ``filelock`` version
+    detail (a floated version turned the suite red on CI 2026-07-03). These
+    tests assert "no STATE was written", so lock artifacts must not be counted.
+    """
+    parts = set(p.parts)
+    return p.suffix == ".lock" or ".sentinel-locks" in parts or ".locks" in parts
+
+
 def _count_files_under(root: Path) -> int:
-    """Count every regular file under ``root`` recursively.
+    """Count every regular file under ``root`` recursively, excluding lock
+    artifacts.
 
     Used by rejection tests to assert "the server didn't just return
     an error, it also didn't write anything." A test that only checks
     ``response.status_code == 403`` would silently pass if the server
     returned 403 AFTER partially writing to disk — the negative
-    filesystem assertion catches that class of regression.
+    filesystem assertion catches that class of regression. Lock files are
+    excluded (see ``_is_lock_artifact``) because they are write-serialization
+    bookkeeping, not world state, and their on-disk lifetime is a dependency
+    detail rather than a behavior these tests mean to pin.
     """
-    return sum(1 for p in root.rglob("*") if p.is_file())
+    return sum(1 for p in root.rglob("*") if p.is_file() and not _is_lock_artifact(p))
 
 
 # ── Path validation ──────────────────────────────────────────────────

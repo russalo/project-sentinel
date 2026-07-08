@@ -38,6 +38,7 @@ describe('chatStore.setCheckRequest — malformed-LLM-output hardening (PR #146)
       label: 'Force it',
       prompt: 'The iron is fast.',
       effectDie: null,
+      kind: 'skill',
     });
   });
 
@@ -85,7 +86,15 @@ describe('chatStore.setCheckRequest — malformed-LLM-output hardening (PR #146)
       label: '',
       prompt: '',
       effectDie: null,
+      kind: 'skill',
     });
+  });
+
+  it('carries kind: "death_save" through (RFC-0014)', () => {
+    useChatStore.getState().setCheckRequest({ stat: 'will', target: 60, kind: 'death_save', label: 'Cling to life' });
+    expect(useChatStore.getState().checkRequest.kind).toBe('death_save');
+    useChatStore.getState().setCheckRequest({ stat: 'will', target: 60, kind: 'nonsense' });
+    expect(useChatStore.getState().checkRequest.kind).toBe('skill');
   });
 
   it('clearCheckRequest resets to null', () => {
