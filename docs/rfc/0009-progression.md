@@ -127,7 +127,8 @@ integrity intact.
 - **Backend/fs-manager enforcement of the sovereignty wall** — v0.1
   enforces it in the prompt; a hard schema/dispatch guard against the DM
   writing `level`/`stats` outside an enacted choice is the ADR-0004
-  (state truthfulness) lane — deferred, number reserved.
+  (state truthfulness) lane — now **Accepted (2026-07-08)**; this hard guard is
+  the next concrete slice under it.
 - **Class-restricted stat picks** — any stat in v0.1.
 
 ## Cross-links
@@ -135,5 +136,5 @@ integrity intact.
 - ADR-0005; RFC-0006 (the check loop this mirrors + the `module_data.
   character_sheet` it writes); RFC-0007 (the class HP factors HP growth
   uses); Fantasy-flagship v0.1 Axis 4.
-- ADR-0004 (state truthfulness, deferred) — the reserved number for the
-  hard-enforcement version of the sovereignty wall.
+- ADR-0004 (state truthfulness, Accepted 2026-07-08) — the hard-enforcement
+  version of the sovereignty wall is the next concrete slice under it.
