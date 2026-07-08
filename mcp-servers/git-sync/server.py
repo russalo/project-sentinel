@@ -30,6 +30,23 @@ logging.basicConfig(
 )
 logger = logging.getLogger("git-sync")
 
+
+def _git_error_response(context: str, e: Exception) -> HTTPException:
+    """Log the raw git failure server-side; return a SANITIZED 500.
+
+    GitPython's ``GitCommandError.__str__`` embeds the full command line + verbatim
+    git stderr — which can carry world paths, ``WORLDS_ROOT``, or attacker-influenced
+    input — so ``detail=str(e)`` leaked it straight into the HTTP body (red-team #4).
+    Operators get the full detail from the server logs; the caller gets an opaque
+    message. Mirrors the curated ``InvalidGitRepositoryError`` handler.
+    """
+    logger.error("%s: %s", context, e)
+    return HTTPException(
+        status_code=500,
+        detail={"code": "GIT_ERROR", "detail": "git operation failed; see server logs"},
+    )
+
+
 REPO_ROOT = Path(__file__).parent.parent.parent
 
 # Per-world isolation (ADR 0002). When SENTINEL_WORLDS_ROOT is set, a commit
@@ -285,11 +302,12 @@ async def init_world(body: dict):
 
         logger.info(f"init_world — provisioned world={canonical[:8]} at {repo_path!s}")
         return {"status": "initialized", "world_id": canonical}
+    except HTTPException:
+        # A 422/403 from _world_repo_path (invalid id / path traversal) is control
+        # flow — propagate it, don't mask it as a generic 500 (#4 review).
+        raise
     except Exception as e:
-        logger.error(f"init_world failed for {canonical}: {e}")
-        raise HTTPException(
-            status_code=500, detail={"code": "GIT_ERROR", "detail": str(e)}
-        )
+        raise _git_error_response(f"init_world failed for {canonical}", e)
     finally:
         lock.release()
 
@@ -390,10 +408,7 @@ async def teardown_world(body: dict):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"teardown_world failed for {world_id}: {e}")
-        raise HTTPException(
-            status_code=500, detail={"code": "GIT_ERROR", "detail": str(e)}
-        )
+        raise _git_error_response(f"teardown_world failed for {world_id}", e)
     finally:
         lock.release()
 
@@ -480,11 +495,10 @@ async def commit_snapshot(body: dict):
                 "detail": f"Repository not found at {missing}.",
             },
         )
+    except HTTPException:
+        raise  # propagate control-flow 4xx (e.g. _world_repo_path 422/403), not 500
     except Exception as e:
-        logger.error(f"commit_snapshot failed: {e}")
-        raise HTTPException(
-            status_code=500, detail={"code": "GIT_ERROR", "detail": str(e)}
-        )
+        raise _git_error_response("commit_snapshot failed", e)
     finally:
         lock.release()
 
@@ -512,40 +526,10 @@ async def list_snapshots(
                 }
             )
         return {"snapshots": results}
+    except HTTPException:
+        raise  # propagate control-flow 4xx (e.g. _world_repo_path 422/403), not 500
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail={"code": "GIT_ERROR", "detail": str(e)}
-        )
-
-
-@app.post("/tools/rollback_to")
-async def rollback_to(body: dict):
-    """
-    Restore /data to a prior commit. Use with caution — this rewrites world state.
-    The Orchestrator should confirm with the user before calling this.
-    """
-    commit_hash = body.get("commit_hash")
-    if not commit_hash:
-        raise HTTPException(
-            status_code=422,
-            detail={"code": "MISSING_HASH", "detail": "commit_hash is required."},
-        )
-    world_id = body.get("world_id")
-    world_id = _require_world_id_when_isolated(world_id)
-
-    lock = _acquire_world_lock(world_id)
-    try:
-        repo = get_repo(world_id)
-        repo.git.checkout(commit_hash, "--", "data/")
-        repo.git.add("data/")
-        repo.git.commit("-m", f"[sentinel] rollback to {commit_hash}")
-        return {"status": "rolled_back", "to_commit": commit_hash}
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail={"code": "GIT_ERROR", "detail": str(e)}
-        )
-    finally:
-        lock.release()
+        raise _git_error_response("list_snapshots failed", e)
 
 
 # The MCP write layer must stay loopback/tailnet-only (ADR 0003 §3): it's the

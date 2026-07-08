@@ -39,7 +39,7 @@ from engine.agents import fact_extractor
 
 from .. import mock_dm
 
-from ..auth.access import enforce_world_token
+from ..auth.access import enforce_world_token, enforcement_enabled
 from ..concurrency import StreamSlotLimiter
 from ..config import Settings
 from ..engine_bridge import build_engine_config
@@ -224,15 +224,22 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
         if data_dir is not None
         else None
     )
-    if session is None:
+    if session is None or not session.active:
+        # Sibling-path invariant (red-team #6): when token enforcement is ON, a
+        # missing/inactive session must be INDISTINGUISHABLE from an existing one
+        # the caller isn't authorized for — else this route is an existence oracle
+        # for session_ids (the lookup ran before the token check). Run the SAME
+        # token check a found session would, against a sentinel world_id ("") that
+        # no real token verifies against: no token → 401, any other token → 403 —
+        # exactly mirroring enforce_world_token on a real world, so the response is
+        # identical whether or not the session exists. This covers the bogus-token
+        # case, not just no-token (codex review). Only reveal not-found/inactive in
+        # the clear when enforcement is off (shared-tree dev, no auth to leak).
+        if enforcement_enabled(settings):
+            enforce_world_token(request, settings, "")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Session not found or inactive",
-        )
-    if not session.active:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Session is not active",
         )
 
     # ADR 0003 Slice A — verify the per-world token against the world the
