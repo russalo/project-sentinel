@@ -303,6 +303,34 @@ def test_commit_snapshot_invalid_repository_returns_500_git_error(
         assert "Repository not found" in str(detail) or "GIT_ERROR" in str(detail)
 
 
+def test_git_error_body_is_sanitized(
+    client, git_sync_module, monkeypatch, session_uuid
+):
+    """red-team #4 — a git failure must NOT leak the raw exception (GitPython's
+    GitCommandError embeds the full command + verbatim git stderr, which can carry
+    world paths / WORLDS_ROOT) into the HTTP body. The caller gets a generic
+    message; the detail goes to the server logs."""
+    import git as gitpy
+
+    secret_path = "/srv/secret-worlds/PRIVATE_ROOT/should-not-leak"
+
+    def boom(*args, **kwargs):
+        raise gitpy.GitCommandError(
+            ["git", "commit"], 128, stderr=f"fatal: cannot access {secret_path}"
+        )
+
+    monkeypatch.setattr(git_sync_module, "get_repo", boom)
+    response = client.post(
+        "/tools/commit_snapshot",
+        json={"session_id": session_uuid, "turn_number": 1, "summary": "x"},
+    )
+    assert response.status_code == 500
+    detail = response.json()["detail"]
+    assert detail["code"] == "GIT_ERROR"
+    assert detail["detail"] == "git operation failed; see server logs"
+    assert secret_path not in response.text  # the raw stderr/path is NOT in the body
+
+
 # ── Per-world mode: world_id required (ADR 0002 isolation, Path A/A1) ──
 
 
@@ -321,15 +349,12 @@ def test_commit_missing_world_id_rejected_when_isolated(
     assert response.json()["detail"]["code"] == "MISSING_WORLD_ID"
 
 
-def test_rollback_missing_world_id_rejected_when_isolated(
-    client, git_sync_module, monkeypatch, tmp_path
-):
-    """Same guard on the destructive rollback path — a missing world_id in
-    per-world mode could otherwise roll back the shared code repo."""
-    monkeypatch.setattr(git_sync_module, "WORLDS_ROOT", str(tmp_path / "worlds"))
+def test_rollback_to_endpoint_removed(client):
+    """rollback_to was dead code from a superseded (Orchestrator-era) design with
+    the same MCP auth gap as teardown_world and zero callers — removed (red-team
+    #3). The route must stay gone (404), not resurface."""
     response = client.post("/tools/rollback_to", json={"commit_hash": "abc1234"})
-    assert response.status_code == 422
-    assert response.json()["detail"]["code"] == "MISSING_WORLD_ID"
+    assert response.status_code == 404
 
 
 def test_commit_with_world_id_still_works_when_isolated(

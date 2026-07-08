@@ -37,10 +37,14 @@ jobs:
           echo "fs-manager is up"
 
       # ── Test 1: Valid payload ── expect 200 ───────────────────────
+      # Writes a core-gated path, so it needs the trusted ?namespace=core scope
+      # the backend sets on dispatch (namespace went out-of-band in red-team #7 —
+      # it's a query param now, never a body field). Without it the namespace gate
+      # 403s first.
       - name: "Gate test 1: valid payload → 200"
         run: |
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            -X POST http://localhost:8010/tools/apply_world_update \
+            -X POST "http://localhost:8010/tools/apply_world_update?namespace=core" \
             -H "Content-Type: application/json" \
             -d @tests/fixtures/valid_world_update.json)
           echo "Status: $STATUS"
@@ -69,20 +73,18 @@ jobs:
           [[ "$STATUS" == "422" ]] || (echo "FAIL: expected 422, got $STATUS" && exit 1)
 
       # ── Test 4: Protected field write ── expect 403 ───────────────
-      # Payload is core-authorized (namespace: "core") so the namespace
-      # gate passes, path is allowed, schema validates — but the data
-      # contains a protected field (unique_id). The server's
-      # protected-field guard returns 403 PROTECTED_FIELD_VIOLATION.
-      # The explicit "namespace": "core" is load-bearing here: without
-      # it, the namespace gate would fire first with its own 403 and
-      # this test would pass by accident on the wrong rejection path.
+      # ?namespace=core (the trusted query param) so the namespace gate passes,
+      # path is allowed, schema validates — but the data carries a protected field
+      # (unique_id), so the protected-field guard returns 403. The core scope is
+      # load-bearing: without it the namespace gate would 403 first and this test
+      # would pass by accident on the wrong rejection path. namespace is NEVER a
+      # body field — additionalProperties:false would 422 it before the guard runs.
       - name: "Gate test 4: protected field write → 403"
         run: |
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            -X POST http://localhost:8010/tools/apply_world_update \
+            -X POST "http://localhost:8010/tools/apply_world_update?namespace=core" \
             -H "Content-Type: application/json" \
             -d '{
-              "namespace": "core",
               "session_id": "550e8400-e29b-41d4-a716-446655440000",
               "log_entry": "Attempting to overwrite a protected identity field.",
               "updates": [{
