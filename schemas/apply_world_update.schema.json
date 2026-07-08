@@ -45,7 +45,14 @@
           },
           "data": {
             "type": ["object", "string", "array"],
-            "description": "The payload. Must be a JSON object or array for a .json target; must be a string for an 'append' (Markdown) operation. The allOf below couples the type to the operation/extension so a schema-valid-but-file-bricking payload is rejected (red-team #1a/#1b)."
+            "allOf": [
+              {
+                "description": "ANY string data (append to .md, or a create/update writing a .md) is control-byte-free — not just append (red-team #1c; closes the create/update-to-.md sibling gap).",
+                "if": { "type": "string" },
+                "then": { "$ref": "#/$defs/noControlChars" }
+              }
+            ],
+            "description": "The payload. Must be a JSON object or array for a .json target; must be a string for an 'append' (Markdown) operation. The items-level allOf couples the type to the operation/extension so a schema-valid-but-file-bricking payload is rejected (red-team #1a/#1b)."
           }
         },
         "required": ["target_file", "operation", "data"],
@@ -60,7 +67,7 @@
             "then": {
               "properties": {
                 "target_file": { "pattern": "\\.md$" },
-                "data": { "type": "string", "allOf": [{ "$ref": "#/$defs/noControlChars" }] }
+                "data": { "type": "string" }
               }
             }
           },

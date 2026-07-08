@@ -121,6 +121,15 @@ def test_execute_update_scrubs_control_bytes_in_append(fs_manager_module):
     assert "cleantext" in written
 
 
+def test_execute_update_scrubs_control_bytes_in_create_md(fs_manager_module):
+    # Sibling-path gap (review of #1c): create/update of a .md target with a
+    # control-byte string is scrubbed too, not only append.
+    root = fs_manager_module.REPO_ROOT
+    fs_manager_module.execute_update(MD, "create", "clean" + RTL + NUL + "text")
+    written = (root / MD).read_text(encoding="utf-8")
+    assert RTL not in written and NUL not in written and "cleantext" in written
+
+
 def test_scrub_control_bytes_keeps_tab_and_newline(fs_manager_module):
     scrub = fs_manager_module.scrub_control_bytes
     assert scrub("a" + RTL + "b" + NUL + "c") == "abc"

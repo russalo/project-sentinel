@@ -116,6 +116,13 @@ def test_schema_allows_clean_append_to_md_and_tab_newline():
     _validate(_wu(_MD, "append", "clean line\n\twith tab"), WORLD_UPDATE_SCHEMA)
 
 
+def test_schema_rejects_control_bytes_in_create_md_string():
+    # Sibling-path gap (review of #1c): a create/update writing a control-byte
+    # STRING to a .md target must also be rejected, not only append.
+    with pytest.raises(jsonschema.ValidationError):
+        _validate(_wu(_MD, "create", "bad " + chr(0x202E) + " x"), WORLD_UPDATE_SCHEMA)
+
+
 # ── community_manifest schema tests ───────────────────────────────────────────
 
 

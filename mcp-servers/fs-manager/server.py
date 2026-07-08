@@ -325,7 +325,7 @@ def check_protected_fields(data: Any, target_file: str) -> None:
         # check let case-variant keys (`Unique_Id`, `WORLD_SEED`, `Namespace`)
         # write through unchecked (red-team #1d). Match case-insensitively and
         # report the original-cased key.
-        lowered = {k.lower(): k for k in item}
+        lowered = {str(k).lower(): k for k in item}
         violations = [lowered[f] for f in PROTECTED_FIELDS if f in lowered]
         if violations:
             raise HTTPException(
@@ -477,8 +477,13 @@ def execute_update(
                 },
             )
         check_protected_fields(data, target_file)
+        # Scrub the string-data path too (a .md create/update) — the append branch
+        # and log_entry already scrub, but create/update of a .md target with
+        # control-byte string data was a sibling-path gap (review of red-team #1c).
         content = (
-            json.dumps(data, indent=2) if isinstance(data, (dict, list)) else str(data)
+            json.dumps(data, indent=2)
+            if isinstance(data, (dict, list))
+            else scrub_control_bytes(str(data))
         )
         # Pin utf-8 on every read/write: payloads carry LLM-generated text
         # (emoji, smart quotes, non-ASCII names), and the project targets
@@ -508,7 +513,9 @@ def execute_update(
                 existing.update(data)
                 data = existing
         abs_path.write_text(
-            json.dumps(data, indent=2) if isinstance(data, (dict, list)) else str(data),
+            json.dumps(data, indent=2)
+            if isinstance(data, (dict, list))
+            else scrub_control_bytes(str(data)),
             encoding="utf-8",
         )
         return {"status": "updated", "path": target_file}
