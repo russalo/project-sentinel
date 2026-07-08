@@ -21,7 +21,6 @@ from pathlib import Path
 from typing import Any
 
 import engine
-from engine.textsafe import scrub_control_bytes
 
 
 _SESSIONS_REL = Path("state/core/sessions")
@@ -158,11 +157,10 @@ def _build_session_payload(session: Session, log_entry: str, turn_number: int) -
     """
     return {
         "session_id": session.session_id,
-        # Scrub control/RTL/zero-width bytes so a log_entry built from user- or
-        # DM-controlled text (world_name at session start, narrative on a turn,
-        # username on reauth) can't trip the tightened schema's noControlChars
-        # guard and 502 the write (red-team #1c; codex review of the gate PR).
-        "log_entry": scrub_control_bytes(log_entry),
+        # log_entry is scrubbed of control/RTL/zero-width bytes at the dispatch
+        # chokepoint (engine.apply_world_update) so every producer is covered in
+        # one place (red-team #1c) — no per-producer scrub needed here.
+        "log_entry": log_entry,
         "updates": [
             {
                 "target_file": f"data/state/core/sessions/{session.session_id}.json",

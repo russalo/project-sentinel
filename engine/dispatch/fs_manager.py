@@ -39,6 +39,7 @@ from typing import Any
 
 import httpx
 
+from ..textsafe import scrub_control_bytes
 from ..types import Config
 
 
@@ -123,9 +124,23 @@ def apply_world_update(
     if world_id:
         params["world_id"] = world_id
 
+    # Normalize log_entry at the single dispatch chokepoint: the schema rejects
+    # control/RTL/zero-width bytes (red-team #1c), and log_entry is built from
+    # user/DM text by several producers (session start's world_name, a turn's
+    # narrative, reauth's username, the inline death-outcome payload). Scrubbing
+    # here — rather than at each producer — guarantees no legit write 502s on a
+    # stray byte, and can't be missed by a future producer. A copy is posted so
+    # the caller's dict is untouched.
+    body = payload
+    log_entry = payload.get("log_entry")
+    if isinstance(log_entry, str):
+        cleaned = scrub_control_bytes(log_entry)
+        if cleaned != log_entry:
+            body = {**payload, "log_entry": cleaned}
+
     try:
         try:
-            response = client.post(url, json=payload, params=params)
+            response = client.post(url, json=body, params=params)
         except httpx.RequestError as exc:
             return DispatchResult(
                 ok=False,
