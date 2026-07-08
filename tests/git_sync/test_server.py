@@ -331,6 +331,28 @@ def test_git_error_body_is_sanitized(
     assert secret_path not in response.text  # the raw stderr/path is NOT in the body
 
 
+def test_git_sync_propagates_control_flow_4xx_not_500(
+    client, git_sync_module, monkeypatch, session_uuid
+):
+    """A control-flow HTTPException (e.g. _world_repo_path's 422 invalid-id / 403
+    path-traversal) raised inside a handler's try must PROPAGATE as itself, not be
+    swallowed by ``except Exception`` and masked as a generic 500 (#4 review)."""
+    import fastapi
+
+    def raise_422(*args, **kwargs):
+        raise fastapi.HTTPException(
+            status_code=422, detail={"code": "INVALID_WORLD_ID", "detail": "bad id"}
+        )
+
+    monkeypatch.setattr(git_sync_module, "get_repo", raise_422)
+    response = client.post(
+        "/tools/commit_snapshot",
+        json={"session_id": session_uuid, "turn_number": 1, "summary": "x"},
+    )
+    assert response.status_code == 422  # NOT masked as 500
+    assert response.json()["detail"]["code"] == "INVALID_WORLD_ID"
+
+
 # ── Per-world mode: world_id required (ADR 0002 isolation, Path A/A1) ──
 
 

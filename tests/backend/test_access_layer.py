@@ -149,6 +149,19 @@ def test_stream_hides_session_existence_when_enforced(client, tmp_data_dir):
     assert r.status_code == 401
 
 
+def test_stream_bogus_token_gives_403_on_nonexistent_session(client, tmp_data_dir):
+    """The oracle must be closed for the bogus-token case too (codex): a garbage
+    token on a nonexistent session returns the SAME 403 that an existing session
+    the token doesn't authorize would — never a distinguishing 401-vs-403."""
+    _enforce(client, session_token_secret=SECRET)
+    r = client.post(
+        "/api/stream",
+        json={"action": "look", "sessionId": SESSION_ID},  # not seeded → nonexistent
+        headers={"X-Sentinel-World-Token": "garbage-not-a-real-token"},
+    )
+    assert r.status_code == 403
+
+
 def test_stream_reveals_not_found_when_unenforced(client, tmp_data_dir):
     """Dev (no secret): the descriptive 400 is fine — no auth to oracle around."""
     r = client.post("/api/stream", json={"action": "look", "sessionId": SESSION_ID})

@@ -302,6 +302,10 @@ async def init_world(body: dict):
 
         logger.info(f"init_world — provisioned world={canonical[:8]} at {repo_path!s}")
         return {"status": "initialized", "world_id": canonical}
+    except HTTPException:
+        # A 422/403 from _world_repo_path (invalid id / path traversal) is control
+        # flow — propagate it, don't mask it as a generic 500 (#4 review).
+        raise
     except Exception as e:
         raise _git_error_response(f"init_world failed for {canonical}", e)
     finally:
@@ -491,6 +495,8 @@ async def commit_snapshot(body: dict):
                 "detail": f"Repository not found at {missing}.",
             },
         )
+    except HTTPException:
+        raise  # propagate control-flow 4xx (e.g. _world_repo_path 422/403), not 500
     except Exception as e:
         raise _git_error_response("commit_snapshot failed", e)
     finally:
@@ -520,6 +526,8 @@ async def list_snapshots(
                 }
             )
         return {"snapshots": results}
+    except HTTPException:
+        raise  # propagate control-flow 4xx (e.g. _world_repo_path 422/403), not 500
     except Exception as e:
         raise _git_error_response("list_snapshots failed", e)
 

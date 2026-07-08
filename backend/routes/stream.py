@@ -226,16 +226,17 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
     )
     if session is None or not session.active:
         # Sibling-path invariant (red-team #6): when token enforcement is ON, a
-        # missing/inactive session must be INDISTINGUISHABLE from an unauthorized
-        # one — else this route is an existence oracle for session_ids (the lookup
-        # ran before the token check). Return the same 401 an un-tokened request
-        # gets; only reveal not-found/inactive in the clear when enforcement is off
-        # (shared-tree dev). Matches /api/world's token-before-lookup discipline.
+        # missing/inactive session must be INDISTINGUISHABLE from an existing one
+        # the caller isn't authorized for — else this route is an existence oracle
+        # for session_ids (the lookup ran before the token check). Run the SAME
+        # token check a found session would, against a sentinel world_id ("") that
+        # no real token verifies against: no token → 401, any other token → 403 —
+        # exactly mirroring enforce_world_token on a real world, so the response is
+        # identical whether or not the session exists. This covers the bogus-token
+        # case, not just no-token (codex review). Only reveal not-found/inactive in
+        # the clear when enforcement is off (shared-tree dev, no auth to leak).
         if enforcement_enabled(settings):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="missing world session token",
-            )
+            enforce_world_token(request, settings, "")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Session not found or inactive",
