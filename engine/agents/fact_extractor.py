@@ -69,6 +69,15 @@ _SLUG_SANITIZE = re.compile(r"[^a-zA-Z0-9_-]+")
 _LOG_ENTRY_MIN = 10
 _LOG_ENTRY_MAX = 4000
 
+# Control/RTL/zero-width bytes the schema now rejects in log_entry (red-team #1c).
+# Scrub them from the narrative-derived log_entry BEFORE building the payload so
+# a legit turn whose narrative carries a stray control byte isn't rejected by the
+# tightened schema. Mirrors schemas/apply_world_update.schema.json #/$defs/
+# noControlChars and mcp-servers/fs-manager/server.py::_CONTROL_BYTE_RE.
+_CONTROL_BYTE_RE = re.compile(
+    r"[\x00-\x08\x0b-\x1f\x7f\u202a-\u202e\u2066-\u2069\u200b-\u200d\ufeff]"
+)
+
 
 @dataclass
 class FactExtractResult:
@@ -319,11 +328,12 @@ def _build_updates(hint: dict, errors: list[str]) -> list[dict]:
 def _build_log_entry(narrative: str, session_id: str, turn_number: int) -> str:
     """Derive a schema-compliant log_entry from the narrative.
 
-    Schema requires minLength=10, maxLength=4000. Short narratives are
-    prefixed with a session/turn tag. Long narratives are truncated
-    with an ellipsis.
+    Schema requires minLength=10, maxLength=4000 and (red-team #1c) no control/
+    RTL/zero-width bytes. Short narratives are prefixed with a session/turn tag;
+    long ones are truncated. Control bytes are scrubbed first so the schema's
+    self-validation doesn't reject a turn whose narrative carried a stray one.
     """
-    entry = narrative.strip() or "(no narrative emitted)"
+    entry = _CONTROL_BYTE_RE.sub("", narrative).strip() or "(no narrative emitted)"
     if len(entry) < _LOG_ENTRY_MIN:
         prefix_source = session_id[:8] if session_id else "session"
         entry = f"[session {prefix_source} turn {turn_number}] {entry}".strip()
