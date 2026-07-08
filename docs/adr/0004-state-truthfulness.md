@@ -32,9 +32,10 @@ without a ratified principle tying them together:
   receives a constrained ROLL RESULT block and is told to *narrate, not decide*.
   Its own framing: "the first mechanical layer that gives ADR-0004 real teeth."
 - The **fs-manager protected-field guard** (red-team #1, PR #182) enforces a
-  write-boundary slice: `unique_id`/`world_seed`/`namespace`/`created_at`/`canon`/
-  `core_faction_id` are immutable to any LLM-authored payload — a write that sets
-  one is rejected (403) and fed back, never applied.
+  write-boundary slice: the identity fields (`unique_id`, `world_seed`,
+  `namespace`, `created_at`, `canon`, `core_faction_id`) are immutable to any
+  LLM-authored payload — a write that sets one is rejected (403) and fed back,
+  never applied.
 - **Everywhere else is still prompt-honored only.** RFC-0009's `level`/`stats`
   "sovereignty wall" is enforced by asking the DM nicely; most of combat, all of
   magic, weather, faction, and time are narrative-trusted. RFC-0009 explicitly
