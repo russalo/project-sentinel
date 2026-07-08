@@ -1,6 +1,6 @@
 # RFC 0016 — Staging as true pre-prod (own backend + world store + mock-DM acceptance harness)
 
-**Status:** Accepted
+**Status:** Implemented
 **Date:** 2026-07-04
 **Author:** Russell Pfister
 **Implements:** RFC-0015 § Out of Scope — a staging-own backend
@@ -94,9 +94,19 @@ Repoint `sentinel-staging.dev.russalo.com/alpha/api/*` → `:8101`.
       (`status == "dead"` persisted), proving mock DM → fact_extractor → fs-manager
       dispatch → death_stakes end-to-end. `just stage-candidate <ref>` checks the
       staging worktree out at a candidate ref; the staging units run from it. *(slice 3)*
-- [ ] tailnet repoints `sentinel-staging.dev/alpha/api/*` → :8101.
-- [ ] A staging world appears ONLY in staging's `/api/worlds`; opens with content
-      (once the edge repoint lands).
+- [x] tailnet repoints `sentinel-staging.dev.russalo.com/alpha/api/*` + `/alpha/healthz` →
+      :8101 (done 2026-07-08, block-scoped, invariant held). *(bring-up)*
+- [x] A staging world appears ONLY in staging's `/api/worlds`, not prod's —
+      verified on the live trio (session on :8101 → staging store; prod untouched
+      5→5) and at the edge (`/api/worlds` = staging, `POST edge == :8101`). *(bring-up)*
+
+**Bring-up note (2026-07-08):** the staging backend runs from the worktree
+(WorkingDirectory), which lacks the gitignored `infrastructure/.env`.
+`backend/config.py` resolves `ENV_PATH` relative to its own file location
+(`Path(__file__)…` = the worktree root), so it looked for `<worktree>/infrastructure/.env`
+and raised when missing. systemd's `EnvironmentFile=` already supplies the env, so
+the fix is `SENTINEL_SKIP_ENV_CHECK=1` in `.env.staging` (now in the committed
+`.env.staging.example`). **RFC-0016 COMPLETE.**
 
 ## Out of Scope
 - CI-driven staging deploys.
