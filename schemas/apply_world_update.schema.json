@@ -80,6 +80,16 @@
             "then": {
               "properties": { "data": { "type": ["object", "array"] } }
             }
+          },
+          {
+            "description": "a .md (lore) target ⇒ string data — symmetric with the .json rule, so a dict/array isn't json.dumps'd into a Markdown doc regardless of operation (sibling-path completeness).",
+            "if": {
+              "properties": { "target_file": { "pattern": "\\.md$" } },
+              "required": ["target_file"]
+            },
+            "then": {
+              "properties": { "data": { "type": "string" } }
+            }
           }
         ]
       }

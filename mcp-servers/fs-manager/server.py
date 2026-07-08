@@ -466,6 +466,20 @@ def execute_update(
                 "detail": "a .json target requires object or array data, not a scalar.",
             },
         )
+    if (
+        target_file.endswith(".md")
+        and operation in ("create", "update")
+        and not isinstance(data, str)
+    ):
+        # Symmetric with the .json rule — don't json.dumps a dict/array into a
+        # Markdown doc (append is string-checked in its own branch).
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "VALIDATION_ERROR",
+                "detail": "a .md target requires string data.",
+            },
+        )
 
     if operation == "create":
         if abs_path.exists():

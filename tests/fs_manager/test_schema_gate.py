@@ -121,6 +121,14 @@ def test_execute_update_scrubs_control_bytes_in_append(fs_manager_module):
     assert "cleantext" in written
 
 
+def test_execute_update_rejects_dict_to_md(fs_manager_module):
+    # Symmetric with scalar→.json (gemini): a dict to a .md target is 422, not a
+    # json.dumps into the Markdown doc.
+    with pytest.raises(HTTPException) as exc:
+        fs_manager_module.execute_update(MD, "update", {"not": "markdown"})
+    assert exc.value.status_code == 422
+
+
 def test_execute_update_scrubs_control_bytes_in_create_md(fs_manager_module):
     # Sibling-path gap (review of #1c): create/update of a .md target with a
     # control-byte string is scrubbed too, not only append.

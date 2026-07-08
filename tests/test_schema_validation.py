@@ -123,6 +123,13 @@ def test_schema_rejects_control_bytes_in_create_md_string():
         _validate(_wu(_MD, "create", "bad " + chr(0x202E) + " x"), WORLD_UPDATE_SCHEMA)
 
 
+def test_schema_rejects_dict_data_on_md_target():
+    # Symmetric completeness (gemini): a .md target ⇒ string data, so a dict isn't
+    # json.dumps'd into a Markdown doc.
+    with pytest.raises(jsonschema.ValidationError):
+        _validate(_wu(_MD, "update", {"not": "markdown"}), WORLD_UPDATE_SCHEMA)
+
+
 # ── community_manifest schema tests ───────────────────────────────────────────
 
 
