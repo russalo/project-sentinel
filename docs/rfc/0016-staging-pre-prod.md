@@ -101,10 +101,12 @@ Repoint `sentinel-staging.dev.russalo.com/alpha/api/*` → `:8101`.
       5→5) and at the edge (`/api/worlds` = staging, `POST edge == :8101`). *(bring-up)*
 
 **Bring-up note (2026-07-08):** the staging backend runs from the worktree
-(WorkingDirectory), whose CWD lacks `infrastructure/.env`; the app's
-`config._load_env()` resolves that path relative to CWD and raised. Since systemd's
-`EnvironmentFile=` already supplies the env, the fix is `SENTINEL_SKIP_ENV_CHECK=1`
-in `.env.staging` (now in the committed `.env.staging.example`). **RFC-0016 COMPLETE.**
+(WorkingDirectory), which lacks the gitignored `infrastructure/.env`.
+`backend/config.py` resolves `ENV_PATH` relative to its own file location
+(`Path(__file__)…` = the worktree root), so it looked for `<worktree>/infrastructure/.env`
+and raised when missing. systemd's `EnvironmentFile=` already supplies the env, so
+the fix is `SENTINEL_SKIP_ENV_CHECK=1` in `.env.staging` (now in the committed
+`.env.staging.example`). **RFC-0016 COMPLETE.**
 
 ## Out of Scope
 - CI-driven staging deploys.
