@@ -116,10 +116,14 @@ this slice **preserves** those DM-written derived fields rather than stripping t
 - NPC progression / stat authority (decision 4 — a known future slice).
 - **Entity-identity hardening** (red-team follow-up) — an imposter entity that
   sorts before the real PC can *shadow* it in `find_player_character`'s
-  first-`role=="player"` resolution (direct-MCP/loopback only, not LLM-reachable;
-  shared with death-stakes). This slice neutralizes the level/stats *grant* on any
-  PC-matching op and fails safe on an unresolvable PC, but the shadowing + the
-  `None` fail-open want a stable-identity PC resolver — its own slice (BACKLOG).
+  first-`role=="player"` resolution. **Correction (codex, PR #186): this IS
+  LLM-reachable** — `fact_extractor` passes `role` through and `update`-upserts to a
+  new slug, so a hallucinated `<world_update>` can create a `role:"player"` imposter;
+  since its name/slug differ from the session PC, `enforce_progression` doesn't match
+  it, so the shadow also **bypasses this RFC's level/stats invariant**. Shared with
+  death-stakes. This slice enforces on the *session PC's own* entity + fails safe on
+  an unresolvable PC, but the shadow + the `None` fail-open need a stable-identity PC
+  resolver + a DM-`role:"player"` guard — its own slice (BACKLOG, elevated priority).
 - fs-manager entity-schema *shape* enforcement (the authored-but-unenforced
   `four-stat-v1/schema.json`, RFC-0006 OQ1) — validates shape, not authorization.
 - XP/point tracking (rejected in RFC-0009).

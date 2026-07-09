@@ -257,6 +257,28 @@ in `GEMINI.md`.
   `world_id` advisory. *(`_require_world_id_when_isolated` in both MCP servers.)*
 - **Determinism where it's asserted** — anything claimed deterministic that
   depends on dict/set iteration, time, randomness, or filesystem ordering.
+- **State-truthfulness / engine-authoritative fields (ADR-0004)** — the engine,
+  not the DM, owns mechanically-determined state (a rolled death; `level`/`stats`
+  on an enacted level-up). A DM `<world_update>` that overrides a committed outcome
+  must be caught. Enforcement is **(a) dispatch-recompute-and-inject** (death-stakes
+  RFC-0014, progression RFC-0017) or **(b) the fs-manager write-boundary guard**
+  (unconditionally-immutable identity fields). **LESSON:** a write-boundary guard
+  (b) CANNOT enforce a *conditionally*-writable field — the authorized and
+  hallucinated writes are **byte-identical `<world_update>` ops** (`fact_extractor`
+  emits `update`-only, so the LLM path can't even vary the op shape) and the field
+  may be nested/turn-context-dependent — so those take mechanism (a). Placement
+  contract: **engine computes → backend injects at dispatch → fs-manager guards**;
+  never inside `apply_world_update` (no world state there) or an engine agent.
+- **Entity-identity shadowing (LLM-reachable)** — the PC is resolved as the FIRST
+  `role=="player"` entity in glob order (`find_player_character`), so an imposter
+  entity file that sorts earlier shadows the real PC. **This IS on the LLM path**
+  (codex, PR #186): `fact_extractor` passes `role` through (`_strip_action` strips
+  only `action`) and its `update` op upserts to a *new* slug, so a hallucinated
+  `<world_update>` introducing e.g. `0-imposter` with `role:"player"` shadows the PC
+  — and because it's a different name/slug than the session PC, `enforce_progression`
+  doesn't match it, so it also **bypasses RFC-0017's level/stats invariant**. Shared
+  by progression + death-stakes. Wants a stable-identity PC resolver + a guard on
+  DM-created `role:"player"` entities; filed as an entity-identity BACKLOG slice.
 - **Stale-cache-after-redeploy** — a cached `index.html` pointing at a purged
   hashed bundle → blank page.
 - **Provider/API param compat** (`max_completion_tokens` vs `max_tokens`);
@@ -634,6 +656,10 @@ the separation before editing.
 - `just test-schemas` — Python schema validation only (`pytest tests/`)
 - Single Python test: `pytest tests/path/to/test_file.py::test_name`
 - Single JS package: `pnpm --filter <pkg-name> test`
+- **CI's `Lint Python` job runs BOTH `ruff check` AND `ruff format --check`** over
+  `engine/ backend/ tests/ scripts/ mcp-servers/`. Run **`ruff format`** (not just
+  `ruff check`) before pushing — the lint job fails on a formatting diff even when
+  the linter is clean (burned a review round 2026-07-08).
 
 **Session lifecycle**
 - `just start-session` — fetch, branch status, open backlog items, structure check
@@ -664,6 +690,8 @@ The two nodes communicate over a Tailscale mesh in production; locally they run 
 3. Payload validated against `schemas/apply_world_update.schema.json` (Draft 2020-12). **Invalid payloads are rejected and fed back to the DM** — schema failure is a first-class control-flow path, not an error case.
 4. Dispatcher calls fs-manager to apply state changes, then git-sync to commit
 5. Next turn reads the updated `data/state/*.json` directly (no cache layer)
+
+Per **[ADR 0004](docs/adr/0004-state-truthfulness.md)** (state truthfulness, Accepted 2026-07-08), the engine — not the DM — owns *mechanically-determined* state, and the DM can't override a committed mechanical outcome. Between steps 2 and 4 the backend orchestration (`backend/routes/stream.py`) recomputes engine-owned outcomes from trusted inputs + stored state and **injects them authoritatively over the DM's payload** — the RFC-0014 death-stakes and RFC-0017 progression (`level`/`stats`) mechanism. See the "State-truthfulness / engine-authoritative fields" hunt-list entry for the two enforcement mechanisms + the placement contract.
 
 **Hybrid storage under `data/`** — human-readable Markdown for lore, machine-readable JSON for state, everything under git. Namespace separation is enforced at write time by fs-manager:
 - `data/{lore,state}/core/` — Core team only; writes require the trusted `?namespace=core` query param the backend sets on dispatch (`engine.apply_world_update(namespace=…)`), **not** a field in the LLM-parsed body (red-team #7). The loopback boundary (ADR 0003) is the control for direct fs-manager callers.
