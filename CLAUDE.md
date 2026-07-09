@@ -269,11 +269,16 @@ in `GEMINI.md`.
   may be nested/turn-context-dependent — so those take mechanism (a). Placement
   contract: **engine computes → backend injects at dispatch → fs-manager guards**;
   never inside `apply_world_update` (no world state there) or an engine agent.
-- **Entity-identity shadowing** — the PC is resolved as the FIRST `role=="player"`
-  entity in glob order (`find_player_character`), so an imposter entity file that
-  sorts earlier shadows the real PC (direct-MCP/loopback only — `fact_extractor` is
-  `update`-only; shared by progression + death-stakes). Prefer a stable-identity PC
-  resolver; filed as an entity-identity BACKLOG slice.
+- **Entity-identity shadowing (LLM-reachable)** — the PC is resolved as the FIRST
+  `role=="player"` entity in glob order (`find_player_character`), so an imposter
+  entity file that sorts earlier shadows the real PC. **This IS on the LLM path**
+  (codex, PR #186): `fact_extractor` passes `role` through (`_strip_action` strips
+  only `action`) and its `update` op upserts to a *new* slug, so a hallucinated
+  `<world_update>` introducing e.g. `0-imposter` with `role:"player"` shadows the PC
+  — and because it's a different name/slug than the session PC, `enforce_progression`
+  doesn't match it, so it also **bypasses RFC-0017's level/stats invariant**. Shared
+  by progression + death-stakes. Wants a stable-identity PC resolver + a guard on
+  DM-created `role:"player"` entities; filed as an entity-identity BACKLOG slice.
 - **Stale-cache-after-redeploy** — a cached `index.html` pointing at a purged
   hashed bundle → blank page.
 - **Provider/API param compat** (`max_completion_tokens` vs `max_tokens`);
