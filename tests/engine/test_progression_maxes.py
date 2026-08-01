@@ -178,6 +178,42 @@ def test_will_level_up_grows_pool_not_hp_for_caster():
     assert sheet["magic_pool"] == {"current": 16, "max": 16}  # 8×2, +2 on 14
 
 
+def test_non_governing_stat_level_up_does_not_heal():
+    # codex: a Body-6 Warrior with a stale-low stored max (20/40) who raises MIND
+    # (not Body) must NOT gain HP — reconcile max to 48 but keep current 20.
+    pc = _pc(
+        {"body": 6, "mind": 5, "heart": 5, "will": 5}, hp={"current": 20, "max": 40}
+    )
+    payload = _payload([_op()])
+    progression.enforce_progression(
+        payload,
+        stored_characters=[pc],
+        player_name="Kael",
+        choice={"stat": "mind", "to_level": 3},
+        class_rules=WARRIOR,
+    )
+    hp = _sheet(payload)["hp"]
+    assert hp["max"] == 48 and hp["current"] == 20  # reconciled, not healed
+
+
+def test_body_level_up_on_stale_max_heals_only_by_factor():
+    # A stale 20/40 Warrior raises BODY 6→7: max → 56, but current gains exactly the
+    # factor (8) from the raised point, NOT the full stale reconciliation. 20 → 28.
+    pc = _pc(
+        {"body": 6, "mind": 5, "heart": 5, "will": 5}, hp={"current": 20, "max": 40}
+    )
+    payload = _payload([_op()])
+    progression.enforce_progression(
+        payload,
+        stored_characters=[pc],
+        player_name="Kael",
+        choice={"stat": "body", "to_level": 3},
+        class_rules=WARRIOR,
+    )
+    hp = _sheet(payload)["hp"]
+    assert hp["max"] == 56 and hp["current"] == 28  # +8 (one Body × factor)
+
+
 def test_non_caster_gets_no_magic_pool():
     pc = _pc(
         {"body": 7, "mind": 5, "heart": 6, "will": 4}, hp={"current": 56, "max": 56}
