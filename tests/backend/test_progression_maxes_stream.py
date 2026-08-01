@@ -101,13 +101,21 @@ def test_free_text_class_leaves_dm_max_end_to_end(
     # hp.max write survives untouched through the whole dispatch path.
     _prime_session(tmp_data_dir, SESSION_FAILSAFE)
     _prime_pc(tmp_data_dir, pc_class="Proctor", body=6, hp={"current": 48, "max": 48})
+    world_update = json.dumps(
+        {
+            "characters": [
+                {
+                    "name": "Bran",
+                    "action": "upsert",
+                    "module_data": {
+                        "character_sheet": {"hp": {"current": 60, "max": 60}}
+                    },
+                }
+            ]
+        }
+    )
     fake_openai.chat.completions.set_stream_tokens(
-        [
-            "You feel hardier. ",
-            '<world_update>{"characters":[{"name":"Bran","action":"upsert",'
-            '"module_data":{"character_sheet":{"hp":{"current":60,"max":60}}}}]}'
-            "</world_update>",
-        ]
+        ["You feel hardier. ", f"<world_update>{world_update}</world_update>"]
     )
 
     resp = client.post(

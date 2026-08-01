@@ -72,17 +72,26 @@ into the nearest archetype at establishment, stored as an engine-pinned
 - **`engine/progression.py`** — `authoritative_maxes(stats, class_rules)` (pure:
   `hp_max = Body × factor`; `magic_pool_max = Will × 2` for casters; None where
   unresolvable). `enforce_progression` gains a `class_rules` kwarg and, when a max
-  resolves, forces `hp.max` / `magic_pool.max` on every PC op, bumping `current`
-  by the growth delta (or seeding `current = max` on first establishment) via
-  `_apply_max`; a DM-inflated max is overridden with a player notice. Deep-merge
-  preserves currents + siblings; the maxes computed once against the stored sheet
-  so multiple same-turn PC ops stay deterministic.
+  resolves, forces `hp.max` / `magic_pool.max` on every PC op. The `current` is
+  narrative-owned: `_apply_max` raises it by the growth delta **only on an enacted
+  level-up** (`grew`) — a plain turn that merely reconciles a stale max, or an
+  establishment turn that also took damage, keeps the DM's `current` (a missing
+  `current` is seeded to `max` so a max never ships without one). A DM-inflated max
+  is overridden with a player notice; a *resolved* non-caster's DM-written
+  `magic_pool` is dropped from the op (a free-text/unresolved class is left alone).
+  Maxes computed once against the stored sheet so multiple same-turn PC ops stay
+  deterministic.
 - **`backend/routes/stream.py`** — resolves the PC's class rules once, threads
   them into the every-turn `enforce_progression` and (on a level-up) the SSE hint
   mirror, so the grown maxes show live.
-- **Prompts** — the progression prompt drops the derived-max math; combat + magic
-  drop the *player's* max-derivation (keep NPC guidance + all narrative
-  machinery); the class prompt notes the player's `hp.max` is engine-owned.
+- **Prompts** — the DM still **establishes** the player's `hp.max`/`magic_pool.max`
+  at creation (Body × factor / Will × 2) but must **not change them afterward** —
+  the engine maintains them. This keeps *every* PC supplied with a max (the intro
+  dispatch at `/api/session/new` runs no enforcement; and a free-text class the
+  engine can't derive relies on the DM's established value), while the engine owns
+  maintenance + growth for a known class. NPC hp/pool stay DM-authored throughout.
+  A free-text class therefore gets a stable established max but no engine-driven
+  level-up growth — Slice 1c (archetype mapping) closes that.
 
 ## Placement contract (ADR-0004)
 

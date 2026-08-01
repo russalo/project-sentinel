@@ -216,7 +216,12 @@ def _mirror_progression_to_hint(
     so a level-up's vitality shows live instead of only after hydration — the same
     UI-truthfulness the death mirror provides. Adds a PC entry if the DM emitted
     none. In-place; tolerant of a malformed hint. A None max is left untouched
-    (engine doesn't own it — fail-safe class)."""
+    (engine doesn't own it — fail-safe class).
+
+    The grown ``max`` is only mirrored into a pool the DM ALREADY emitted (which
+    carries its ``current``) — never a bare ``{max}``-only pool, which would render
+    a vitality bar with no fill until hydration (codex P2). If the DM emitted no
+    pool this turn, the committed max reaches the UI a beat later via hydration."""
     pc = _locate_pc_in_hint(hint, player_name, create=True)
     if pc is None:
         return
@@ -227,14 +232,10 @@ def _mirror_progression_to_hint(
         if isinstance(sheet, dict):
             sheet["stats"] = dict(stats)
             hp_max, mp_max = maxes
-            if hp_max is not None:
-                hp = sheet.setdefault("hp", {})
-                if isinstance(hp, dict):
-                    hp["max"] = hp_max
-            if mp_max is not None:
-                mp = sheet.setdefault("magic_pool", {})
-                if isinstance(mp, dict):
-                    mp["max"] = mp_max
+            if hp_max is not None and isinstance(sheet.get("hp"), dict):
+                sheet["hp"]["max"] = hp_max
+            if mp_max is not None and isinstance(sheet.get("magic_pool"), dict):
+                sheet["magic_pool"]["max"] = mp_max
 
 
 @router.post("/stream")

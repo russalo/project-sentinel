@@ -63,22 +63,25 @@ def _to_int(value: Any, default: int = 0) -> int:
 
 
 def _apply_max(
-    pool: Any, new_max: int, delta: int, stored_pool: dict[str, Any]
+    pool: Any, new_max: int, delta: int, stored_pool: dict[str, Any], *, grew: bool
 ) -> dict[str, Any]:
-    """Force a ``{current, max}`` vitality pool's ``max`` and grant growth to
-    ``current`` (RFC-0018). Returns the pool dict.
+    """Force a ``{current, max}`` vitality pool's ``max`` and, on a level-up that
+    grows it, raise ``current`` by the same delta (RFC-0018). Returns the pool dict
+    (``pool`` is the op's merged pool — stored ⊕ this turn's DM write).
 
     - ``max`` := ``new_max`` (engine-owned).
-    - Growth (``delta > 0`` — a raised Body/Will, or first establishment from a
-      stored max of 0): ``current`` := stored ``current`` + ``delta`` so the new
-      vitality is available (seeded to ``new_max`` when nothing was stored).
-    - No growth (``delta <= 0``): ``current`` is left as-is — narrative-owned
-      (a damage / casting turn keeps the DM's ``current``). Only a missing
-      ``current`` is seeded to ``new_max`` so a max never ships without one.
+    - **Growth** (``grew`` and ``delta > 0`` — an enacted level-up that raised the
+      governing stat): ``current`` := the *stored* (committed) current + ``delta``,
+      so a wounded PC keeps their wound (30/56 → 38/64), not a free heal.
+    - **Otherwise** ``current`` is narrative-owned and left exactly as the DM wrote
+      it — a damage / casting turn, or a plain turn that merely reconciles a stale
+      max, must not touch ``current`` (codex P1). Only a genuinely *absent* current
+      (first establishment) is seeded to ``new_max`` so a max never ships without
+      one; a DM-written current on that establishment turn (e.g. damage) is kept.
     """
     pool = _as_dict(pool)
     pool["max"] = new_max
-    if delta > 0:
+    if grew and delta > 0:
         stored_current = stored_pool.get("current")
         pool["current"] = (
             _to_int(stored_current) + delta if stored_current is not None else new_max
@@ -257,6 +260,12 @@ def enforce_progression(
     mp_delta = (
         new_mp_max - _to_int(stored_mp.get("max", 0)) if new_mp_max is not None else 0
     )
+    # A current-bump belongs only to an enacted level-up (``grew``); a plain turn
+    # that merely reconciles a stale max must leave the narrative current alone.
+    grew = bool(_as_dict(choice))
+    # A *resolved* non-caster (class rules present, magic access falsy) — distinct
+    # from an unresolved free-text class (class_rules None), which fails safe.
+    known_non_caster = isinstance(class_rules, dict) and not class_rules.get("magic")
 
     # Deep-copy: `pc` is an element of the caller's stored_characters
     # (world_context.characters). Merging/mutating below must not write back into
@@ -317,13 +326,22 @@ def enforce_progression(
         sheet = _as_dict(merged.get("character_sheet"))
         sheet["stats"] = dict(auth_stats)
         # RFC-0018: force the derived maxes the engine owns (skip a None — that max
-        # stays DM-authored, fail-safe). `current` growth rides `_apply_max`.
+        # stays DM-authored, fail-safe). `current` growth rides `_apply_max`; `grew`
+        # (an enacted level-up) gates it so a plain / establishment turn never
+        # rewrites the DM's narrative current.
         if new_hp_max is not None:
-            sheet["hp"] = _apply_max(sheet.get("hp"), new_hp_max, hp_delta, stored_hp)
+            sheet["hp"] = _apply_max(
+                sheet.get("hp"), new_hp_max, hp_delta, stored_hp, grew=grew
+            )
         if new_mp_max is not None:
             sheet["magic_pool"] = _apply_max(
-                sheet.get("magic_pool"), new_mp_max, mp_delta, stored_mp
+                sheet.get("magic_pool"), new_mp_max, mp_delta, stored_mp, grew=grew
             )
+        elif known_non_caster:
+            # A resolved non-caster (Warrior/Rogue) owns no pool — drop a DM-written
+            # one from this op so it can't land (codex P2). NOT done for an
+            # unresolved free-text class (class_rules None → fail-safe, leave it be).
+            sheet.pop("magic_pool", None)
         merged["character_sheet"] = sheet
         data["module_data"] = merged
         data["level"] = auth_level

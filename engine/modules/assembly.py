@@ -60,19 +60,24 @@ CANONICAL_SUBSYSTEM_ORDER: tuple[str, ...] = (
 )
 
 
+def _active_modules(modules: dict[str, str] | None) -> dict[str, str]:
+    """A world's active module set: its overrides layered on ``DEFAULT_MODULES``
+    (a non-dict/absent map falls back to the defaults). The single source of the
+    overlay rule shared by ``build_dm_prompt`` and ``resolve_active_module``."""
+    overrides = modules if isinstance(modules, dict) else {}
+    return {**DEFAULT_MODULES, **overrides}
+
+
 def resolve_active_module(modules: dict[str, str] | None, subsystem: str) -> str | None:
     """The module name filling ``subsystem`` for a world's ``modules`` map.
 
-    Layers the world's overrides on ``DEFAULT_MODULES`` exactly as
-    ``build_dm_prompt`` does (a malformed/absent map falls back to the
-    defaults), so a world that never named a ``class`` module still resolves
-    ``core/four-class-fantasy-v1``. Returns None only when the resolved slot
-    is empty (an explicit override to "" clears a subsystem). Used by the
-    engine to find a world's class module for RFC-0018 rules-data lookup.
+    Layers the world's overrides on ``DEFAULT_MODULES`` (so a world that never
+    named a ``class`` module still resolves ``core/four-class-fantasy-v1``).
+    Returns None only when the resolved slot is empty (an explicit override to ""
+    clears a subsystem). Used by the engine to find a world's class module for
+    RFC-0018 rules-data lookup.
     """
-    overrides = modules if isinstance(modules, dict) else {}
-    active = {**DEFAULT_MODULES, **overrides}
-    name = active.get(subsystem)
+    name = _active_modules(modules).get(subsystem)
     return name if isinstance(name, str) and name else None
 
 
@@ -103,8 +108,7 @@ def build_dm_prompt(modules: dict[str, str] | None = None) -> str:
     explicitly. A non-dict ``modules`` (malformed config) falls back to
     the defaults rather than crashing. (codex P2 + gemini-medium, PR #144.)
     """
-    overrides = modules if isinstance(modules, dict) else {}
-    active = {**DEFAULT_MODULES, **overrides}
+    active = _active_modules(modules)
     fragments: list[str] = []
     for subsystem in CANONICAL_SUBSYSTEM_ORDER:
         module_name = active.get(subsystem)

@@ -207,6 +207,87 @@ def test_first_establishment_seeds_current_to_max():
     assert _sheet(payload)["hp"] == {"current": 40, "max": 40}  # 5×8, seeded full
 
 
+def test_establishment_with_damage_keeps_dm_current():
+    # First-combat establishment that ALSO took damage: the engine sets max but
+    # must keep the DM's wounded current, not seed full (codex P1).
+    pc = _pc({"body": 5, "mind": 5, "heart": 5, "will": 5})  # no hp block stored
+    payload = _payload([_op(module_data={"character_sheet": {"hp": {"current": 20}}})])
+    progression.enforce_progression(
+        payload,
+        stored_characters=[pc],
+        player_name="Kael",
+        choice=None,
+        class_rules=WARRIOR,
+    )
+    assert _sheet(payload)["hp"] == {"current": 20, "max": 40}  # DM current kept
+
+
+def test_stale_max_reconciled_without_healing():
+    # A plain damage turn where the stored max is stale/low (40 < Body6×8=48):
+    # the engine reconciles max → 48 but must NOT bump the DM's damaged current.
+    pc = _pc(
+        {"body": 6, "mind": 5, "heart": 5, "will": 5}, hp={"current": 30, "max": 40}
+    )
+    payload = _payload([_op(module_data={"character_sheet": {"hp": {"current": 25}}})])
+    progression.enforce_progression(
+        payload,
+        stored_characters=[pc],
+        player_name="Kael",
+        choice=None,
+        class_rules=WARRIOR,
+    )
+    hp = _sheet(payload)["hp"]
+    assert hp["max"] == 48 and hp["current"] == 25  # reconciled, not healed
+
+
+def test_known_non_caster_magic_pool_stripped():
+    # A resolved Warrior owns no pool: a DM-written magic_pool is dropped from the
+    # op so it can't land (codex P2).
+    pc = _pc(
+        {"body": 7, "mind": 5, "heart": 6, "will": 4}, hp={"current": 56, "max": 56}
+    )
+    payload = _payload(
+        [
+            _op(
+                module_data={
+                    "character_sheet": {"magic_pool": {"current": 5, "max": 10}}
+                }
+            )
+        ]
+    )
+    progression.enforce_progression(
+        payload,
+        stored_characters=[pc],
+        player_name="Kael",
+        choice=None,
+        class_rules=WARRIOR,
+    )
+    assert "magic_pool" not in _sheet(payload)
+
+
+def test_free_text_class_does_not_strip_magic_pool():
+    # An UNRESOLVED free-text class must NOT strip a DM-written pool (fail-safe):
+    # the engine doesn't know it's a non-caster.
+    pc = _pc({"body": 6, "mind": 5, "heart": 5, "will": 6})
+    payload = _payload(
+        [
+            _op(
+                module_data={
+                    "character_sheet": {"magic_pool": {"current": 8, "max": 12}}
+                }
+            )
+        ]
+    )
+    progression.enforce_progression(
+        payload,
+        stored_characters=[pc],
+        player_name="Kael",
+        choice=None,
+        class_rules=None,
+    )
+    assert _sheet(payload)["magic_pool"] == {"current": 8, "max": 12}  # preserved
+
+
 # ── end-to-end chain: real class module resolution → enforcement ──────────────
 
 

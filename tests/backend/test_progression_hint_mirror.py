@@ -37,20 +37,52 @@ def test_mirror_tolerates_malformed_hint():
     _mirror_progression_to_hint({"characters": "oops"}, "Kael", 3, {})  # no raise
 
 
-def test_mirror_carries_derived_maxes():
-    # RFC-0018: a level-up that grows Body/Will must surface the new hp.max /
-    # magic_pool.max live, not only after hydration.
+def test_mirror_enriches_existing_pool_with_grown_max():
+    # RFC-0018: when the DM emits a pool (carrying current), the mirror adds the
+    # grown hp.max / magic_pool.max so the level-up's vitality shows live.
+    hint = {
+        "characters": [
+            {
+                "name": "Kael",
+                "role": "player",
+                "level": 2,
+                "module_data": {
+                    "character_sheet": {
+                        "hp": {"current": 64, "max": 56},
+                        "magic_pool": {"current": 16, "max": 14},
+                    }
+                },
+            }
+        ]
+    }
+    _mirror_progression_to_hint(hint, "Kael", 3, {"body": 8}, (64, 16))
+    sheet = hint["characters"][0]["module_data"]["character_sheet"]
+    assert sheet["hp"] == {"current": 64, "max": 64}  # current preserved, max grown
+    assert sheet["magic_pool"] == {"current": 16, "max": 16}
+
+
+def test_mirror_never_emits_partial_maxonly_pool():
+    # When the DM emitted no pool, the mirror must NOT create a bare {max}-only pool
+    # (it would render an empty vitality bar until hydration; codex P2).
     hint = {"characters": [{"name": "Kael", "role": "player", "level": 2}]}
     _mirror_progression_to_hint(hint, "Kael", 3, {"body": 8}, (64, 16))
     sheet = hint["characters"][0]["module_data"]["character_sheet"]
-    assert sheet["hp"]["max"] == 64
-    assert sheet["magic_pool"]["max"] == 16
+    assert "hp" not in sheet and "magic_pool" not in sheet
 
 
 def test_mirror_skips_none_maxes_fail_safe():
-    # A free-text class (no engine-owned max) → the mirror leaves hp/magic_pool
-    # untouched rather than writing a null max.
-    hint = {"characters": [{"name": "Kael", "role": "player", "level": 2}]}
+    # A free-text class (no engine-owned max) → the mirror leaves an existing pool's
+    # max untouched rather than writing a null.
+    hint = {
+        "characters": [
+            {
+                "name": "Kael",
+                "role": "player",
+                "level": 2,
+                "module_data": {"character_sheet": {"hp": {"current": 30, "max": 40}}},
+            }
+        ]
+    }
     _mirror_progression_to_hint(hint, "Kael", 3, {"body": 8}, (None, None))
     sheet = hint["characters"][0]["module_data"]["character_sheet"]
-    assert "hp" not in sheet and "magic_pool" not in sheet
+    assert sheet["hp"] == {"current": 30, "max": 40}  # untouched

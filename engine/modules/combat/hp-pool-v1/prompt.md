@@ -7,11 +7,12 @@ Every combat-capable character has hit points under
 `max = Body × class_HP_factor` (Warrior ×8, Rogue ×6, Mage ×4, Cleric ×6).
 A Body-6 Warrior has 48 HP; a Body-3 Mage has 12.
 
-For the PLAYER character the engine sets and owns `hp.max` (from Body + the
-class factor) — **do not write the player's `hp.max`**; just drive
-`current` (damage/healing) as below. For an NPC, set hp yourself the first
-time they enter combat (or when first established), grounded in their Body
-and threat. `current` falls with damage and rises with healing.
+Set a character's hp the first time they enter combat (or when first
+established), grounded in their Body and class. For the PLAYER character,
+`hp.max` is engine-maintained once play begins: **establish it at creation,
+then do NOT change it** — the engine keeps it in sync with Body and grows it
+on a level-up. Just drive the player's `current` (damage/healing). An NPC's
+hp is yours throughout. `current` falls with damage and rises with healing.
 
 ATTACKING (one roll per combat turn — round-per-roll):
 
