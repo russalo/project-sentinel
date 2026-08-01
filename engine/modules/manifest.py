@@ -49,6 +49,13 @@ class ModuleManifest:
         schema_fragment   path to the module's schema contribution (JSON
                           Schema), relative to the manifest dir; None for
                           modules that add no module_data fields
+        rules_data        path to the module's machine-readable rules data
+                          (a JSON object), relative to the manifest dir;
+                          None for modules that ship no rules data. The
+                          "module provides rules-data" pattern (RFC-0018):
+                          mechanical constants (e.g. per-class HP factors)
+                          the engine reads, distinct from schema (a contract)
+                          and prompt (DM narration).
         preset_paths      glob patterns (relative to data_dir) the module's
                           content loader scans; empty for modules with no
                           authored content
@@ -61,6 +68,7 @@ class ModuleManifest:
     interface_version: str
     prompt_fragment: str | None = None
     schema_fragment: str | None = None
+    rules_data: str | None = None
     preset_paths: tuple[str, ...] = field(default_factory=tuple)
     requires: tuple[str, ...] = field(default_factory=tuple)
 
@@ -116,6 +124,7 @@ class ModuleManifest:
             interface_version=_require_str("interface_version"),
             prompt_fragment=_optional_str("prompt_fragment"),
             schema_fragment=_optional_str("schema_fragment"),
+            rules_data=_optional_str("rules_data"),
             preset_paths=_optional_str_list("preset_paths"),
             requires=_optional_str_list("requires"),
         )

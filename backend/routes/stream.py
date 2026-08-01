@@ -33,6 +33,7 @@ from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 
 import engine
+from engine import class_rules
 from engine import death_stakes
 from engine import progression
 from engine.agents import dm as dm_agent
@@ -204,12 +205,23 @@ def _mirror_death_outcome_to_hint(
 
 
 def _mirror_progression_to_hint(
-    hint: dict, player_name: str, level: int, stats: dict
+    hint: dict,
+    player_name: str,
+    level: int,
+    stats: dict,
+    maxes: tuple[int | None, int | None] = (None, None),
 ) -> None:
     """Patch the PC's entry in the SSE hint to the engine-committed ``level`` +
-    ``stats`` (RFC-0017), so a level-up shows live instead of only after hydration —
-    the same UI-truthfulness the death mirror provides. Adds a PC entry if the DM
-    emitted none. In-place; tolerant of a malformed hint."""
+    ``stats`` (RFC-0017) and the derived ``hp.max`` / ``magic_pool.max`` (RFC-0018),
+    so a level-up's vitality shows live instead of only after hydration — the same
+    UI-truthfulness the death mirror provides. Adds a PC entry if the DM emitted
+    none. In-place; tolerant of a malformed hint. A None max is left untouched
+    (engine doesn't own it — fail-safe class).
+
+    The grown ``max`` is only mirrored into a pool the DM ALREADY emitted (which
+    carries its ``current``) — never a bare ``{max}``-only pool, which would render
+    a vitality bar with no fill until hydration (codex P2). If the DM emitted no
+    pool this turn, the committed max reaches the UI a beat later via hydration."""
     pc = _locate_pc_in_hint(hint, player_name, create=True)
     if pc is None:
         return
@@ -219,6 +231,11 @@ def _mirror_progression_to_hint(
         sheet = module_data.setdefault("character_sheet", {})
         if isinstance(sheet, dict):
             sheet["stats"] = dict(stats)
+            hp_max, mp_max = maxes
+            if hp_max is not None and isinstance(sheet.get("hp"), dict):
+                sheet["hp"]["max"] = hp_max
+            if mp_max is not None and isinstance(sheet.get("magic_pool"), dict):
+                sheet["magic_pool"]["max"] = mp_max
 
 
 @router.post("/stream")
@@ -429,6 +446,17 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
         narrative = _BLOCK_RE.sub("", raw_response).strip()
         frontend_hint = _parse_frontend_hint(raw_response)
 
+        # RFC-0018: resolve the world's class rules for the PC once (fail-safe →
+        # None when the class isn't a known archetype), shared by the level-up hint
+        # mirror and the every-turn derived-max enforcement at the dispatch seam.
+        _pc_for_class = death_stakes.find_player_character(
+            world_context.characters, session.player_character_name
+        )
+        _class_rules = class_rules.resolve_class_rules(
+            world_context.modules,
+            _pc_for_class.get("class") if isinstance(_pc_for_class, dict) else None,
+        )
+
         # RFC-0014: mirror the engine-committed death outcome into the SSE hint so
         # the UI shows the authoritative status immediately — otherwise the DM's
         # (possibly "alive") version would render until a refresh re-hydrates the
@@ -451,7 +479,11 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
             )
             if _prog is not None:
                 _mirror_progression_to_hint(
-                    frontend_hint, session.player_character_name, _prog[0], _prog[1]
+                    frontend_hint,
+                    session.player_character_name,
+                    _prog[0],
+                    _prog[1],
+                    progression.authoritative_maxes(_prog[1], _class_rules),
                 )
 
         # Emit the world_update event in the shape the frontend
@@ -509,7 +541,9 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
             # turn, force the PC's `level` + `module_data.character_sheet.stats` to
             # the authoritative value (stored, or the enacted level-up delta), so a
             # DM that raises them on its own initiative is overridden. A DM attempt
-            # surfaces as a player notice. (hp/magic stay prompt-applied — Slice 1b.)
+            # surfaces as a player notice. RFC-0018 (Slice 1b): also forces the
+            # derived `hp.max` / `magic_pool.max` from `_class_rules` (fail-safe when
+            # the class isn't a known archetype — then those maxes stay DM-authored).
             progression_notices = progression.enforce_progression(
                 payload,
                 stored_characters=world_context.characters,
@@ -517,6 +551,7 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
                 choice=(
                     body.level_up.model_dump() if body.level_up is not None else None
                 ),
+                class_rules=_class_rules,
             )
             for notice in progression_notices:
                 yield _sse_event({"type": "error", "content": notice})

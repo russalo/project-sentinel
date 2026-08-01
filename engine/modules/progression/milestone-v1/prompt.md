@@ -38,15 +38,10 @@ APPLYING A LEVEL-UP (when a LEVEL-UP CHOICE is provided in the turn input):
 You will receive `LEVEL-UP CHOICE: raise <stat> to level <N>`. The engine
 has ALREADY committed `level` → N and the chosen attribute +1 (cap 10) in
 `module_data.character_sheet.stats` — **do not write `level` or `stats`.**
-Your part is the derived vitality that follows from the choice, plus the
-fiction:
+For a known class the engine also maintains the derived vitality — `hp.max`
+grows when Body is the raised attribute, a caster's `magic_pool.max` when
+Will is, and it brings `current` up so the new vitality is available — so you
+need not write those either.
 
-- **max HP grows this level**: `module_data.character_sheet.hp.max +=
-  class_HP_factor` (Warrior 8 / Rogue 6 / Cleric 6 / Mage 4 — the
-  character's class factor, matching RFC-0007 combat), and bring
-  `current` up by the same so the new vitality is immediately available.
-- if the player chose Will, the caster's `magic_pool.max` rises with it
-  (`Will × 2`).
-
-Then narrate the growth as the fiction of becoming stronger. Do not
+Your part is the fiction: narrate the growth as becoming stronger. Do not
 propose another level-up the same turn one is applied.
