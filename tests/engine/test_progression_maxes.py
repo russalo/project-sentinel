@@ -214,6 +214,23 @@ def test_body_level_up_on_stale_max_heals_only_by_factor():
     assert hp["max"] == 56 and hp["current"] == 28  # +8 (one Body × factor)
 
 
+def test_dead_pc_max_not_injected():
+    # codex: a stored-dead PC must NOT receive an engine-injected max — the
+    # permadeath gate strips HP-restore right after, which would otherwise persist
+    # an incomplete pool over the stored one via the shallow merge.
+    pc = _pc({"body": 7, "mind": 5, "heart": 6, "will": 4})
+    pc["status"] = "dead"
+    payload = _payload([_op()])
+    progression.enforce_progression(
+        payload,
+        stored_characters=[pc],
+        player_name="Kael",
+        choice=None,
+        class_rules=WARRIOR,
+    )
+    assert "hp" not in _sheet(payload)  # no max injected for a dead PC
+
+
 def test_non_caster_gets_no_magic_pool():
     pc = _pc(
         {"body": 7, "mind": 5, "heart": 6, "will": 4}, hp={"current": 56, "max": 56}

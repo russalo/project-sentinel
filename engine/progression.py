@@ -256,6 +256,14 @@ def enforce_progression(
     stored_hp = _as_dict(stored_sheet.get("hp"))
     stored_mp = _as_dict(stored_sheet.get("magic_pool"))
     new_hp_max, new_mp_max = authoritative_maxes(auth_stats, class_rules)
+    # Don't touch a stored-DEAD PC's vitality (codex): the downstream permadeath
+    # gate (`death_stakes.enforce_permadeath`, run AFTER this) drops HP-restore
+    # fields from the op, so injecting a max here would leave the dispatched (full)
+    # module_data carrying an incomplete pool that the shallow fs-manager merge then
+    # persists over the stored one. A dead PC's max/pool is moot — leave it be.
+    if str(_as_dict(pc).get("status", "")).strip().lower() == "dead":
+        new_hp_max = new_mp_max = None
+        class_rules = None
     # The current-bump is the vitality gained FROM THE RAISED STAT this level-up —
     # ``(new stat − stored stat) × factor`` — NOT ``new_max − stored_max``. Keying
     # on the stat delta means reconciling a stale stored max never heals, and a
