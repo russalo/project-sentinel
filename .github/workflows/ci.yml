@@ -66,7 +66,12 @@ jobs:
           python-version: "3.11"
 
       - name: Install ruff
-        run: pip install ruff
+        # Pinned to match the version developers run locally. Unpinned
+        # `pip install ruff` pulls the latest release, whose default ruleset
+        # expands over time — silently turning previously-clean code red
+        # repo-wide on an unrelated PR. The pin + ruff.toml `required-version`
+        # keep CI == local; bump both together deliberately.
+        run: pip install ruff==0.15.15
 
       - name: Check for lint errors
         run: ruff check engine/ backend/ tests/ scripts/ mcp-servers/
