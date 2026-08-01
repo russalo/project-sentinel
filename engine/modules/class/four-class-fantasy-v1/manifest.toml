@@ -4,14 +4,18 @@
 # entity field, so this module supplies the *mechanical definitions*
 # (HP factor, stat priority, magic access, signature moves) that combat
 # (RFC-0007) and magic (RFC-0008) read — the same for every character of
-# a class, hence rules not per-character state.
+# a class, hence rules not per-character state. Since RFC-0018 the HP
+# factor + magic access are ALSO shipped machine-readable in rules.json
+# (the "module provides rules-data" pattern) so the engine — not the DM —
+# derives hp.max / magic_pool.max; prompt.md keeps the narrative framing.
 
 name = "core/four-class-fantasy-v1"
-version = "1.0.0"
+version = "1.1.0"
 subsystem = "class"
 interface_version = "1.0"
 
 prompt_fragment = "prompt.md"
+rules_data = "rules.json"
 
 schema_fragment = ""
 preset_paths = []

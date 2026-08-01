@@ -162,6 +162,78 @@ def test_manifest_rejects_non_list_preset_paths(tmp_path: Path):
         ModuleManifest.from_toml_file(bad)
 
 
+# ── rules-data loading (RFC-0018) ───────────────────────────────────
+
+
+def test_manifest_parses_rules_data_field(tmp_path: Path):
+    m = tmp_path / "manifest.toml"
+    m.write_text(
+        'name = "core/x-v1"\nversion = "1.0.0"\nsubsystem = "class"\n'
+        'interface_version = "1.0"\nrules_data = "rules.json"\n',
+        encoding="utf-8",
+    )
+    assert ModuleManifest.from_toml_file(m).rules_data == "rules.json"
+
+
+def test_manifest_rules_data_defaults_none():
+    found = discover_modules()
+    assert ModuleManifest.from_toml_file(found["core/base-v1"]).rules_data is None
+
+
+def test_class_module_ships_rules_data():
+    """The real four-class module loads its per-class HP factors + magic access."""
+    rules = load_module("core/four-class-fantasy-v1").rules_data
+    assert rules["warrior"]["hp_factor"] == 8
+    assert rules["mage"] == {"hp_factor": 4, "magic": "arcane"}
+    assert rules["rogue"]["magic"] is None
+
+
+def _tmp_rules_module(root: Path, rules_body: str | None) -> str:
+    """Build a throwaway class module under ``root`` that declares rules.json;
+    ``rules_body`` None means the file is absent. Returns the module name."""
+    d = root / "class" / "tmp-v1"
+    d.mkdir(parents=True)
+    (d / "manifest.toml").write_text(
+        'name = "core/tmp-v1"\nversion = "1.0.0"\nsubsystem = "class"\n'
+        'interface_version = "1.0"\nrules_data = "rules.json"\n',
+        encoding="utf-8",
+    )
+    if rules_body is not None:
+        (d / "rules.json").write_text(rules_body, encoding="utf-8")
+    return "core/tmp-v1"
+
+
+def test_loader_reads_valid_rules_data(tmp_path: Path, monkeypatch):
+    name = _tmp_rules_module(tmp_path, '{"warrior": {"hp_factor": 8}}')
+    monkeypatch.setattr("engine.modules.loader._CORE_MODULES_ROOT", tmp_path)
+    registry.clear()
+    assert load_module(name).rules_data == {"warrior": {"hp_factor": 8}}
+
+
+def test_loader_rejects_missing_rules_data_file(tmp_path: Path, monkeypatch):
+    name = _tmp_rules_module(tmp_path, None)
+    monkeypatch.setattr("engine.modules.loader._CORE_MODULES_ROOT", tmp_path)
+    registry.clear()
+    with pytest.raises(ManifestError, match="rules_data"):
+        load_module(name)
+
+
+def test_loader_rejects_malformed_rules_json(tmp_path: Path, monkeypatch):
+    name = _tmp_rules_module(tmp_path, "{not json")
+    monkeypatch.setattr("engine.modules.loader._CORE_MODULES_ROOT", tmp_path)
+    registry.clear()
+    with pytest.raises(ManifestError, match="rules_data"):
+        load_module(name)
+
+
+def test_loader_rejects_non_object_rules_json(tmp_path: Path, monkeypatch):
+    name = _tmp_rules_module(tmp_path, "[1, 2, 3]")
+    monkeypatch.setattr("engine.modules.loader._CORE_MODULES_ROOT", tmp_path)
+    registry.clear()
+    with pytest.raises(ManifestError, match="must be a JSON object"):
+        load_module(name)
+
+
 # ── Assembly ordering + forward-compat ──────────────────────────────
 
 

@@ -1,4 +1,5 @@
-"""Engine-authoritative character progression (RFC-0017, ADR-0004 Slice 1).
+"""Engine-authoritative character progression (RFC-0017 + RFC-0018, ADR-0004
+Slice 1 + 1b).
 
 `level` and `stats` are engine-owned: the DM *proposes* a level-up (the `level_up`
 signal) and narrates it, but the engine — not the DM — commits `level` and the
@@ -11,11 +12,18 @@ at the backend dispatch seam (``backend/routes/stream.py``), reusing the
 stored-``module_data`` deep-merge so a partial write can't wipe sibling module
 state (the fs-manager ``update`` merge is shallow).
 
-Scope (Slice 1): `level` (a top-level entity field) + `module_data.character_sheet.
-stats` only. The derived `hp` / `magic_pool` bumps stay prompt-applied (the DM
-still writes them) until the fast-follow slice gives the class HP factor a code
-home — see RFC-0017 § Out of Scope. Those DM-written derived fields are preserved
-here, not stripped.
+Scope: `level` (a top-level entity field) + `module_data.character_sheet.stats`
+(Slice 1); PLUS the derived vitality **maxes** `hp.max` (= Body × class HP factor)
+and `magic_pool.max` (= Will × 2, casters only) — Slice 1b / RFC-0018. The maxes
+are deterministic from the engine-owned stats + the class factor, so the engine
+owns them on every PC op; a DM-inflated max is overridden. The **currents**
+(`hp.current` / `magic_pool.current`) stay narrative-owned (damage / casting) —
+the engine touches `current` only to grant a level-up's growth (bump by the max
+delta) or to seed a first-established max. This module stays a PURE computation:
+the class factor is resolved to a rules dict by ``engine/class_rules.py`` (the IO
+boundary) and passed in; when it can't resolve (a free-text class that isn't a
+known archetype), the maxes are left DM-authored — fail-safe, see
+``authoritative_maxes``.
 """
 
 import copy
@@ -27,6 +35,7 @@ from .death_stakes import find_player_character
 STATS = ("body", "mind", "heart", "will")
 STAT_CAP = 10  # tracks the four-stat module cap; rises with it
 MAX_LEVEL = 5  # tracks the milestone module's v0.1 level cap; rises with it
+MAGIC_POOL_PER_WILL = 2  # magic_pool.max = Will × 2 (RFC-0008 realm-pool-v1)
 
 
 def _as_dict(value: Any) -> dict[str, Any]:
@@ -51,6 +60,32 @@ def _to_int(value: Any, default: int = 0) -> int:
         return int(value)
     except (TypeError, ValueError):
         return default
+
+
+def _apply_max(
+    pool: Any, new_max: int, delta: int, stored_pool: dict[str, Any]
+) -> dict[str, Any]:
+    """Force a ``{current, max}`` vitality pool's ``max`` and grant growth to
+    ``current`` (RFC-0018). Returns the pool dict.
+
+    - ``max`` := ``new_max`` (engine-owned).
+    - Growth (``delta > 0`` — a raised Body/Will, or first establishment from a
+      stored max of 0): ``current`` := stored ``current`` + ``delta`` so the new
+      vitality is available (seeded to ``new_max`` when nothing was stored).
+    - No growth (``delta <= 0``): ``current`` is left as-is — narrative-owned
+      (a damage / casting turn keeps the DM's ``current``). Only a missing
+      ``current`` is seeded to ``new_max`` so a max never ships without one.
+    """
+    pool = _as_dict(pool)
+    pool["max"] = new_max
+    if delta > 0:
+        stored_current = stored_pool.get("current")
+        pool["current"] = (
+            _to_int(stored_current) + delta if stored_current is not None else new_max
+        )
+    elif "current" not in pool:
+        pool["current"] = new_max
+    return pool
 
 
 def stored_level(character: dict[str, Any] | None) -> int:
@@ -92,6 +127,33 @@ def authoritative_progression(
         if stat in STATS:
             stats[stat] = min(cur_stats.get(stat, 0) + 1, STAT_CAP)
     return level, stats
+
+
+def authoritative_maxes(
+    stats: dict[str, int], class_rules: dict[str, Any] | None
+) -> tuple[int | None, int | None]:
+    """The engine-owned derived maxes ``(hp_max, magic_pool_max)`` for a PC.
+
+    ``hp_max = Body × hp_factor`` and ``magic_pool_max = Will × 2`` (casters
+    only). Pure: ``class_rules`` is the resolved ``{hp_factor, magic}`` dict for
+    the PC's class (from ``engine/class_rules.py``), or None.
+
+    Returns None for a max the engine cannot derive — so the caller leaves it
+    DM-authored (fail-safe):
+    - ``hp_max`` is None when there's no positive ``hp_factor`` (no class rules,
+      or a free-text class that isn't a known archetype).
+    - ``magic_pool_max`` is None for a non-caster (``magic`` falsy) — non-casters
+      get no ``magic_pool`` written (RFC-0018 D4).
+    """
+    rules = _as_dict(class_rules)
+    factor = _to_int(rules.get("hp_factor", 0))
+    hp_max = _to_int(stats.get("body", 0)) * factor if factor > 0 else None
+    magic_pool_max = (
+        _to_int(stats.get("will", 0)) * MAGIC_POOL_PER_WILL
+        if rules.get("magic")
+        else None
+    )
+    return hp_max, magic_pool_max
 
 
 def authoritative_for_pc(
@@ -138,18 +200,30 @@ def enforce_progression(
     stored_characters: list[dict[str, Any]],
     player_name: str,
     choice: dict[str, Any] | None,
+    class_rules: dict[str, Any] | None = None,
 ) -> list[str]:
-    """Make the engine's ``level`` + ``stats`` the authoritative PC write.
+    """Make the engine's ``level`` + ``stats`` (+ derived maxes) the authoritative
+    PC write.
 
     On every PC entity op, force ``level`` and ``module_data.character_sheet.stats``
     to the authoritative values (stored, or stored + the enacted delta), deep-merging
     the stored ``module_data`` so the shallow fs-manager merge preserves siblings —
-    ``combat``, ``magic``, and the DM's still-prompt-applied ``hp``/``magic_pool``.
+    ``combat``, ``magic``, and the narrative-owned ``hp``/``magic_pool`` currents.
     On an enactment with no PC op emitted, append one so the gain still commits.
 
-    Returns player-facing notices when the DM attempted an unauthorized level/stats
-    change (parity with ``death_stakes.enforce_permadeath`` rejections). PC-scoped;
-    NPC writes pass through untouched.
+    RFC-0018 (``class_rules`` supplied): also force the derived **maxes**
+    ``hp.max = Body × factor`` and (casters) ``magic_pool.max = Will × 2`` from the
+    authoritative stats, and grant a level-up's growth by bumping the matching
+    ``current`` by the max delta (or seeding ``current = max`` on first
+    establishment). The **currents** are otherwise untouched — a plain damage turn
+    (no growth) leaves ``hp.current`` exactly as the DM wrote it. When
+    ``class_rules`` can't derive a max (None / free-text class not an archetype),
+    that max is left DM-authored — fail-safe (see ``authoritative_maxes``). Clamping
+    ``current ≤ max`` is out of scope (a combat-lane follow-up).
+
+    Returns player-facing notices when the DM attempted an unauthorized
+    level/stats/max change (parity with ``death_stakes.enforce_permadeath``
+    rejections). PC-scoped; NPC writes pass through untouched.
     """
     if not isinstance(payload, dict):
         return []
@@ -167,6 +241,23 @@ def enforce_progression(
     cur_level = stored_level(pc)
     cur_stats = stored_stats(pc)
     auth_level, auth_stats = authoritative_progression(cur_level, cur_stats, choice)
+
+    # RFC-0018 derived maxes, computed once against the STORED sheet (the baseline
+    # before this turn) so the growth delta and the DM-attempt check are stable
+    # across multiple same-turn PC ops. None → that max is left DM-authored.
+    stored_sheet = _as_dict(
+        _as_dict(_as_dict(pc).get("module_data")).get("character_sheet")
+    )
+    stored_hp = _as_dict(stored_sheet.get("hp"))
+    stored_mp = _as_dict(stored_sheet.get("magic_pool"))
+    new_hp_max, new_mp_max = authoritative_maxes(auth_stats, class_rules)
+    hp_delta = (
+        new_hp_max - _to_int(stored_hp.get("max", 0)) if new_hp_max is not None else 0
+    )
+    mp_delta = (
+        new_mp_max - _to_int(stored_mp.get("max", 0)) if new_mp_max is not None else 0
+    )
+
     # Deep-copy: `pc` is an element of the caller's stored_characters
     # (world_context.characters). Merging/mutating below must not write back into
     # that shared read-state (gemini).
@@ -187,6 +278,7 @@ def enforce_progression(
         matching = [op]
 
     dm_attempted = False
+    max_attempted = False
     for op in matching:
         data = op.get("data")
         if not isinstance(data, dict):
@@ -201,6 +293,21 @@ def enforce_progression(
         cs_in = _as_dict(_as_dict(data.get("module_data")).get("character_sheet"))
         stats_bad = "stats" in cs_in and cs_in["stats"] != auth_stats
         dm_attempted = dm_attempted or level_bad or stats_bad
+        # A DM write to an engine-owned max (only checked when the engine actually
+        # owns it — new_*_max not None) is a separate attempt → the vitality notice.
+        hp_in = _as_dict(cs_in.get("hp"))
+        mp_in = _as_dict(cs_in.get("magic_pool"))
+        hp_max_bad = (
+            new_hp_max is not None
+            and "max" in hp_in
+            and _to_int(hp_in.get("max")) != new_hp_max
+        )
+        mp_max_bad = (
+            new_mp_max is not None
+            and "max" in mp_in
+            and _to_int(mp_in.get("max")) != new_mp_max
+        )
+        max_attempted = max_attempted or hp_max_bad or mp_max_bad
         # Force on EVERY PC op — as the stats owner, protect them on the common turn
         # too (a plain damage turn writing only hp would otherwise let fs-manager's
         # shallow merge wipe stored stats/combat; finder issue 3). Write the FULL
@@ -209,6 +316,14 @@ def enforce_progression(
         merged = _deep_merge(base_md, _as_dict(data.get("module_data")))
         sheet = _as_dict(merged.get("character_sheet"))
         sheet["stats"] = dict(auth_stats)
+        # RFC-0018: force the derived maxes the engine owns (skip a None — that max
+        # stays DM-authored, fail-safe). `current` growth rides `_apply_max`.
+        if new_hp_max is not None:
+            sheet["hp"] = _apply_max(sheet.get("hp"), new_hp_max, hp_delta, stored_hp)
+        if new_mp_max is not None:
+            sheet["magic_pool"] = _apply_max(
+                sheet.get("magic_pool"), new_mp_max, mp_delta, stored_mp
+            )
         merged["character_sheet"] = sheet
         data["module_data"] = merged
         data["level"] = auth_level
@@ -230,4 +345,9 @@ def enforce_progression(
                 "Level and stats can only change through an enacted level-up — the "
                 "DM's attempted change was ignored."
             )
+    if max_attempted:
+        notices.append(
+            "Maximum health and magic are derived by the engine from your stats and "
+            "class — the DM's values were corrected."
+        )
     return notices

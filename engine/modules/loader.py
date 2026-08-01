@@ -14,8 +14,10 @@ optional ``data_dir`` to also scan community trees.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from .manifest import ManifestError, ModuleManifest
 from .registry import registry
@@ -32,11 +34,17 @@ class LoadedModule:
     trailing newlines stripped — so a conventionally newline-terminated
     ``.md`` file still composes byte-cleanly into the assembled prompt.
     None when the module declares no ``prompt_fragment``.
+
+    ``rules_data`` is the module's machine-readable rules object (parsed
+    JSON), or None when the module declares no ``rules_data``. The engine
+    reads mechanical constants from here (RFC-0018) — e.g. the class
+    module's per-class HP factors — rather than from prose in the prompt.
     """
 
     manifest: ModuleManifest
     manifest_dir: Path
     prompt_fragment_text: str | None
+    rules_data: dict[str, Any] | None = None
 
 
 def discover_modules() -> dict[str, Path]:
@@ -100,10 +108,33 @@ def load_module(name: str) -> LoadedModule:
         # .md composes byte-identically (the assembly joins with "\n\n").
         prompt_text = fragment_path.read_text(encoding="utf-8").rstrip("\n")
 
+    rules_data: dict[str, Any] | None = None
+    if manifest.rules_data:
+        rules_path = manifest_dir / manifest.rules_data
+        if not rules_path.exists():
+            raise ManifestError(
+                f"{manifest_path}: rules_data {manifest.rules_data!r} "
+                f"not found at {rules_path}"
+            )
+        try:
+            parsed = json.loads(rules_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ManifestError(
+                f"{manifest_path}: cannot read rules_data "
+                f"{manifest.rules_data!r}: {exc}"
+            ) from exc
+        if not isinstance(parsed, dict):
+            raise ManifestError(
+                f"{manifest_path}: rules_data {manifest.rules_data!r} "
+                f"must be a JSON object"
+            )
+        rules_data = parsed
+
     loaded = LoadedModule(
         manifest=manifest,
         manifest_dir=manifest_dir,
         prompt_fragment_text=prompt_text,
+        rules_data=rules_data,
     )
     registry.put(name, loaded)
     return loaded

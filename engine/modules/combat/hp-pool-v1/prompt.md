@@ -5,10 +5,13 @@ HIT POINTS:
 Every combat-capable character has hit points under
 `module_data.character_sheet.hp = {"current": N, "max": N}`, where
 `max = Body × class_HP_factor` (Warrior ×8, Rogue ×6, Mage ×4, Cleric ×6).
-A Body-6 Warrior has 48 HP; a Body-3 Mage has 12. Set a character's hp the
-first time they enter combat (or when first established), grounded in their
-Body and class. `current` falls with damage and rises with healing; `max`
-changes only when Body or level does.
+A Body-6 Warrior has 48 HP; a Body-3 Mage has 12.
+
+For the PLAYER character the engine sets and owns `hp.max` (from Body + the
+class factor) — **do not write the player's `hp.max`**; just drive
+`current` (damage/healing) as below. For an NPC, set hp yourself the first
+time they enter combat (or when first established), grounded in their Body
+and threat. `current` falls with damage and rises with healing.
 
 ATTACKING (one roll per combat turn — round-per-roll):
 

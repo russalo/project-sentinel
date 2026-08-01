@@ -6,8 +6,10 @@ pool of energy, organized into realms, drawn from a binding.
 THE POOL:
 
 A caster's magic pool lives at `module_data.character_sheet.magic_pool =
-{current, max}`, where `max = Will × 2` (a Will-8 caster has 16). Set it
-when the caster is established. Spells cost from `current` by tier:
+{current, max}`, where `max = Will × 2` (a Will-8 caster has 16). For the
+PLAYER character the engine sets and owns `magic_pool.max` — **do not write
+it**; drive `current` (casting spend / rest) as below. For a caster NPC, set
+the pool yourself when established. Spells cost from `current` by tier:
 
 - **Cantrip** 0 · **Minor** 1 · **Standard** 2 · **Major** 4 · **Devastating** 8
 

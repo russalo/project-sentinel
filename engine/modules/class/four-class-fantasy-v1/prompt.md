@@ -10,6 +10,6 @@ Every player character and any combat-capable NPC has a class. Each class has a 
 
 - **Cleric** — priority Will then Heart. HP factor **6**. Divine magic (the spell system handles casting and healing). Signature: support and restoration — buffs, wards, and mending alongside divine force.
 
-Use the class to shape how a character fights and acts: a Warrior wades in, a Rogue flanks and vanishes, a Mage holds back and unleashes, a Cleric steadies the line. The HP factor is the number combat uses to set a character's hit points (`max HP = Body × factor`). Magic access (arcane / divine) names which casters can use spells; the casting mechanics live in the magic system.
+Use the class to shape how a character fights and acts: a Warrior wades in, a Rogue flanks and vanishes, a Mage holds back and unleashes, a Cleric steadies the line. The HP factor is the number the engine uses to set the player character's hit points (`max HP = Body × factor`); you narrate combat, but the player's `hp.max` is engine-owned. Magic access (arcane / divine) names which casters can use spells; the casting mechanics live in the magic system.
 
 Weapons and armor are read from the fiction, not a separate inventory system: a dagger is a light weapon, a longsword a heavy one, plate armor raises Defense. Judge a character's gear from what they're described carrying and wearing.

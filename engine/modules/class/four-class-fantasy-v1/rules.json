@@ -1,0 +1,6 @@
+{
+  "warrior": { "hp_factor": 8, "magic": null },
+  "rogue":   { "hp_factor": 6, "magic": null },
+  "mage":    { "hp_factor": 4, "magic": "arcane" },
+  "cleric":  { "hp_factor": 6, "magic": "divine" }
+}
