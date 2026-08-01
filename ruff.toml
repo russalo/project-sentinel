@@ -1,0 +1,11 @@
+# Ruff configuration.
+#
+# `required-version` pins the ruff minor line so CI and every developer run the
+# same linter. The repo has no explicit `select`, so ruff's DEFAULT ruleset
+# applies — and that default expands between ruff releases. Without this guard an
+# unpinned `pip install ruff` (or a dev on a newer ruff) silently turns
+# previously-clean code red repo-wide on an unrelated PR (happened 2026-08-01:
+# 106 new violations across ~19 rule categories). A ruff outside this range fails
+# loudly instead. Bump this AND `.github/workflows/ci.yml` together, deliberately,
+# alongside the cleanup the new rules require.
+required-version = ">=0.15.15,<0.16"
