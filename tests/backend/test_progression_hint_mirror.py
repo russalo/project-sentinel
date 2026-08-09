@@ -152,7 +152,7 @@ def test_normalize_mirrors_complete_grown_pool_when_dm_emitted_none():
 
 def test_normalize_growth_pool_overrides_a_dm_emitted_current():
     # Even when the DM DID emit a pool, enforcement replaces current with
-    # stored+growth — the hint must show that, not the DM's current.
+    # stored+growth on a GROWTH turn — the hint must show that, not the DM's.
     hint = _hint({"hp": {"current": 99, "max": 99}})
     _normalize_vitality_hint(
         hint,
@@ -163,9 +163,58 @@ def test_normalize_growth_pool_overrides_a_dm_emitted_current():
             "strip_magic_pool": False,
             "hp_pool": {"current": 38, "max": 64},
             "magic_pool": None,
+            "hp_growth": 8,
+            "magic_growth": 0,
         },
     )
     assert _sheet_of(hint)["hp"] == {"current": 38, "max": 64}
+
+
+def test_normalize_non_growth_keeps_dm_current_corrects_max():
+    # No growth: the DM's narrative current (damage this turn) survives; only the
+    # engine-owned max is corrected.
+    hint = _hint({"hp": {"current": 12, "max": 999}})
+    _normalize_vitality_hint(
+        hint,
+        "Kael",
+        {
+            "hp_max": 48,
+            "magic_pool_max": None,
+            "strip_magic_pool": False,
+            "hp_pool": {"current": 30, "max": 48},
+            "magic_pool": None,
+            "hp_growth": 0,
+            "magic_growth": 0,
+        },
+    )
+    assert _sheet_of(hint)["hp"] == {"current": 12, "max": 48}
+
+
+def test_normalize_creates_sheet_for_a_status_only_pc_hint():
+    # A status/combat-only PC hint still has its vitality corrected — enforcement
+    # is fixing the persisted state, and the client's deep merge would otherwise
+    # keep the stale max / stripped pool until reload (codex).
+    hint = {
+        "characters": [
+            {"name": "Kael", "role": "player", "status": "unconscious"},
+        ]
+    }
+    _normalize_vitality_hint(
+        hint,
+        "Kael",
+        {
+            "hp_max": 48,
+            "magic_pool_max": None,
+            "strip_magic_pool": True,
+            "hp_pool": {"current": 0, "max": 48},
+            "magic_pool": None,
+            "hp_growth": 0,
+            "magic_growth": 0,
+        },
+    )
+    sheet = _sheet_of(hint)
+    assert sheet["hp"] == {"current": 0, "max": 48}
+    assert sheet["magic_pool"] is None  # deletion marker reaches the client
 
 
 def test_normalize_sets_caster_pool_max():

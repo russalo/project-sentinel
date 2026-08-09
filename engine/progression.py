@@ -201,6 +201,8 @@ def authoritative_vitality_for_pc(
         "strip_magic_pool": False,
         "hp_pool": None,
         "magic_pool": None,
+        "hp_growth": 0,
+        "magic_growth": 0,
     }
     pc = find_player_character(stored_characters, player_name)
     if pc is None:
@@ -211,32 +213,33 @@ def authoritative_vitality_for_pc(
     _, auth_stats = authoritative_progression(stored_level(pc), cur_stats, choice)
     hp_max, mp_max = authoritative_maxes(auth_stats, class_rules)
 
-    # The COMPLETE {current, max} the engine will commit on a growth turn, so the
-    # SSE hint can mirror the whole pool rather than only patching a max the DM
-    # may not have emitted at all (the RFC-0018 prompts tell the DM not to write
-    # vitality on a level-up, so a growth turn's hint usually carries no pool).
-    # None when there's no growth — then `current` is narrative-owned and only the
-    # max is authoritative.
+    # The COMPLETE {current, max} the engine will commit, so the SSE hint can
+    # mirror a whole pool rather than only patching a max the DM may not have
+    # emitted at all — the RFC-0018 prompts tell the DM not to write vitality, so
+    # its hint often carries no pool (a growth turn), or no character_sheet at all
+    # (a status/combat-only turn). `current` = the stored current plus this
+    # level-up's growth (0 on an ordinary turn, so the narrative current is
+    # unchanged — the hint consumer only uses this when the DM emitted no pool).
+    # None when nothing is derivable (no engine max, or no stored current and no
+    # growth) — never invent a pool with no real current.
     stored_sheet = _as_dict(
         _as_dict(_as_dict(pc).get("module_data")).get("character_sheet")
     )
 
-    def _grown(stat: str, per: int, new_max: int | None, key: str):
+    def _pool(stat: str, per: int, new_max: int | None, key: str):
+        """(growth, complete pool | None) for one vitality pool."""
         if new_max is None:
             return 0, None
-        growth = (auth_stats.get(stat, 0) - cur_stats.get(stat, 0)) * per
-        if growth <= 0:
-            return growth, None
-        stored_pool = _as_dict(stored_sheet.get(key))
-        stored_current = stored_pool.get("current")
-        current = (
-            _to_int(stored_current) + growth if stored_current is not None else new_max
-        )
-        return growth, {"current": current, "max": new_max}
+        growth = max(0, (auth_stats.get(stat, 0) - cur_stats.get(stat, 0)) * per)
+        stored_current = _as_dict(stored_sheet.get(key)).get("current")
+        if stored_current is None:
+            # Nothing stored: only a growth turn justifies seeding a full pool.
+            return growth, ({"current": new_max, "max": new_max} if growth else None)
+        return growth, {"current": _to_int(stored_current) + growth, "max": new_max}
 
     factor = _to_int(_as_dict(class_rules).get("hp_factor", 0))
-    _, hp_pool = _grown("body", factor, hp_max, "hp")
-    _, magic_pool = _grown("will", MAGIC_POOL_PER_WILL, mp_max, "magic_pool")
+    hp_growth, hp_pool = _pool("body", factor, hp_max, "hp")
+    magic_growth, magic_pool = _pool("will", MAGIC_POOL_PER_WILL, mp_max, "magic_pool")
 
     return {
         "hp_max": hp_max,
@@ -245,9 +248,15 @@ def authoritative_vitality_for_pc(
         # unresolved free-text class (None) must NOT strip — fail-safe.
         "strip_magic_pool": isinstance(class_rules, dict)
         and not class_rules.get("magic"),
-        # Complete pools to mirror on a growth turn (None = no growth this turn).
+        # Complete {current, max} pools for the hint to mirror when the DM emitted
+        # none (None = not derivable). `*_growth` > 0 marks a level-up that raised
+        # the governing stat — there enforcement OVERRIDES the DM's current with
+        # stored+growth, so the hint must mirror the complete pool even when the DM
+        # did emit one.
         "hp_pool": hp_pool,
         "magic_pool": magic_pool,
+        "hp_growth": hp_growth,
+        "magic_growth": magic_growth,
     }
 
 

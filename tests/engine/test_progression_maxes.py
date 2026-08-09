@@ -357,7 +357,11 @@ def test_vitality_verdict_matches_enforcement_for_caster():
     assert v["strip_magic_pool"] is False
     # Will was raised → a complete grown pool for the hint to mirror (14 + 2).
     assert v["magic_pool"] == {"current": 16, "max": 16}
-    assert v["hp_pool"] is None  # Body unchanged → no HP growth
+    assert v["magic_growth"] == 2  # Will raised → enforcement overrides current
+    # Body unchanged → no HP growth, but a complete pool is still offered for a
+    # hint that omits one (current unchanged from stored).
+    assert v["hp_pool"] == {"current": 12, "max": 12}
+    assert v["hp_growth"] == 0
 
 
 def test_vitality_verdict_flags_non_caster_strip():
