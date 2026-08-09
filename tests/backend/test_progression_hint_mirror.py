@@ -145,6 +145,8 @@ def test_normalize_mirrors_complete_grown_pool_when_dm_emitted_none():
             "strip_magic_pool": True,
             "hp_pool": {"current": 38, "max": 64},
             "magic_pool": None,
+            "hp_growth": 8,
+            "magic_growth": 0,
         },
     )
     assert _sheet_of(hint)["hp"] == {"current": 38, "max": 64}
@@ -343,3 +345,35 @@ def test_normalize_later_fragment_does_not_undo_earlier_damage():
     first, second = (c["module_data"]["character_sheet"] for c in hint["characters"])
     assert first["hp"] == {"current": 20, "max": 48}  # damage kept
     assert "hp" not in second  # not re-synthesized → client keeps 20
+
+
+def test_normalize_growth_pool_reaches_every_fragment():
+    # On a GROWTH turn `may_synthesize` deliberately does not gate the override:
+    # enforcement's _apply_max sets current = stored+growth on EVERY matching op,
+    # so a later fragment that omits the pool must still carry the grown one or
+    # the client would keep the pre-growth value (coderabbit).
+    hint = {
+        "characters": [
+            {
+                "name": "Kael",
+                "role": "player",
+                "module_data": {"character_sheet": {"hp": {"current": 30, "max": 56}}},
+            },
+            {"name": "Kael", "action": "upsert", "status": "alive"},
+        ]
+    }
+    _normalize_vitality_hint(
+        hint,
+        "Kael",
+        {
+            "hp_max": 64,
+            "magic_pool_max": None,
+            "strip_magic_pool": False,
+            "hp_pool": {"current": 38, "max": 64},
+            "magic_pool": None,
+            "hp_growth": 8,
+            "magic_growth": 0,
+        },
+    )
+    sheets = [c["module_data"]["character_sheet"] for c in hint["characters"]]
+    assert all(s["hp"] == {"current": 38, "max": 64} for s in sheets)
