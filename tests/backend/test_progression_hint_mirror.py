@@ -310,3 +310,36 @@ def test_normalize_malformed_pool_left_alone_when_engine_owns_nothing():
     hint = _hint({"hp": "oops"})
     _normalize_vitality_hint(hint, "Kael", NONE_V)
     assert _sheet_of(hint)["hp"] == "oops"  # fail-safe, untouched
+
+
+def test_normalize_later_fragment_does_not_undo_earlier_damage():
+    # damage fragment then a status-only fragment: the later one must NOT be
+    # synthesized from the pre-turn pool, or the client would apply 20 then snap
+    # back to the stored 30 while persistence (which carries ops forward via
+    # base_md) stayed at 20 (codex).
+    hint = {
+        "characters": [
+            {
+                "name": "Kael",
+                "role": "player",
+                "module_data": {"character_sheet": {"hp": {"current": 20, "max": 48}}},
+            },
+            {"name": "Kael", "action": "upsert", "status": "unconscious"},
+        ]
+    }
+    _normalize_vitality_hint(
+        hint,
+        "Kael",
+        {
+            "hp_max": 48,
+            "magic_pool_max": None,
+            "strip_magic_pool": False,
+            "hp_pool": {"current": 30, "max": 48},  # pre-turn stored
+            "magic_pool": None,
+            "hp_growth": 0,
+            "magic_growth": 0,
+        },
+    )
+    first, second = (c["module_data"]["character_sheet"] for c in hint["characters"])
+    assert first["hp"] == {"current": 20, "max": 48}  # damage kept
+    assert "hp" not in second  # not re-synthesized → client keeps 20

@@ -187,7 +187,13 @@ def _locate_pc_in_hint(hint: dict, player_name: str, *, create: bool) -> dict | 
 
 
 def _normalize_pool(
-    sheet: dict, key: str, engine_pool: dict | None, engine_max: int | None, growth: int
+    sheet: dict,
+    key: str,
+    engine_pool: dict | None,
+    engine_max: int | None,
+    growth: int,
+    *,
+    may_synthesize: bool = True,
 ) -> None:
     """Reconcile one ``{current, max}`` vitality pool in the hint with what
     ``enforce_progression`` will persist. Precedence — mirrors ``_apply_max``:
@@ -202,7 +208,12 @@ def _normalize_pool(
        that same full-pool seed rather than the stored current (codex) — otherwise
        the bar shows wounded while persistence records full health.
     4. **DM emitted none**: mirror the engine's complete pool so the bar is never
-       stale, and never max-only (which renders empty).
+       stale, and never max-only (which renders empty) — but only when
+       ``may_synthesize`` (the FIRST matching fragment this turn). A later fragment
+       that omits the pool must stay omitted so the client keeps what an earlier
+       fragment applied: enforcement carries each merged op forward via ``base_md``,
+       so re-synthesizing the PRE-TURN pool here would undo an earlier fragment's
+       damage in the UI while persistence kept it (codex).
 
     A None ``engine_max`` means the engine owns nothing here (free-text class /
     dead PC) — leave the DM's value alone, fail-safe.
@@ -217,7 +228,7 @@ def _normalize_pool(
     elif key in sheet:
         if engine_max is not None:
             sheet[key] = {"current": engine_max, "max": engine_max}
-    elif isinstance(engine_pool, dict):
+    elif may_synthesize and isinstance(engine_pool, dict):
         sheet[key] = dict(engine_pool)
 
 
@@ -349,7 +360,11 @@ def _normalize_vitality_hint(hint: dict, player_name: str, vitality: dict) -> No
     if hp_max is None and mp_max is None and not vitality.get("strip_magic_pool"):
         return  # engine owns nothing here (free-text class / dead PC) — fail-safe
 
-    for pc in pcs:
+    for index, pc in enumerate(pcs):
+        # Only the first fragment may synthesize a pool the DM omitted; a later
+        # omission must stay omitted so the client keeps what the earlier fragment
+        # applied (enforcement carries ops forward via base_md).
+        first = index == 0
         # The PC IS touched this turn, so enforcement is correcting its persisted
         # vitality — create the nested objects if the DM's fragment lacks them (e.g.
         # a status- or combat-only hint). Without this the correction never reaches
@@ -363,7 +378,14 @@ def _normalize_vitality_hint(hint: dict, player_name: str, vitality: dict) -> No
             sheet = {}
             module_data["character_sheet"] = sheet
 
-        _normalize_pool(sheet, "hp", hp_pool, hp_max, vitality.get("hp_growth", 0))
+        _normalize_pool(
+            sheet,
+            "hp",
+            hp_pool,
+            hp_max,
+            vitality.get("hp_growth", 0),
+            may_synthesize=first,
+        )
         if vitality.get("strip_magic_pool"):
             # Explicit deletion marker — an absent key means "preserve stored" to
             # the client reducer, leaving a stripped pool visible until reload.
@@ -375,6 +397,7 @@ def _normalize_vitality_hint(hint: dict, player_name: str, vitality: dict) -> No
                 magic_pool,
                 mp_max,
                 vitality.get("magic_growth", 0),
+                may_synthesize=first,
             )
 
 
