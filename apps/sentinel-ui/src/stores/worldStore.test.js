@@ -54,7 +54,10 @@ describe('applyUpdate — character module_data deep merge', () => {
         },
       ],
     });
-    expect(sheet().stats).toEqual({ body: 8 }); // leaf object replaced wholesale
+    // Merged per-key at every depth, not replaced: a partial leaf must not drop
+    // its siblings either (a DM `hp: {current: 30}` with no max would otherwise
+    // lose the max and re-trigger the health:100 fallback this fix exists for).
+    expect(sheet().stats).toEqual({ body: 8, mind: 5, heart: 6, will: 4 });
     expect(sheet().hp).toEqual({ current: 30, max: 56 }); // sibling survives
     expect(sheet().magic_pool).toEqual({ current: 8, max: 10 });
     expect(pc().module_data.combat).toEqual({ death_saves_failed: 1 });
@@ -125,6 +128,53 @@ describe('applyUpdate — character module_data deep merge', () => {
       ],
     });
     expect(sheet().hp).toEqual({ current: 40, max: 40 });
+  });
+
+  it('an explicit null deletes the key (non-caster magic_pool strip)', () => {
+    // The backend emits `magic_pool: null` as a deletion marker — an ABSENT key
+    // means "preserve stored", so without this a stripped pool would survive in
+    // the UI until reload even though enforcement removed it from the write.
+    seedPC();
+    useWorldStore.getState().applyUpdate({
+      characters: [
+        {
+          name: 'Kael',
+          action: 'upsert',
+          module_data: { character_sheet: { magic_pool: null } },
+        },
+      ],
+    });
+    expect(sheet()).not.toHaveProperty('magic_pool');
+    expect(sheet().hp).toEqual({ current: 30, max: 56 }); // siblings untouched
+    expect(sheet().stats.body).toBe(7);
+  });
+
+  it('a partial leaf preserves its own siblings (hp.current with no max)', () => {
+    seedPC();
+    useWorldStore.getState().applyUpdate({
+      characters: [
+        {
+          name: 'Kael',
+          action: 'upsert',
+          module_data: { character_sheet: { hp: { current: 11 } } },
+        },
+      ],
+    });
+    expect(sheet().hp).toEqual({ current: 11, max: 56 }); // max survives
+  });
+
+  it('a complete grown pool from a level-up replaces both fields', () => {
+    seedPC();
+    useWorldStore.getState().applyUpdate({
+      characters: [
+        {
+          name: 'Kael',
+          action: 'upsert',
+          module_data: { character_sheet: { hp: { current: 38, max: 64 } } },
+        },
+      ],
+    });
+    expect(sheet().hp).toEqual({ current: 38, max: 64 });
   });
 
   it('a new character is appended as-is', () => {

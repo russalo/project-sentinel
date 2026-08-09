@@ -120,12 +120,52 @@ def test_normalize_overrides_dm_inflated_max():
     assert _sheet_of(hint)["hp"] == {"current": 30, "max": 48}  # current untouched
 
 
-def test_normalize_strips_non_caster_pool():
+def test_normalize_strips_non_caster_pool_with_deletion_marker():
+    # An explicit None, not a dropped key: the client reducer treats an ABSENT key
+    # as "preserve stored", so a legacy/hallucinated pool would otherwise survive
+    # in the UI after enforcement removed it from the write (codex).
     hint = _hint(
         {"hp": {"current": 30, "max": 48}, "magic_pool": {"current": 5, "max": 10}}
     )
     _normalize_vitality_hint(hint, "Kael", WARRIOR_V)
-    assert "magic_pool" not in _sheet_of(hint)
+    assert _sheet_of(hint)["magic_pool"] is None
+
+
+def test_normalize_mirrors_complete_grown_pool_when_dm_emitted_none():
+    # The RFC-0018 prompts tell the DM not to write vitality on a level-up, so a
+    # growth turn's hint usually has no hp block at all. The complete engine pool
+    # must be synthesized or the UI sits at the old value until reload (codex).
+    hint = _hint({"stats": {"body": 8}})
+    _normalize_vitality_hint(
+        hint,
+        "Kael",
+        {
+            "hp_max": 64,
+            "magic_pool_max": None,
+            "strip_magic_pool": True,
+            "hp_pool": {"current": 38, "max": 64},
+            "magic_pool": None,
+        },
+    )
+    assert _sheet_of(hint)["hp"] == {"current": 38, "max": 64}
+
+
+def test_normalize_growth_pool_overrides_a_dm_emitted_current():
+    # Even when the DM DID emit a pool, enforcement replaces current with
+    # stored+growth — the hint must show that, not the DM's current.
+    hint = _hint({"hp": {"current": 99, "max": 99}})
+    _normalize_vitality_hint(
+        hint,
+        "Kael",
+        {
+            "hp_max": 64,
+            "magic_pool_max": None,
+            "strip_magic_pool": False,
+            "hp_pool": {"current": 38, "max": 64},
+            "magic_pool": None,
+        },
+    )
+    assert _sheet_of(hint)["hp"] == {"current": 38, "max": 64}
 
 
 def test_normalize_sets_caster_pool_max():

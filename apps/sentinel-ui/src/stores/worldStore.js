@@ -24,11 +24,22 @@ function mergeModuleData(stored, incoming) {
   }
   const out = { ...stored };
   for (const [key, value] of Object.entries(incoming)) {
+    // Explicit null = DELETION marker. An ABSENT key means "preserve stored", so
+    // the backend sends null to actually remove one (e.g. a non-caster's
+    // magic_pool that the engine strips from the write) — without this the stale
+    // value would survive in the UI until reload. Applies at every depth: the
+    // marker arrives nested, as character_sheet.magic_pool = null.
+    if (value === null) {
+      delete out[key];
+      continue;
+    }
     const prev = out[key];
     const bothPlainObjects =
       prev && typeof prev === 'object' && !Array.isArray(prev) &&
       value && typeof value === 'object' && !Array.isArray(value);
-    out[key] = bothPlainObjects ? { ...prev, ...value } : value;
+    // Recurse (not a plain spread) so a nested null still deletes; the leaf level
+    // has no object values, so this bottoms out immediately.
+    out[key] = bothPlainObjects ? mergeModuleData(prev, value) : value;
   }
   return out;
 }

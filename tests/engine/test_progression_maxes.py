@@ -353,7 +353,11 @@ def test_vitality_verdict_matches_enforcement_for_caster():
     v = progression.authoritative_vitality_for_pc(
         [pc], "Kael", {"stat": "will", "to_level": 3}, MAGE
     )
-    assert v == {"hp_max": 12, "magic_pool_max": 16, "strip_magic_pool": False}
+    assert v["hp_max"] == 12 and v["magic_pool_max"] == 16
+    assert v["strip_magic_pool"] is False
+    # Will was raised → a complete grown pool for the hint to mirror (14 + 2).
+    assert v["magic_pool"] == {"current": 16, "max": 16}
+    assert v["hp_pool"] is None  # Body unchanged → no HP growth
 
 
 def test_vitality_verdict_flags_non_caster_strip():
@@ -368,19 +372,25 @@ def test_vitality_verdict_fail_safe_on_unresolved_class():
     pc = _pc({"body": 6, "mind": 5, "heart": 5, "will": 5})
     v = progression.authoritative_vitality_for_pc([pc], "Kael", None, None)
     # Engine owns nothing — and must NOT claim a non-caster strip (fail-safe).
-    assert v == {"hp_max": None, "magic_pool_max": None, "strip_magic_pool": False}
+    assert v["hp_max"] is None and v["magic_pool_max"] is None
+    assert v["strip_magic_pool"] is False
+    assert v["hp_pool"] is None and v["magic_pool"] is None
 
 
 def test_vitality_verdict_dead_pc_owns_nothing():
     pc = _pc({"body": 7, "mind": 5, "heart": 6, "will": 4})
     pc["status"] = "dead"
     v = progression.authoritative_vitality_for_pc([pc], "Kael", None, WARRIOR)
-    assert v == {"hp_max": None, "magic_pool_max": None, "strip_magic_pool": False}
+    assert v["hp_max"] is None and v["magic_pool_max"] is None
+    assert v["strip_magic_pool"] is False  # dead PC: engine owns nothing at all
+    assert v["hp_pool"] is None and v["magic_pool"] is None
 
 
 def test_vitality_verdict_unresolvable_pc_owns_nothing():
     v = progression.authoritative_vitality_for_pc([], "Kael", None, WARRIOR)
-    assert v == {"hp_max": None, "magic_pool_max": None, "strip_magic_pool": False}
+    assert v["hp_max"] is None and v["magic_pool_max"] is None
+    assert v["strip_magic_pool"] is False
+    assert v["hp_pool"] is None and v["magic_pool"] is None
 
 
 # ── end-to-end chain: real class module resolution → enforcement ──────────────

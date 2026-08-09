@@ -195,16 +195,49 @@ def authoritative_vitality_for_pc(
     unresolvable PC and a stored-**dead** PC both yield "engine owns nothing"
     (a dead PC's vitality is left alone — see ``enforce_progression``).
     """
-    none = {"hp_max": None, "magic_pool_max": None, "strip_magic_pool": False}
+    none = {
+        "hp_max": None,
+        "magic_pool_max": None,
+        "strip_magic_pool": False,
+        "hp_pool": None,
+        "magic_pool": None,
+    }
     pc = find_player_character(stored_characters, player_name)
     if pc is None:
         return none
     if str(_as_dict(pc).get("status", "")).strip().lower() == "dead":
         return none
-    _, auth_stats = authoritative_progression(
-        stored_level(pc), stored_stats(pc), choice
-    )
+    cur_stats = stored_stats(pc)
+    _, auth_stats = authoritative_progression(stored_level(pc), cur_stats, choice)
     hp_max, mp_max = authoritative_maxes(auth_stats, class_rules)
+
+    # The COMPLETE {current, max} the engine will commit on a growth turn, so the
+    # SSE hint can mirror the whole pool rather than only patching a max the DM
+    # may not have emitted at all (the RFC-0018 prompts tell the DM not to write
+    # vitality on a level-up, so a growth turn's hint usually carries no pool).
+    # None when there's no growth — then `current` is narrative-owned and only the
+    # max is authoritative.
+    stored_sheet = _as_dict(
+        _as_dict(_as_dict(pc).get("module_data")).get("character_sheet")
+    )
+
+    def _grown(stat: str, per: int, new_max: int | None, key: str):
+        if new_max is None:
+            return 0, None
+        growth = (auth_stats.get(stat, 0) - cur_stats.get(stat, 0)) * per
+        if growth <= 0:
+            return growth, None
+        stored_pool = _as_dict(stored_sheet.get(key))
+        stored_current = stored_pool.get("current")
+        current = (
+            _to_int(stored_current) + growth if stored_current is not None else new_max
+        )
+        return growth, {"current": current, "max": new_max}
+
+    factor = _to_int(_as_dict(class_rules).get("hp_factor", 0))
+    _, hp_pool = _grown("body", factor, hp_max, "hp")
+    _, magic_pool = _grown("will", MAGIC_POOL_PER_WILL, mp_max, "magic_pool")
+
     return {
         "hp_max": hp_max,
         "magic_pool_max": mp_max,
@@ -212,6 +245,9 @@ def authoritative_vitality_for_pc(
         # unresolved free-text class (None) must NOT strip — fail-safe.
         "strip_magic_pool": isinstance(class_rules, dict)
         and not class_rules.get("magic"),
+        # Complete pools to mirror on a growth turn (None = no growth this turn).
+        "hp_pool": hp_pool,
+        "magic_pool": magic_pool,
     }
 
 

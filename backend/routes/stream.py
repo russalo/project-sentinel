@@ -250,11 +250,28 @@ def _normalize_vitality_hint(hint: dict, player_name: str, vitality: dict) -> No
 
     Runs on EVERY turn, not just a level-up. ``vitality`` is
     ``progression.authoritative_vitality_for_pc(...)`` — the same verdict
-    enforcement consumes, so display and state can't diverge. Only *enriches a pool
-    the DM already emitted* (never invents a ``{max}``-only pool with no current,
-    which would render an empty bar). A None max is left alone — the engine doesn't
-    own it (free-text class / dead PC), fail-safe. In-place; tolerant of a malformed
-    hint; does NOT create a PC entry (an untouched PC needs no correction)."""
+    enforcement consumes, so display and state can't diverge.
+
+    Two shapes, both from that verdict:
+    - **Growth turn** (``hp_pool``/``magic_pool`` present — an enacted level-up that
+      raised the governing stat): mirror the COMPLETE engine-computed
+      ``{current, max}``, synthesizing the block when the DM emitted none. The
+      RFC-0018 prompts tell the DM not to write vitality on a level-up, so a growth
+      turn's hint usually carries no pool at all — patching only an existing max
+      would leave the UI at the old value while enforcement persists the grown one
+      (codex).
+    - **Otherwise**: only correct the ``max`` of a pool the DM already emitted —
+      ``current`` is narrative-owned, and we never invent a ``{max}``-only pool
+      (an empty bar). A None max is left alone (free-text class / dead PC),
+      fail-safe.
+
+    A stripped non-caster pool is emitted as an explicit ``None`` **deletion
+    marker**, not by dropping the key: the client reducer treats an absent key as
+    "preserve stored", so a legacy/hallucinated pool would otherwise survive in the
+    UI after enforcement removed it from the write (codex).
+
+    In-place; tolerant of a malformed hint; does NOT create a PC entry (an untouched
+    PC needs no correction)."""
     pc = _locate_pc_in_hint(hint, player_name, create=False)
     if pc is None:
         return
@@ -264,16 +281,24 @@ def _normalize_vitality_hint(hint: dict, player_name: str, vitality: dict) -> No
     sheet = module_data.get("character_sheet")
     if not isinstance(sheet, dict):
         return
+
+    hp_pool = vitality.get("hp_pool")
     hp_max = vitality.get("hp_max")
-    if hp_max is not None and isinstance(sheet.get("hp"), dict):
+    if isinstance(hp_pool, dict):
+        sheet["hp"] = dict(hp_pool)  # complete grown pool
+    elif hp_max is not None and isinstance(sheet.get("hp"), dict):
         sheet["hp"]["max"] = hp_max
+
+    magic_pool = vitality.get("magic_pool")
     mp_max = vitality.get("magic_pool_max")
-    if mp_max is not None and isinstance(sheet.get("magic_pool"), dict):
+    if isinstance(magic_pool, dict):
+        sheet["magic_pool"] = dict(magic_pool)
+    elif mp_max is not None and isinstance(sheet.get("magic_pool"), dict):
         sheet["magic_pool"]["max"] = mp_max
     elif vitality.get("strip_magic_pool"):
-        # A resolved non-caster owns no pool — drop a DM-emitted one so the UI
-        # doesn't show a pool the engine strips from the write.
-        sheet.pop("magic_pool", None)
+        # Explicit deletion marker — an absent key means "preserve stored" to the
+        # client reducer, which would leave a stripped pool visible until reload.
+        sheet["magic_pool"] = None
 
 
 @router.post("/stream")

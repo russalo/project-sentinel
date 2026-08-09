@@ -181,7 +181,9 @@ def test_dm_inflated_max_never_reaches_the_sse_hint(
     )
     hint_sheet = pc_hint["module_data"]["character_sheet"]
     assert hint_sheet["hp"] == {"current": 30, "max": 48}  # corrected, current kept
-    assert "magic_pool" not in hint_sheet  # non-caster pool stripped
+    # Non-caster pool stripped via an explicit deletion marker — an absent key
+    # would mean "preserve stored" to the client reducer.
+    assert hint_sheet["magic_pool"] is None
 
     # …and the persisted payload agrees (the shared verdict).
     op = _pc_op(fake_dispatch_log[0]["payload"])
