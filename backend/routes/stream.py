@@ -186,6 +186,41 @@ def _locate_pc_in_hint(hint: dict, player_name: str, *, create: bool) -> dict | 
     return pc
 
 
+def _normalize_pool(
+    sheet: dict, key: str, engine_pool: dict | None, engine_max: int | None, growth: int
+) -> None:
+    """Reconcile one ``{current, max}`` vitality pool in the hint with what
+    ``enforce_progression`` will persist. Precedence — mirrors ``_apply_max``:
+
+    1. **Growth turn** (``growth`` > 0): enforcement overrides ``current`` with
+       stored+growth, so mirror the complete engine pool even over a DM-emitted one
+       — otherwise the UI keeps the DM's (wrong) current.
+    2. **DM emitted a well-formed pool**: keep its narrative ``current`` (damage /
+       casting this turn) and correct only the engine-owned ``max``.
+    3. **DM emitted a MALFORMED pool** (key present, not an object): enforcement's
+       ``_as_dict`` drops it and ``_apply_max`` seeds ``current = max``, so mirror
+       that same full-pool seed rather than the stored current (codex) — otherwise
+       the bar shows wounded while persistence records full health.
+    4. **DM emitted none**: mirror the engine's complete pool so the bar is never
+       stale, and never max-only (which renders empty).
+
+    A None ``engine_max`` means the engine owns nothing here (free-text class /
+    dead PC) — leave the DM's value alone, fail-safe.
+    """
+    if growth > 0 and isinstance(engine_pool, dict):
+        sheet[key] = dict(engine_pool)
+        return
+    existing = sheet.get(key)
+    if isinstance(existing, dict):
+        if engine_max is not None:
+            existing["max"] = engine_max
+    elif key in sheet:
+        if engine_max is not None:
+            sheet[key] = {"current": engine_max, "max": engine_max}
+    elif isinstance(engine_pool, dict):
+        sheet[key] = dict(engine_pool)
+
+
 def _locate_all_pc_in_hint(hint: dict, player_name: str) -> list[dict]:
     """EVERY entry in the hint that refers to the player character.
 
@@ -328,33 +363,19 @@ def _normalize_vitality_hint(hint: dict, player_name: str, vitality: dict) -> No
             sheet = {}
             module_data["character_sheet"] = sheet
 
-        # Precedence per pool:
-        #  1. GROWTH turn (`*_growth` > 0) — enforcement overrides `current` with
-        #     stored+growth, so mirror the complete engine pool even over a
-        #     DM-emitted one, else the UI keeps the DM's (wrong) current.
-        #  2. DM emitted a pool — keep its narrative `current` (damage/casting this
-        #     turn) and correct only the max.
-        #  3. DM emitted none — mirror the engine's complete {current, max} so the
-        #     bar never renders stale, and never max-only (which shows empty).
-        if vitality.get("hp_growth", 0) > 0 and isinstance(hp_pool, dict):
-            sheet["hp"] = dict(hp_pool)
-        elif isinstance(sheet.get("hp"), dict):
-            if hp_max is not None:
-                sheet["hp"]["max"] = hp_max
-        elif isinstance(hp_pool, dict):
-            sheet["hp"] = dict(hp_pool)
-
+        _normalize_pool(sheet, "hp", hp_pool, hp_max, vitality.get("hp_growth", 0))
         if vitality.get("strip_magic_pool"):
             # Explicit deletion marker — an absent key means "preserve stored" to
             # the client reducer, leaving a stripped pool visible until reload.
             sheet["magic_pool"] = None
-        elif vitality.get("magic_growth", 0) > 0 and isinstance(magic_pool, dict):
-            sheet["magic_pool"] = dict(magic_pool)
-        elif isinstance(sheet.get("magic_pool"), dict):
-            if mp_max is not None:
-                sheet["magic_pool"]["max"] = mp_max
-        elif isinstance(magic_pool, dict):
-            sheet["magic_pool"] = dict(magic_pool)
+        else:
+            _normalize_pool(
+                sheet,
+                "magic_pool",
+                magic_pool,
+                mp_max,
+                vitality.get("magic_growth", 0),
+            )
 
 
 @router.post("/stream")

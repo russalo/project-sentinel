@@ -256,7 +256,9 @@ def test_normalize_tolerates_malformed_hints():
     _normalize_vitality_hint(_hint("not-a-dict"), "Kael", WARRIOR_V)
     hint = _hint({"hp": "oops"})
     _normalize_vitality_hint(hint, "Kael", WARRIOR_V)
-    assert _sheet_of(hint)["hp"] == "oops"  # untouched, no crash
+    # No crash; the malformed pool is replaced with the same seed enforcement
+    # commits (see test_normalize_malformed_pool_matches_enforcement_seed).
+    assert _sheet_of(hint)["hp"] == {"current": 48, "max": 48}
 
 
 def test_normalize_patches_every_pc_fragment():
@@ -281,3 +283,30 @@ def test_normalize_patches_every_pc_fragment():
     assert [s["hp"]["max"] for s in sheets] == [48, 48]  # both corrected
     assert [s["hp"]["current"] for s in sheets] == [30, 25]  # currents preserved
     assert all(s["magic_pool"] is None for s in sheets)  # marker on both
+
+
+def test_normalize_malformed_pool_matches_enforcement_seed():
+    # A non-object hp from the LLM: enforcement's _as_dict drops it and _apply_max
+    # seeds current = max (48/48). The hint must show the same, not the stored
+    # current — else the bar reads wounded while persistence has full health.
+    hint = _hint({"hp": "oops"})
+    _normalize_vitality_hint(
+        hint,
+        "Kael",
+        {
+            "hp_max": 48,
+            "magic_pool_max": None,
+            "strip_magic_pool": False,
+            "hp_pool": {"current": 30, "max": 48},  # stored current — NOT used here
+            "magic_pool": None,
+            "hp_growth": 0,
+            "magic_growth": 0,
+        },
+    )
+    assert _sheet_of(hint)["hp"] == {"current": 48, "max": 48}
+
+
+def test_normalize_malformed_pool_left_alone_when_engine_owns_nothing():
+    hint = _hint({"hp": "oops"})
+    _normalize_vitality_hint(hint, "Kael", NONE_V)
+    assert _sheet_of(hint)["hp"] == "oops"  # fail-safe, untouched
