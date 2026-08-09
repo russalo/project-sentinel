@@ -238,6 +238,44 @@ def _mirror_progression_to_hint(
                 sheet["magic_pool"]["max"] = mp_max
 
 
+def _normalize_vitality_hint(hint: dict, player_name: str, vitality: dict) -> None:
+    """Make the live SSE hint agree with what the engine will actually persist for
+    the PC's engine-owned vitality (RFC-0018 fast-follow).
+
+    ``enforce_progression`` corrects the *dispatched payload*, but the hint is built
+    from the DM's raw ``<world_update>`` and emitted first — so a DM-written
+    ``hp.max`` (or a ``magic_pool`` on a resolved non-caster) would render the
+    rejected value. Nothing re-hydrates per turn (``useWorldHydration`` runs on load
+    / world switch only), so that wrong value would stick until reload.
+
+    Runs on EVERY turn, not just a level-up. ``vitality`` is
+    ``progression.authoritative_vitality_for_pc(...)`` — the same verdict
+    enforcement consumes, so display and state can't diverge. Only *enriches a pool
+    the DM already emitted* (never invents a ``{max}``-only pool with no current,
+    which would render an empty bar). A None max is left alone — the engine doesn't
+    own it (free-text class / dead PC), fail-safe. In-place; tolerant of a malformed
+    hint; does NOT create a PC entry (an untouched PC needs no correction)."""
+    pc = _locate_pc_in_hint(hint, player_name, create=False)
+    if pc is None:
+        return
+    module_data = pc.get("module_data")
+    if not isinstance(module_data, dict):
+        return
+    sheet = module_data.get("character_sheet")
+    if not isinstance(sheet, dict):
+        return
+    hp_max = vitality.get("hp_max")
+    if hp_max is not None and isinstance(sheet.get("hp"), dict):
+        sheet["hp"]["max"] = hp_max
+    mp_max = vitality.get("magic_pool_max")
+    if mp_max is not None and isinstance(sheet.get("magic_pool"), dict):
+        sheet["magic_pool"]["max"] = mp_max
+    elif vitality.get("strip_magic_pool"):
+        # A resolved non-caster owns no pool — drop a DM-emitted one so the UI
+        # doesn't show a pool the engine strips from the write.
+        sheet.pop("magic_pool", None)
+
+
 @router.post("/stream")
 def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
     # NOTE: This handler is deliberately `def`, not `async def`.
@@ -471,11 +509,22 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
         # writes them, so without this the level-up wouldn't show until a refresh
         # re-hydrates the committed state (codex). Deterministic: enforce_progression
         # recomputes the same values at the dispatch seam below.
+        # The engine's vitality verdict for this turn — the SAME value
+        # enforce_progression consumes at the dispatch seam below, so the hint the
+        # player sees and the state we persist can't disagree (RFC-0018 fast-follow).
+        _choice = body.level_up.model_dump() if body.level_up is not None else None
+        _vitality = progression.authoritative_vitality_for_pc(
+            world_context.characters,
+            session.player_character_name,
+            _choice,
+            _class_rules,
+        )
+
         if body.level_up is not None:
             _prog = progression.authoritative_for_pc(
                 world_context.characters,
                 session.player_character_name,
-                body.level_up.model_dump(),
+                _choice,
             )
             if _prog is not None:
                 _mirror_progression_to_hint(
@@ -483,8 +532,15 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
                     session.player_character_name,
                     _prog[0],
                     _prog[1],
-                    progression.authoritative_maxes(_prog[1], _class_rules),
+                    (_vitality["hp_max"], _vitality["magic_pool_max"]),
                 )
+
+        # RFC-0018 fast-follow: on EVERY turn (not just a level-up), make the hint's
+        # engine-owned maxes match what will be persisted — otherwise a DM-written
+        # `hp.max` renders and sticks until reload (no per-turn re-hydration).
+        _normalize_vitality_hint(
+            frontend_hint, session.player_character_name, _vitality
+        )
 
         # Emit the world_update event in the shape the frontend
         # expects (DM hint shape, not the fs-manager schema shape).

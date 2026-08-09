@@ -341,6 +341,48 @@ def test_free_text_class_does_not_strip_magic_pool():
     assert _sheet(payload)["magic_pool"] == {"current": 8, "max": 12}  # preserved
 
 
+# ── the shared verdict (hint + enforcement consume the same helper) ───────────
+
+
+def test_vitality_verdict_matches_enforcement_for_caster():
+    pc = _pc(
+        {"body": 3, "mind": 5, "heart": 4, "will": 7},
+        hp={"current": 12, "max": 12},
+        magic_pool={"current": 14, "max": 14},
+    )
+    v = progression.authoritative_vitality_for_pc(
+        [pc], "Kael", {"stat": "will", "to_level": 3}, MAGE
+    )
+    assert v == {"hp_max": 12, "magic_pool_max": 16, "strip_magic_pool": False}
+
+
+def test_vitality_verdict_flags_non_caster_strip():
+    pc = _pc({"body": 6, "mind": 5, "heart": 5, "will": 5})
+    v = progression.authoritative_vitality_for_pc([pc], "Kael", None, WARRIOR)
+    assert v["hp_max"] == 48
+    assert v["magic_pool_max"] is None
+    assert v["strip_magic_pool"] is True
+
+
+def test_vitality_verdict_fail_safe_on_unresolved_class():
+    pc = _pc({"body": 6, "mind": 5, "heart": 5, "will": 5})
+    v = progression.authoritative_vitality_for_pc([pc], "Kael", None, None)
+    # Engine owns nothing — and must NOT claim a non-caster strip (fail-safe).
+    assert v == {"hp_max": None, "magic_pool_max": None, "strip_magic_pool": False}
+
+
+def test_vitality_verdict_dead_pc_owns_nothing():
+    pc = _pc({"body": 7, "mind": 5, "heart": 6, "will": 4})
+    pc["status"] = "dead"
+    v = progression.authoritative_vitality_for_pc([pc], "Kael", None, WARRIOR)
+    assert v == {"hp_max": None, "magic_pool_max": None, "strip_magic_pool": False}
+
+
+def test_vitality_verdict_unresolvable_pc_owns_nothing():
+    v = progression.authoritative_vitality_for_pc([], "Kael", None, WARRIOR)
+    assert v == {"hp_max": None, "magic_pool_max": None, "strip_magic_pool": False}
+
+
 # ── end-to-end chain: real class module resolution → enforcement ──────────────
 
 

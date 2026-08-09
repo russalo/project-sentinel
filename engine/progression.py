@@ -176,6 +176,45 @@ def authoritative_for_pc(
     return authoritative_progression(stored_level(pc), stored_stats(pc), choice)
 
 
+def authoritative_vitality_for_pc(
+    stored_characters: list[dict[str, Any]],
+    player_name: str,
+    choice: dict[str, Any] | None,
+    class_rules: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """The engine's verdict on the PC's derived vitality, for BOTH consumers.
+
+    Returns ``{"hp_max": int|None, "magic_pool_max": int|None,
+    "strip_magic_pool": bool}``:
+    - the maxes the engine owns this turn (None → DM-authored, fail-safe), and
+    - whether a *resolved* non-caster's ``magic_pool`` should be dropped.
+
+    Single source of truth so the SSE hint (display) and ``enforce_progression``
+    (persisted state) can never disagree about an engine-owned field — the whole
+    point of the fast-follow. Honors the same guards as enforcement: an
+    unresolvable PC and a stored-**dead** PC both yield "engine owns nothing"
+    (a dead PC's vitality is left alone — see ``enforce_progression``).
+    """
+    none = {"hp_max": None, "magic_pool_max": None, "strip_magic_pool": False}
+    pc = find_player_character(stored_characters, player_name)
+    if pc is None:
+        return none
+    if str(_as_dict(pc).get("status", "")).strip().lower() == "dead":
+        return none
+    _, auth_stats = authoritative_progression(
+        stored_level(pc), stored_stats(pc), choice
+    )
+    hp_max, mp_max = authoritative_maxes(auth_stats, class_rules)
+    return {
+        "hp_max": hp_max,
+        "magic_pool_max": mp_max,
+        # A resolved non-caster (rules present, magic falsy) owns no pool; an
+        # unresolved free-text class (None) must NOT strip — fail-safe.
+        "strip_magic_pool": isinstance(class_rules, dict)
+        and not class_rules.get("magic"),
+    }
+
+
 def _pc_entity_op(op: Any, player_name: str, slug: str | None) -> bool:
     """True if this op writes the player character's entity.
 
@@ -255,15 +294,20 @@ def enforce_progression(
     )
     stored_hp = _as_dict(stored_sheet.get("hp"))
     stored_mp = _as_dict(stored_sheet.get("magic_pool"))
-    new_hp_max, new_mp_max = authoritative_maxes(auth_stats, class_rules)
-    # Don't touch a stored-DEAD PC's vitality (codex): the downstream permadeath
-    # gate (`death_stakes.enforce_permadeath`, run AFTER this) drops HP-restore
-    # fields from the op, so injecting a max here would leave the dispatched (full)
-    # module_data carrying an incomplete pool that the shallow fs-manager merge then
-    # persists over the stored one. A dead PC's max/pool is moot — leave it be.
-    if str(_as_dict(pc).get("status", "")).strip().lower() == "dead":
-        new_hp_max = new_mp_max = None
-        class_rules = None
+    # The SAME verdict the SSE hint normalizer consumes, so display and persisted
+    # state can't disagree. Encapsulates the fail-safe (unresolved class) and the
+    # stored-DEAD skip: the downstream permadeath gate (`enforce_permadeath`, run
+    # AFTER this) drops HP-restore fields, so injecting a max for a dead PC would
+    # leave the dispatched module_data carrying an incomplete pool that the shallow
+    # fs-manager merge then persists over the stored one.
+    vitality = authoritative_vitality_for_pc(
+        stored_characters, player_name, choice, class_rules
+    )
+    new_hp_max = vitality["hp_max"]
+    new_mp_max = vitality["magic_pool_max"]
+    known_non_caster = vitality["strip_magic_pool"]
+    if new_hp_max is None and new_mp_max is None and not known_non_caster:
+        class_rules = None  # engine owns nothing here (dead PC / unresolved class)
     # The current-bump is the vitality gained FROM THE RAISED STAT this level-up —
     # ``(new stat − stored stat) × factor`` — NOT ``new_max − stored_max``. Keying
     # on the stat delta means reconciling a stale stored max never heals, and a
@@ -281,9 +325,6 @@ def enforce_progression(
         if new_mp_max is not None
         else 0
     )
-    # A *resolved* non-caster (class rules present, magic access falsy) — distinct
-    # from an unresolved free-text class (class_rules None), which fails safe.
-    known_non_caster = isinstance(class_rules, dict) and not class_rules.get("magic")
 
     # Deep-copy: `pc` is an element of the caller's stored_characters
     # (world_context.characters). Merging/mutating below must not write back into

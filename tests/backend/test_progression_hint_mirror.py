@@ -5,7 +5,7 @@ values into the `world_update` hint the player wouldn't see the advance until a 
 hydration.
 """
 
-from backend.routes.stream import _mirror_progression_to_hint
+from backend.routes.stream import _mirror_progression_to_hint, _normalize_vitality_hint
 
 
 def test_mirror_patches_existing_pc_entry():
@@ -86,3 +86,85 @@ def test_mirror_skips_none_maxes_fail_safe():
     _mirror_progression_to_hint(hint, "Kael", 3, {"body": 8}, (None, None))
     sheet = hint["characters"][0]["module_data"]["character_sheet"]
     assert sheet["hp"] == {"current": 30, "max": 40}  # untouched
+
+
+# ── every-turn vitality normalization (RFC-0018 fast-follow) ──────────────────
+
+
+def _hint(sheet):
+    return {
+        "characters": [
+            {
+                "name": "Kael",
+                "role": "player",
+                "module_data": {"character_sheet": sheet},
+            }
+        ]
+    }
+
+
+def _sheet_of(hint):
+    return hint["characters"][0]["module_data"]["character_sheet"]
+
+
+WARRIOR_V = {"hp_max": 48, "magic_pool_max": None, "strip_magic_pool": True}
+NONE_V = {"hp_max": None, "magic_pool_max": None, "strip_magic_pool": False}
+
+
+def test_normalize_overrides_dm_inflated_max():
+    # The DM writes an inflated max on an ordinary turn; enforcement rejects it in
+    # the payload, so the hint must show the authoritative value — otherwise the
+    # rejected number sticks in the UI until reload.
+    hint = _hint({"hp": {"current": 30, "max": 999}})
+    _normalize_vitality_hint(hint, "Kael", WARRIOR_V)
+    assert _sheet_of(hint)["hp"] == {"current": 30, "max": 48}  # current untouched
+
+
+def test_normalize_strips_non_caster_pool():
+    hint = _hint(
+        {"hp": {"current": 30, "max": 48}, "magic_pool": {"current": 5, "max": 10}}
+    )
+    _normalize_vitality_hint(hint, "Kael", WARRIOR_V)
+    assert "magic_pool" not in _sheet_of(hint)
+
+
+def test_normalize_sets_caster_pool_max():
+    hint = _hint({"magic_pool": {"current": 12, "max": 99}})
+    _normalize_vitality_hint(
+        hint, "Kael", {"hp_max": 12, "magic_pool_max": 16, "strip_magic_pool": False}
+    )
+    assert _sheet_of(hint)["magic_pool"] == {"current": 12, "max": 16}
+
+
+def test_normalize_fail_safe_leaves_dm_max():
+    # Free-text class / dead PC → engine owns nothing; the DM's max stands and no
+    # pool is stripped.
+    hint = _hint(
+        {"hp": {"current": 30, "max": 200}, "magic_pool": {"current": 4, "max": 8}}
+    )
+    _normalize_vitality_hint(hint, "Kael", NONE_V)
+    assert _sheet_of(hint)["hp"]["max"] == 200
+    assert _sheet_of(hint)["magic_pool"] == {"current": 4, "max": 8}
+
+
+def test_normalize_never_invents_a_pool():
+    # The DM emitted no hp block — don't create a {max}-only pool (empty bar).
+    hint = _hint({"stats": {"body": 6}})
+    _normalize_vitality_hint(hint, "Kael", WARRIOR_V)
+    assert "hp" not in _sheet_of(hint)
+
+
+def test_normalize_does_not_create_a_pc_entry():
+    # An untouched PC needs no correction — don't synthesize an entry.
+    hint = {"characters": []}
+    _normalize_vitality_hint(hint, "Kael", WARRIOR_V)
+    assert hint["characters"] == []
+
+
+def test_normalize_tolerates_malformed_hints():
+    _normalize_vitality_hint(None, "Kael", WARRIOR_V)  # no raise
+    _normalize_vitality_hint({"characters": "oops"}, "Kael", WARRIOR_V)
+    _normalize_vitality_hint(_hint("not-a-dict"), "Kael", WARRIOR_V)
+    hint = _hint({"hp": "oops"})
+    _normalize_vitality_hint(hint, "Kael", WARRIOR_V)
+    assert _sheet_of(hint)["hp"] == "oops"  # untouched, no crash
