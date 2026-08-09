@@ -129,3 +129,62 @@ def test_free_text_class_leaves_dm_max_end_to_end(
     assert op is not None
     hp = op["data"]["module_data"]["character_sheet"]["hp"]
     assert hp["max"] == 60  # DM value survives — engine doesn't own this class's max
+
+
+SESSION_HINT = "c3c3c3c3-3333-4333-8333-c3c3c3c3c3c3"
+
+
+def test_dm_inflated_max_never_reaches_the_sse_hint(
+    client, fake_openai, fake_dispatch_log, fake_commit_log, tmp_data_dir
+):
+    # RFC-0018 fast-follow: on an ORDINARY turn (no level-up) a DM-written inflated
+    # hp.max must be corrected in the live hint too — not just the persisted payload.
+    # Nothing re-hydrates per turn, so an uncorrected hint would stick until reload.
+    _prime_session(tmp_data_dir, SESSION_HINT)
+    _prime_pc(tmp_data_dir, pc_class="Warrior", body=6, hp={"current": 48, "max": 48})
+    world_update = json.dumps(
+        {
+            "characters": [
+                {
+                    "name": "Bran",
+                    "action": "upsert",
+                    "module_data": {
+                        "character_sheet": {
+                            "hp": {"current": 30, "max": 999},
+                            "magic_pool": {"current": 5, "max": 10},
+                        }
+                    },
+                }
+            ]
+        }
+    )
+    fake_openai.chat.completions.set_stream_tokens(
+        ["A blow lands. ", f"<world_update>{world_update}</world_update>"]
+    )
+
+    resp = client.post(
+        "/api/stream", json={"action": "take the hit", "sessionId": SESSION_HINT}
+    )
+    assert resp.status_code == 200
+    body = resp.text
+
+    # The emitted hint carries the authoritative max (6×8=48), not the DM's 999,
+    # and no magic_pool for a Warrior.
+    hint_events = [
+        json.loads(line[len("data: ") :])
+        for line in body.split("\n")
+        if line.startswith("data: ") and '"world_update"' in line
+    ]
+    assert hint_events, "expected a world_update event"
+    pc_hint = next(
+        c for c in hint_events[0]["data"]["characters"] if c.get("name") == "Bran"
+    )
+    hint_sheet = pc_hint["module_data"]["character_sheet"]
+    assert hint_sheet["hp"] == {"current": 30, "max": 48}  # corrected, current kept
+    # Non-caster pool stripped via an explicit deletion marker — an absent key
+    # would mean "preserve stored" to the client reducer.
+    assert hint_sheet["magic_pool"] is None
+
+    # …and the persisted payload agrees (the shared verdict).
+    op = _pc_op(fake_dispatch_log[0]["payload"])
+    assert op["data"]["module_data"]["character_sheet"]["hp"]["max"] == 48

@@ -186,6 +186,79 @@ def _locate_pc_in_hint(hint: dict, player_name: str, *, create: bool) -> dict | 
     return pc
 
 
+def _normalize_pool(
+    sheet: dict,
+    key: str,
+    engine_pool: dict | None,
+    engine_max: int | None,
+    growth: int,
+    *,
+    may_synthesize: bool = True,
+) -> None:
+    """Reconcile one ``{current, max}`` vitality pool in the hint with what
+    ``enforce_progression`` will persist. Precedence — mirrors ``_apply_max``:
+
+    1. **Growth turn** (``growth`` > 0): enforcement overrides ``current`` with
+       stored+growth, so mirror the complete engine pool even over a DM-emitted one
+       — otherwise the UI keeps the DM's (wrong) current.
+    2. **DM emitted a well-formed pool**: keep its narrative ``current`` (damage /
+       casting this turn) and correct only the engine-owned ``max``.
+    3. **DM emitted a MALFORMED pool** (key present, not an object): enforcement's
+       ``_as_dict`` drops it and ``_apply_max`` seeds ``current = max``, so mirror
+       that same full-pool seed rather than the stored current (codex) — otherwise
+       the bar shows wounded while persistence records full health.
+    4. **DM emitted none**: mirror the engine's complete pool so the bar is never
+       stale, and never max-only (which renders empty) — but only when
+       ``may_synthesize`` (the FIRST matching fragment this turn). A later fragment
+       that omits the pool must stay omitted so the client keeps what an earlier
+       fragment applied: enforcement carries each merged op forward via ``base_md``,
+       so re-synthesizing the PRE-TURN pool here would undo an earlier fragment's
+       damage in the UI while persistence kept it (codex).
+
+    A None ``engine_max`` means the engine owns nothing here (free-text class /
+    dead PC) — leave the DM's value alone, fail-safe.
+    """
+    if growth > 0 and isinstance(engine_pool, dict):
+        sheet[key] = dict(engine_pool)
+        return
+    existing = sheet.get(key)
+    if isinstance(existing, dict):
+        if engine_max is not None:
+            existing["max"] = engine_max
+    elif key in sheet:
+        if engine_max is not None:
+            sheet[key] = {"current": engine_max, "max": engine_max}
+    elif may_synthesize and isinstance(engine_pool, dict):
+        sheet[key] = dict(engine_pool)
+
+
+def _locate_all_pc_in_hint(hint: dict, player_name: str) -> list[dict]:
+    """EVERY entry in the hint that refers to the player character.
+
+    ``_locate_pc_in_hint`` returns the first match, which is right for the mirrors
+    (one authoritative patch). Normalization instead has to touch them all: the DM
+    can emit the PC more than once in ``characters``, ``enforce_progression``
+    corrects every matching op, and the client applies fragments in order — so an
+    unnormalized later fragment would restore a rejected value. Matches the same
+    way as the single locator (``role == "player"`` or a name match), as a union.
+    Tolerant of a malformed hint (returns [])."""
+    if not isinstance(hint, dict) or not isinstance(player_name, str):
+        return []
+    chars = hint.get("characters")
+    if not isinstance(chars, list):
+        return []
+    lowered = player_name.strip().lower()
+    return [
+        c
+        for c in chars
+        if isinstance(c, dict)
+        and (
+            str(c.get("role", "")).lower() == "player"
+            or str(c.get("name", "")).strip().lower() == lowered
+        )
+    ]
+
+
 def _mirror_death_outcome_to_hint(
     hint: dict, player_name: str, outcome_hint: dict
 ) -> None:
@@ -236,6 +309,96 @@ def _mirror_progression_to_hint(
                 sheet["hp"]["max"] = hp_max
             if mp_max is not None and isinstance(sheet.get("magic_pool"), dict):
                 sheet["magic_pool"]["max"] = mp_max
+
+
+def _normalize_vitality_hint(hint: dict, player_name: str, vitality: dict) -> None:
+    """Make the live SSE hint agree with what the engine will actually persist for
+    the PC's engine-owned vitality (RFC-0018 fast-follow).
+
+    ``enforce_progression`` corrects the *dispatched payload*, but the hint is built
+    from the DM's raw ``<world_update>`` and emitted first — so a DM-written
+    ``hp.max`` (or a ``magic_pool`` on a resolved non-caster) would render the
+    rejected value. Nothing re-hydrates per turn (``useWorldHydration`` runs on load
+    / world switch only), so that wrong value would stick until reload.
+
+    Runs on EVERY turn, not just a level-up. ``vitality`` is
+    ``progression.authoritative_vitality_for_pc(...)`` — the same verdict
+    enforcement consumes, so display and state can't diverge.
+
+    Two shapes, both from that verdict:
+    - **Growth turn** (``hp_pool``/``magic_pool`` present — an enacted level-up that
+      raised the governing stat): mirror the COMPLETE engine-computed
+      ``{current, max}``, synthesizing the block when the DM emitted none. The
+      RFC-0018 prompts tell the DM not to write vitality on a level-up, so a growth
+      turn's hint usually carries no pool at all — patching only an existing max
+      would leave the UI at the old value while enforcement persists the grown one
+      (codex).
+    - **Otherwise**: only correct the ``max`` of a pool the DM already emitted —
+      ``current`` is narrative-owned, and we never invent a ``{max}``-only pool
+      (an empty bar). A None max is left alone (free-text class / dead PC),
+      fail-safe.
+
+    A stripped non-caster pool is emitted as an explicit ``None`` **deletion
+    marker**, not by dropping the key: the client reducer treats an absent key as
+    "preserve stored", so a legacy/hallucinated pool would otherwise survive in the
+    UI after enforcement removed it from the write (codex).
+
+    In-place; tolerant of a malformed hint; does NOT create a PC entry (an untouched
+    PC needs no correction)."""
+    # EVERY matching PC fragment, not just the first: the DM can emit the PC more
+    # than once in `characters`, enforce_progression corrects every matching op,
+    # and the client applies fragments in order — so a later unnormalized fragment
+    # would restore a rejected max / pool (codex).
+    pcs = _locate_all_pc_in_hint(hint, player_name)
+    if not pcs:
+        return  # PC untouched this turn → nothing was persisted → nothing to correct
+
+    hp_pool = vitality.get("hp_pool")
+    hp_max = vitality.get("hp_max")
+    magic_pool = vitality.get("magic_pool")
+    mp_max = vitality.get("magic_pool_max")
+    if hp_max is None and mp_max is None and not vitality.get("strip_magic_pool"):
+        return  # engine owns nothing here (free-text class / dead PC) — fail-safe
+
+    for index, pc in enumerate(pcs):
+        # Only the first fragment may synthesize a pool the DM omitted; a later
+        # omission must stay omitted so the client keeps what the earlier fragment
+        # applied (enforcement carries ops forward via base_md).
+        first = index == 0
+        # The PC IS touched this turn, so enforcement is correcting its persisted
+        # vitality — create the nested objects if the DM's fragment lacks them (e.g.
+        # a status- or combat-only hint). Without this the correction never reaches
+        # the client, whose deep-merge preserves the stale values until reload.
+        module_data = pc.get("module_data")
+        if not isinstance(module_data, dict):
+            module_data = {}
+            pc["module_data"] = module_data
+        sheet = module_data.get("character_sheet")
+        if not isinstance(sheet, dict):
+            sheet = {}
+            module_data["character_sheet"] = sheet
+
+        _normalize_pool(
+            sheet,
+            "hp",
+            hp_pool,
+            hp_max,
+            vitality.get("hp_growth", 0),
+            may_synthesize=first,
+        )
+        if vitality.get("strip_magic_pool"):
+            # Explicit deletion marker — an absent key means "preserve stored" to
+            # the client reducer, leaving a stripped pool visible until reload.
+            sheet["magic_pool"] = None
+        else:
+            _normalize_pool(
+                sheet,
+                "magic_pool",
+                magic_pool,
+                mp_max,
+                vitality.get("magic_growth", 0),
+                may_synthesize=first,
+            )
 
 
 @router.post("/stream")
@@ -471,11 +634,22 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
         # writes them, so without this the level-up wouldn't show until a refresh
         # re-hydrates the committed state (codex). Deterministic: enforce_progression
         # recomputes the same values at the dispatch seam below.
+        # The engine's vitality verdict for this turn — the SAME value
+        # enforce_progression consumes at the dispatch seam below, so the hint the
+        # player sees and the state we persist can't disagree (RFC-0018 fast-follow).
+        _choice = body.level_up.model_dump() if body.level_up is not None else None
+        _vitality = progression.authoritative_vitality_for_pc(
+            world_context.characters,
+            session.player_character_name,
+            _choice,
+            _class_rules,
+        )
+
         if body.level_up is not None:
             _prog = progression.authoritative_for_pc(
                 world_context.characters,
                 session.player_character_name,
-                body.level_up.model_dump(),
+                _choice,
             )
             if _prog is not None:
                 _mirror_progression_to_hint(
@@ -483,8 +657,15 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
                     session.player_character_name,
                     _prog[0],
                     _prog[1],
-                    progression.authoritative_maxes(_prog[1], _class_rules),
+                    (_vitality["hp_max"], _vitality["magic_pool_max"]),
                 )
+
+        # RFC-0018 fast-follow: on EVERY turn (not just a level-up), make the hint's
+        # engine-owned maxes match what will be persisted — otherwise a DM-written
+        # `hp.max` renders and sticks until reload (no per-turn re-hydration).
+        _normalize_vitality_hint(
+            frontend_hint, session.player_character_name, _vitality
+        )
 
         # Emit the world_update event in the shape the frontend
         # expects (DM hint shape, not the fs-manager schema shape).

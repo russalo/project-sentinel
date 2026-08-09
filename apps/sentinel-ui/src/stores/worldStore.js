@@ -1,5 +1,59 @@
 import { create } from 'zustand';
 
+// A world_update hint carries only what CHANGED this turn, so a character's
+// `module_data` arrives PARTIAL — e.g. the RFC-0014 death mirror sends just
+// `{combat: {death_saves_failed}}`, the RFC-0017 level-up mirror just
+// `{character_sheet: {stats}}`. A plain `{...c, ...char}` spread REPLACES the
+// stored module_data with that fragment, wiping the siblings (`hp`,
+// `magic_pool`, `combat`) — and PlayerVitals reads
+// `module_data.character_sheet.hp`, falling back to `health: 100` when it's
+// gone, so the HP bar visibly jumps to full. Nothing re-hydrates per turn
+// (useWorldHydration runs on load / world switch only), so the wrong value
+// sticks until reload.
+//
+// Deliberately narrow: recurse exactly the two levels module_data actually
+// nests (module_data -> character_sheet / combat / magic / ...), per-key
+// override at the leaf so a fresh `hp` object still replaces the old one.
+// Not a general-purpose deep merge.
+function mergeModuleData(stored, incoming) {
+  if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming)) {
+    return stored;
+  }
+  if (!stored || typeof stored !== 'object' || Array.isArray(stored)) {
+    return incoming;
+  }
+  const out = { ...stored };
+  for (const [key, value] of Object.entries(incoming)) {
+    // Explicit null = DELETION marker. An ABSENT key means "preserve stored", so
+    // the backend sends null to actually remove one (e.g. a non-caster's
+    // magic_pool that the engine strips from the write) — without this the stale
+    // value would survive in the UI until reload. Applies at every depth: the
+    // marker arrives nested, as character_sheet.magic_pool = null.
+    if (value === null) {
+      delete out[key];
+      continue;
+    }
+    const prev = out[key];
+    const bothPlainObjects =
+      prev && typeof prev === 'object' && !Array.isArray(prev) &&
+      value && typeof value === 'object' && !Array.isArray(value);
+    // Recurse (not a plain spread) so a nested null still deletes; the leaf level
+    // has no object values, so this bottoms out immediately.
+    out[key] = bothPlainObjects ? mergeModuleData(prev, value) : value;
+  }
+  return out;
+}
+
+// Merge a world_update character fragment onto the stored character: shallow
+// for ordinary fields (status, currentLocation, …), deep for module_data.
+function mergeCharacter(stored, incoming) {
+  const merged = { ...stored, ...incoming };
+  if (incoming && Object.prototype.hasOwnProperty.call(incoming, 'module_data')) {
+    merged.module_data = mergeModuleData(stored?.module_data, incoming.module_data);
+  }
+  return merged;
+}
+
 // worldStore's tension contract is the raw 0-10 integer the backend emits
 // (via load_world_context and via every DM world_update). WorldMetrics derives
 // the colour band + categorical label from the int at render time — see
@@ -123,7 +177,9 @@ export const useWorldStore = create((set) => ({
         } else {
           const idx = chars.findIndex(c => c.name === char.name);
           if (idx >= 0) {
-            chars = chars.map((c, i) => i === idx ? { ...c, ...char } : c);
+            // Deep-merge module_data so a partial hint can't wipe hp/magic_pool/
+            // combat off the stored character (see mergeModuleData above).
+            chars = chars.map((c, i) => i === idx ? mergeCharacter(c, char) : c);
           } else {
             chars = [...chars, char];
           }
