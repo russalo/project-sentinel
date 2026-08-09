@@ -186,6 +186,33 @@ def _locate_pc_in_hint(hint: dict, player_name: str, *, create: bool) -> dict | 
     return pc
 
 
+def _locate_all_pc_in_hint(hint: dict, player_name: str) -> list[dict]:
+    """EVERY entry in the hint that refers to the player character.
+
+    ``_locate_pc_in_hint`` returns the first match, which is right for the mirrors
+    (one authoritative patch). Normalization instead has to touch them all: the DM
+    can emit the PC more than once in ``characters``, ``enforce_progression``
+    corrects every matching op, and the client applies fragments in order — so an
+    unnormalized later fragment would restore a rejected value. Matches the same
+    way as the single locator (``role == "player"`` or a name match), as a union.
+    Tolerant of a malformed hint (returns [])."""
+    if not isinstance(hint, dict) or not isinstance(player_name, str):
+        return []
+    chars = hint.get("characters")
+    if not isinstance(chars, list):
+        return []
+    lowered = player_name.strip().lower()
+    return [
+        c
+        for c in chars
+        if isinstance(c, dict)
+        and (
+            str(c.get("role", "")).lower() == "player"
+            or str(c.get("name", "")).strip().lower() == lowered
+        )
+    ]
+
+
 def _mirror_death_outcome_to_hint(
     hint: dict, player_name: str, outcome_hint: dict
 ) -> None:
@@ -272,8 +299,12 @@ def _normalize_vitality_hint(hint: dict, player_name: str, vitality: dict) -> No
 
     In-place; tolerant of a malformed hint; does NOT create a PC entry (an untouched
     PC needs no correction)."""
-    pc = _locate_pc_in_hint(hint, player_name, create=False)
-    if pc is None:
+    # EVERY matching PC fragment, not just the first: the DM can emit the PC more
+    # than once in `characters`, enforce_progression corrects every matching op,
+    # and the client applies fragments in order — so a later unnormalized fragment
+    # would restore a rejected max / pool (codex).
+    pcs = _locate_all_pc_in_hint(hint, player_name)
+    if not pcs:
         return  # PC untouched this turn → nothing was persisted → nothing to correct
 
     hp_pool = vitality.get("hp_pool")
@@ -283,46 +314,47 @@ def _normalize_vitality_hint(hint: dict, player_name: str, vitality: dict) -> No
     if hp_max is None and mp_max is None and not vitality.get("strip_magic_pool"):
         return  # engine owns nothing here (free-text class / dead PC) — fail-safe
 
-    # The PC IS touched this turn, so enforcement is correcting its persisted
-    # vitality — create the nested objects if the DM's fragment lacks them (e.g. a
-    # status- or combat-only hint). Without this the correction never reaches the
-    # client, whose deep-merge preserves the stale values until reload (codex).
-    module_data = pc.get("module_data")
-    if not isinstance(module_data, dict):
-        module_data = {}
-        pc["module_data"] = module_data
-    sheet = module_data.get("character_sheet")
-    if not isinstance(sheet, dict):
-        sheet = {}
-        module_data["character_sheet"] = sheet
+    for pc in pcs:
+        # The PC IS touched this turn, so enforcement is correcting its persisted
+        # vitality — create the nested objects if the DM's fragment lacks them (e.g.
+        # a status- or combat-only hint). Without this the correction never reaches
+        # the client, whose deep-merge preserves the stale values until reload.
+        module_data = pc.get("module_data")
+        if not isinstance(module_data, dict):
+            module_data = {}
+            pc["module_data"] = module_data
+        sheet = module_data.get("character_sheet")
+        if not isinstance(sheet, dict):
+            sheet = {}
+            module_data["character_sheet"] = sheet
 
-    # Precedence per pool:
-    #  1. GROWTH turn (`*_growth` > 0) — enforcement overrides `current` with
-    #     stored+growth, so mirror the complete engine pool even over a DM-emitted
-    #     one, else the UI keeps the DM's (wrong) current until reload.
-    #  2. DM emitted a pool — keep its narrative `current` (damage/casting this
-    #     turn) and correct only the max.
-    #  3. DM emitted none — mirror the engine's complete {current, max} so the bar
-    #     never renders stale, and never max-only (which would show empty).
-    if vitality.get("hp_growth", 0) > 0 and isinstance(hp_pool, dict):
-        sheet["hp"] = dict(hp_pool)
-    elif isinstance(sheet.get("hp"), dict):
-        if hp_max is not None:
-            sheet["hp"]["max"] = hp_max
-    elif isinstance(hp_pool, dict):
-        sheet["hp"] = dict(hp_pool)
+        # Precedence per pool:
+        #  1. GROWTH turn (`*_growth` > 0) — enforcement overrides `current` with
+        #     stored+growth, so mirror the complete engine pool even over a
+        #     DM-emitted one, else the UI keeps the DM's (wrong) current.
+        #  2. DM emitted a pool — keep its narrative `current` (damage/casting this
+        #     turn) and correct only the max.
+        #  3. DM emitted none — mirror the engine's complete {current, max} so the
+        #     bar never renders stale, and never max-only (which shows empty).
+        if vitality.get("hp_growth", 0) > 0 and isinstance(hp_pool, dict):
+            sheet["hp"] = dict(hp_pool)
+        elif isinstance(sheet.get("hp"), dict):
+            if hp_max is not None:
+                sheet["hp"]["max"] = hp_max
+        elif isinstance(hp_pool, dict):
+            sheet["hp"] = dict(hp_pool)
 
-    if vitality.get("strip_magic_pool"):
-        # Explicit deletion marker — an absent key means "preserve stored" to the
-        # client reducer, which would leave a stripped pool visible until reload.
-        sheet["magic_pool"] = None
-    elif vitality.get("magic_growth", 0) > 0 and isinstance(magic_pool, dict):
-        sheet["magic_pool"] = dict(magic_pool)
-    elif isinstance(sheet.get("magic_pool"), dict):
-        if mp_max is not None:
-            sheet["magic_pool"]["max"] = mp_max
-    elif isinstance(magic_pool, dict):
-        sheet["magic_pool"] = dict(magic_pool)
+        if vitality.get("strip_magic_pool"):
+            # Explicit deletion marker — an absent key means "preserve stored" to
+            # the client reducer, leaving a stripped pool visible until reload.
+            sheet["magic_pool"] = None
+        elif vitality.get("magic_growth", 0) > 0 and isinstance(magic_pool, dict):
+            sheet["magic_pool"] = dict(magic_pool)
+        elif isinstance(sheet.get("magic_pool"), dict):
+            if mp_max is not None:
+                sheet["magic_pool"]["max"] = mp_max
+        elif isinstance(magic_pool, dict):
+            sheet["magic_pool"] = dict(magic_pool)
 
 
 @router.post("/stream")

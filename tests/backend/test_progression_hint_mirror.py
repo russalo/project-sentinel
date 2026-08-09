@@ -257,3 +257,27 @@ def test_normalize_tolerates_malformed_hints():
     hint = _hint({"hp": "oops"})
     _normalize_vitality_hint(hint, "Kael", WARRIOR_V)
     assert _sheet_of(hint)["hp"] == "oops"  # untouched, no crash
+
+
+def test_normalize_patches_every_pc_fragment():
+    # The DM emitted the PC twice; the client applies fragments in order, so an
+    # unnormalized later one would restore the rejected max (codex).
+    hint = {
+        "characters": [
+            {
+                "name": "Kael",
+                "role": "player",
+                "module_data": {"character_sheet": {"hp": {"current": 30, "max": 999}}},
+            },
+            {
+                "name": "Kael",
+                "action": "upsert",
+                "module_data": {"character_sheet": {"hp": {"current": 25, "max": 777}}},
+            },
+        ]
+    }
+    _normalize_vitality_hint(hint, "Kael", WARRIOR_V)
+    sheets = [c["module_data"]["character_sheet"] for c in hint["characters"]]
+    assert [s["hp"]["max"] for s in sheets] == [48, 48]  # both corrected
+    assert [s["hp"]["current"] for s in sheets] == [30, 25]  # currents preserved
+    assert all(s["magic_pool"] is None for s in sheets)  # marker on both
