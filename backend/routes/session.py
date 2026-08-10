@@ -204,6 +204,11 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
         # only prompt when one is MISSING) would see it as set while the PC stays
         # mechanically unresolved (codex). A new world uses the default module set.
         class_rules.sanitize_payload_archetypes(extracted.payload)
+        # …and seed the engine-derived vitality for a PC the intro validly
+        # classified. Enforcement never runs here, so otherwise the DM's invented
+        # maxes persist: a cleric written as 20/20 is later reconciled to 20/36 and
+        # never reaches full health (the max is engine-owned, the current isn't).
+        class_rules.seed_payload_vitality(extracted.payload)
         engine.apply_world_update(config, extracted.payload, world_id=world_id)
 
     # 4. Build the session record with the opening turn.
@@ -217,7 +222,7 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
             f"{body.world_name}."
         ),
         "narrative": intro_result.narrative,
-        "world_updates": _parse_hint_block_for_frontend(intro_result.raw_response),
+        "world_updates": _intro_hint(intro_result.raw_response),
         "created_at": started_at,
     }
 
@@ -304,6 +309,18 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
         world_name=body.world_name,
         session_token=session_token,
     )
+
+
+def _intro_hint(raw_response: str) -> dict:
+    """The intro's frontend hint, with archetypes sanitized (RFC-0019).
+
+    ``WorldCreation.jsx`` applies this straight into ``worldStore``, which copies
+    character fields verbatim — so an invalid archetype would live on in the UI even
+    though the dispatched payload was sanitized (coderabbit).
+    """
+    hint = _parse_hint_block_for_frontend(raw_response)
+    class_rules.sanitize_hint_archetypes(hint)
+    return hint
 
 
 def _parse_hint_block_for_frontend(raw_response: str) -> dict:

@@ -142,6 +142,83 @@ def sanitize_payload_archetypes(
     return dropped
 
 
+def sanitize_hint_archetypes(hint: Any, modules: dict[str, str] | None = None) -> int:
+    """Canonicalize-or-drop every character ``archetype`` in a DM **hint** block, in
+    place. Returns how many were dropped.
+
+    The display-side twin of ``sanitize_payload_archetypes``. The intro's
+    ``world_updates`` hint goes straight into the frontend's ``worldStore``, which
+    copies character fields verbatim — so without this an invalid archetype lives on
+    in the UI even though the persisted payload was sanitized (coderabbit).
+    """
+    dropped = 0
+    if not isinstance(hint, dict):
+        return 0
+    chars = hint.get("characters")
+    if not isinstance(chars, list):
+        return 0
+    pinned: dict[str, str] = {}
+    for char in chars:
+        if not isinstance(char, dict) or "archetype" not in char:
+            continue
+        key = str(char.get("name", "")).strip().lower()
+        canonical = pinned.get(key) or canonical_archetype(
+            modules, char.get("archetype")
+        )
+        if canonical is None:
+            char.pop("archetype")
+            dropped += 1
+        else:
+            char["archetype"] = canonical
+            pinned.setdefault(key, canonical)
+    return dropped
+
+
+def seed_payload_vitality(payload: Any, modules: dict[str, str] | None = None) -> int:
+    """Seed engine-derived ``hp``/``magic_pool`` onto entity ops that carry an
+    archetype + stats. Returns how many pools were written.
+
+    For the **establishment** dispatch only (``/api/session/new``), which never runs
+    ``enforce_progression``. Without it an intro that validly classifies a PC still
+    persists the DM's invented maxes — a cleric written as 20/20 is later reconciled
+    to 20/36 and never reaches full health, because reconciliation corrects the max
+    but leaves the (narrative-owned) current (codex). A newly established character
+    starts at full: ``current = max``.
+    """
+    from .progression import authoritative_maxes  # local: avoid an import cycle
+
+    seeded = 0
+    if not isinstance(payload, dict):
+        return 0
+    updates = payload.get("updates")
+    if not isinstance(updates, list):
+        return 0
+    for op in updates:
+        if not isinstance(op, dict) or "/entities/" not in str(op.get("target_file")):
+            continue
+        data = op.get("data")
+        if not isinstance(data, dict):
+            continue
+        rules = _lookup(_rules_data(modules) or {}, data.get("archetype"))
+        if not rules:
+            continue
+        sheet = data.get("module_data", {})
+        sheet = sheet.get("character_sheet") if isinstance(sheet, dict) else None
+        stats = sheet.get("stats") if isinstance(sheet, dict) else None
+        if not isinstance(stats, dict):
+            continue
+        hp_max, mp_max = authoritative_maxes(stats, rules)
+        if hp_max is not None:
+            sheet["hp"] = {"current": hp_max, "max": hp_max}
+            seeded += 1
+        if mp_max is not None:
+            sheet["magic_pool"] = {"current": mp_max, "max": mp_max}
+            seeded += 1
+        elif "magic_pool" in sheet:
+            sheet.pop("magic_pool")  # a resolved non-caster owns no pool
+    return seeded
+
+
 def resolve_class_rules(
     modules: dict[str, str] | None, character: Any
 ) -> dict[str, Any] | None:

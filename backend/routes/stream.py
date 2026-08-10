@@ -186,6 +186,24 @@ def _locate_pc_in_hint(hint: dict, player_name: str, *, create: bool) -> dict | 
     return pc
 
 
+def _normalize_archetype_hint(hint: dict, player_name: str, pin: str | None) -> None:
+    """Make the streamed hint's PC ``archetype`` agree with what enforcement
+    persists (RFC-0019).
+
+    The hint is emitted from the DM's raw block BEFORE ``enforce_progression`` runs,
+    so a re-map would show ``warrior`` in the UI while ``cleric`` is persisted — and
+    with no per-turn re-hydration it sticks until reload (coderabbit; the same
+    hint-vs-persisted class as the RFC-0018 fast-follow). Forces ``pin`` onto every
+    matching PC fragment, or removes the field when the engine pinned nothing (an
+    unclassified PC / invalid value), mirroring enforcement exactly. In-place;
+    tolerant of a malformed hint."""
+    for pc in _locate_all_pc_in_hint(hint, player_name):
+        if pin is not None:
+            pc["archetype"] = pin
+        else:
+            pc.pop("archetype", None)
+
+
 def _normalize_pool(
     sheet: dict,
     key: str,
@@ -260,11 +278,11 @@ def _incoming_archetype_candidate(
         for char in chars:
             if not isinstance(char, dict):
                 continue
-            is_pc = (
-                str(char.get("role", "")).lower() == "player"
-                or str(char.get("name", "")).strip().lower() == lowered
-            )
-            if not is_pc:
+            # Match by NAME only. The Fact-Extractor builds an op's target file from
+            # the name, so a role-only fragment with no usable name is DISCARDED —
+            # accepting its archetype would pin a value that never reaches the PC's
+            # entity file and then force it forever (codex).
+            if str(char.get("name", "")).strip().lower() != lowered:
                 continue
             canonical = progression.effective_archetype(
                 None, char.get("archetype"), archetypes
@@ -728,6 +746,12 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
         _normalize_vitality_hint(
             frontend_hint, session.player_character_name, _vitality
         )
+        # RFC-0019: same truthfulness rule for the pinned archetype — the hint must
+        # not show a re-map (or an invalid value) that enforcement rejects.
+        if _archetypes:
+            _normalize_archetype_hint(
+                frontend_hint, session.player_character_name, _pin_archetype
+            )
 
         # Emit the world_update event in the shape the frontend
         # expects (DM hint shape, not the fs-manager schema shape).
