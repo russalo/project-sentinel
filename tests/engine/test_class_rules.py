@@ -307,3 +307,80 @@ def test_seed_skips_malformed_or_missing_governing_stats():
     sheet = p["updates"][0]["data"]["module_data"]["character_sheet"]
     assert sheet["hp"] == {"current": 36, "max": 36}
     assert "magic_pool" not in sheet
+
+
+def test_seed_carries_stats_through_duplicate_fragments():
+    # codex: a later duplicate op may carry DM-authored HP WITHOUT repeating stats;
+    # without carrying them the seeder skipped it and fs-manager's shallow update
+    # replaced the seeded 36/36 sheet with the DM value.
+    from engine.class_rules import seed_payload_vitality
+
+    def op(sheet):
+        return {
+            "target_file": "data/state/core/entities/mira.json",
+            "operation": "update",
+            "data": {"name": "Mira", "module_data": {"character_sheet": sheet}},
+        }
+
+    first = op({"stats": {"body": 6, "will": 5}, "hp": {"current": 20, "max": 20}})
+    first["data"]["archetype"] = "cleric"
+    payload = {"updates": [first, op({"hp": {"current": 20, "max": 20}})]}
+    seed_payload_vitality(payload)
+    for entry in payload["updates"]:
+        sheet = entry["data"]["module_data"]["character_sheet"]
+        assert sheet["hp"] == {"current": 36, "max": 36}
+
+
+def test_seed_rejects_stats_above_the_module_cap():
+    # codex: the four-stat module caps at 1-10, so `body: 100` would mint 800 HP
+    # for a warrior. Out of range → leave the DM's pool untouched.
+    from engine.class_rules import seed_payload_vitality
+
+    payload = {
+        "updates": [
+            {
+                "target_file": "data/state/core/entities/x.json",
+                "operation": "update",
+                "data": {
+                    "name": "X",
+                    "archetype": "warrior",
+                    "module_data": {
+                        "character_sheet": {
+                            "stats": {"body": 100},
+                            "hp": {"current": 20, "max": 20},
+                        }
+                    },
+                },
+            }
+        ]
+    }
+    assert seed_payload_vitality(payload) == 0
+    sheet = payload["updates"][0]["data"]["module_data"]["character_sheet"]
+    assert sheet["hp"] == {"current": 20, "max": 20}
+
+
+def test_seed_hint_carries_stats_through_duplicate_characters():
+    from engine.class_rules import seed_hint_vitality
+
+    hint = {
+        "characters": [
+            {
+                "name": "Mira",
+                "archetype": "cleric",
+                "module_data": {
+                    "character_sheet": {
+                        "stats": {"body": 6, "will": 5},
+                        "hp": {"current": 20, "max": 20},
+                    }
+                },
+            },
+            {
+                "name": "Mira",
+                "module_data": {"character_sheet": {"hp": {"current": 20, "max": 20}}},
+            },
+        ]
+    }
+    seed_hint_vitality(hint)
+    for char in hint["characters"]:
+        sheet = char["module_data"]["character_sheet"]
+        assert sheet["hp"] == {"current": 36, "max": 36}
