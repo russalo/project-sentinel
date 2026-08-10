@@ -25,6 +25,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from .agents.fact_extractor import _slugify as _slugify_entity
 from .modules.assembly import resolve_active_module
 from .modules.loader import load_module
 from .modules.manifest import ManifestError
@@ -174,7 +175,9 @@ def sanitize_hint_archetypes(hint: Any, modules: dict[str, str] | None = None) -
     return dropped
 
 
-def seed_payload_vitality(payload: Any, modules: dict[str, str] | None = None) -> int:
+def seed_payload_vitality(
+    payload: Any, player_name: str, modules: dict[str, str] | None = None
+) -> int:
     """Seed engine-derived ``hp``/``magic_pool`` onto entity ops that carry an
     archetype + stats. Returns how many pools were written.
 
@@ -193,7 +196,15 @@ def seed_payload_vitality(payload: Any, modules: dict[str, str] | None = None) -
         return 0
     rules_data = _rules_data(modules) or {}
 
+    player_slug = _slugify_entity((player_name or "").strip())
+    if not player_slug:
+        return 0
+
     def _entity_ops():
+        """ONLY the player character's ops. RFC-0019's authority — like all of
+        progression enforcement — is PC-scoped: seeding an NPC would overwrite its
+        narrative vitality (an injured NPC introduced at 1/10 silently healed to a
+        derived 40/40) and strip a non-caster NPC's pool (codex)."""
         for op in updates:
             if not isinstance(op, dict):
                 continue
@@ -201,8 +212,14 @@ def seed_payload_vitality(payload: Any, modules: dict[str, str] | None = None) -
             if "/entities/" not in target:
                 continue
             data = op.get("data")
-            if isinstance(data, dict):
-                yield target, data
+            if not isinstance(data, dict):
+                continue
+            name = str(data.get("name", "")).strip()
+            if not target.endswith(f"/entities/{player_slug}.json") and (
+                not name or _slugify_entity(name) != player_slug
+            ):
+                continue
+            yield target, data
 
     # The archetype each entity is being established with, so DUPLICATE ops for the
     # same entity are all seeded — not just the one that happens to carry the field.
@@ -230,8 +247,18 @@ def seed_payload_vitality(payload: Any, modules: dict[str, str] | None = None) -
         rules = entry.get("rules")
         if not rules:
             continue
-        sheet = data.get("module_data", {})
-        sheet = sheet.get("character_sheet") if isinstance(sheet, dict) else None
+        module_data = data.get("module_data")
+        if not isinstance(module_data, dict):
+            # No module_data at all: fs-manager's shallow update leaves the stored
+            # one alone, so there is nothing to protect here.
+            continue
+        sheet = module_data.get("character_sheet")
+        if not isinstance(sheet, dict):
+            # module_data WITHOUT a character_sheet still replaces the stored
+            # module_data wholesale — a `combat`-only fragment would erase the
+            # seeded stats/hp/pool. Materialize the sheet so the carry lands (codex).
+            sheet = {}
+            module_data["character_sheet"] = sheet
         seeded += _seed_sheet(sheet, rules, entry.get("sheet"))
     return seeded
 
@@ -302,7 +329,9 @@ def _seed_sheet(
     return seeded
 
 
-def seed_hint_vitality(hint: Any, modules: dict[str, str] | None = None) -> int:
+def seed_hint_vitality(
+    hint: Any, player_name: str, modules: dict[str, str] | None = None
+) -> int:
     """The display-side twin of ``seed_payload_vitality``: seed the same derived
     pools onto a DM **hint** block's characters, in place. Returns pools written.
 
@@ -319,6 +348,15 @@ def seed_hint_vitality(hint: Any, modules: dict[str, str] | None = None) -> int:
     if not isinstance(chars, list):
         return 0
     rules_data = _rules_data(modules) or {}
+    player_slug = _slugify_entity((player_name or "").strip())
+    if not player_slug:
+        return 0
+
+    def _is_pc(char: Any) -> bool:
+        """PC-scoped, exactly like the payload seeder — an NPC's narrative vitality
+        is the DM's (codex)."""
+        name = str(char.get("name", "")).strip() if isinstance(char, dict) else ""
+        return bool(name) and _slugify_entity(name) == player_slug
 
     def _sheet_of(char: Any) -> Any:
         sheet = char.get("module_data", {}) if isinstance(char, dict) else None
@@ -328,7 +366,7 @@ def seed_hint_vitality(hint: Any, modules: dict[str, str] | None = None) -> int:
     # repeat neither the archetype nor the stats.
     by_name: dict[str, dict[str, Any]] = {}
     for char in chars:
-        if not isinstance(char, dict):
+        if not _is_pc(char):
             continue
         entry = by_name.setdefault(str(char.get("name", "")).strip().lower(), {})
         if "rules" not in entry:
@@ -341,13 +379,20 @@ def seed_hint_vitality(hint: Any, modules: dict[str, str] | None = None) -> int:
                 entry["sheet"] = sheet
 
     for char in chars:
-        if not isinstance(char, dict):
+        if not _is_pc(char):
             continue
         entry = by_name.get(str(char.get("name", "")).strip().lower()) or {}
         rules = entry.get("rules")
         if not rules:
             continue
-        seeded += _seed_sheet(_sheet_of(char), rules, entry.get("sheet"))
+        module_data = char.get("module_data")
+        if not isinstance(module_data, dict):
+            continue
+        sheet = module_data.get("character_sheet")
+        if not isinstance(sheet, dict):
+            sheet = {}
+            module_data["character_sheet"] = sheet
+        seeded += _seed_sheet(sheet, rules, entry.get("sheet"))
     return seeded
 
 

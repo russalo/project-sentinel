@@ -166,6 +166,9 @@ def test_sanitize_hint_archetypes_mirrors_the_payload_gate():
     assert sanitize_hint_archetypes({"characters": "oops"}) == 0
 
 
+PC_NAME = "Mira"
+
+
 def test_seed_payload_vitality_starts_a_new_pc_at_full():
     # codex: the intro never runs enforcement, so a DM-invented 20/20 would persist
     # and later reconcile to 20/36 — never full. A new character starts at max.
@@ -189,7 +192,7 @@ def test_seed_payload_vitality_starts_a_new_pc_at_full():
             }
         ]
     }
-    assert seed_payload_vitality(payload) == 2
+    assert seed_payload_vitality(payload, PC_NAME) == 2
     sheet = payload["updates"][0]["data"]["module_data"]["character_sheet"]
     assert sheet["hp"] == {"current": 36, "max": 36}  # Body 6 x cleric 6, full
     assert sheet["magic_pool"] == {"current": 10, "max": 10}  # Will 5 x 2
@@ -200,7 +203,7 @@ def test_seed_payload_vitality_skips_unclassified_and_strips_non_caster_pool():
 
     def entity(archetype, sheet):
         return {
-            "target_file": "data/state/core/entities/x.json",
+            "target_file": "data/state/core/entities/mira.json",
             "operation": "update",
             "data": {
                 "name": "X",
@@ -215,7 +218,7 @@ def test_seed_payload_vitality_skips_unclassified_and_strips_non_caster_pool():
             entity(None, {"stats": {"body": 6}, "hp": {"current": 5, "max": 5}})
         ]
     }
-    assert seed_payload_vitality(p1) == 0
+    assert seed_payload_vitality(p1, PC_NAME) == 0
     assert p1["updates"][0]["data"]["module_data"]["character_sheet"]["hp"]["max"] == 5
 
     # A resolved non-caster gets HP but no pool.
@@ -230,7 +233,7 @@ def test_seed_payload_vitality_skips_unclassified_and_strips_non_caster_pool():
             )
         ]
     }
-    seed_payload_vitality(p2)
+    seed_payload_vitality(p2, PC_NAME)
     sheet = p2["updates"][0]["data"]["module_data"]["character_sheet"]
     assert sheet["hp"] == {"current": 48, "max": 48}
     assert "magic_pool" not in sheet
@@ -264,7 +267,7 @@ def test_seed_propagates_across_duplicate_intro_ops():
             op(False, {"current": 20, "max": 20}),  # no archetype field
         ]
     }
-    seed_payload_vitality(payload)
+    seed_payload_vitality(payload, PC_NAME)
     for entry in payload["updates"]:
         sheet = entry["data"]["module_data"]["character_sheet"]
         assert sheet["hp"] == {"current": 36, "max": 36}
@@ -297,13 +300,13 @@ def test_seed_skips_malformed_or_missing_governing_stats():
 
     for stats in ({}, {"body": 0}, {"body": "six"}, {"body": None}, {"body": True}):
         p = payload_with(stats)
-        assert seed_payload_vitality(p) == 0
+        assert seed_payload_vitality(p, PC_NAME) == 0
         sheet = p["updates"][0]["data"]["module_data"]["character_sheet"]
         assert sheet["hp"] == {"current": 20, "max": 20}  # DM value untouched
 
     # A valid Body but no Will: HP seeded, caster pool left alone.
     p = payload_with({"body": 6})
-    assert seed_payload_vitality(p) == 1
+    assert seed_payload_vitality(p, PC_NAME) == 1
     sheet = p["updates"][0]["data"]["module_data"]["character_sheet"]
     assert sheet["hp"] == {"current": 36, "max": 36}
     assert "magic_pool" not in sheet
@@ -325,7 +328,7 @@ def test_seed_carries_stats_through_duplicate_fragments():
     first = op({"stats": {"body": 6, "will": 5}, "hp": {"current": 20, "max": 20}})
     first["data"]["archetype"] = "cleric"
     payload = {"updates": [first, op({"hp": {"current": 20, "max": 20}})]}
-    seed_payload_vitality(payload)
+    seed_payload_vitality(payload, PC_NAME)
     for entry in payload["updates"]:
         sheet = entry["data"]["module_data"]["character_sheet"]
         assert sheet["hp"] == {"current": 36, "max": 36}
@@ -339,10 +342,10 @@ def test_seed_rejects_stats_above_the_module_cap():
     payload = {
         "updates": [
             {
-                "target_file": "data/state/core/entities/x.json",
+                "target_file": "data/state/core/entities/mira.json",
                 "operation": "update",
                 "data": {
-                    "name": "X",
+                    "name": "Mira",
                     "archetype": "warrior",
                     "module_data": {
                         "character_sheet": {
@@ -354,7 +357,7 @@ def test_seed_rejects_stats_above_the_module_cap():
             }
         ]
     }
-    assert seed_payload_vitality(payload) == 0
+    assert seed_payload_vitality(payload, PC_NAME) == 0
     sheet = payload["updates"][0]["data"]["module_data"]["character_sheet"]
     assert sheet["hp"] == {"current": 20, "max": 20}
 
@@ -380,7 +383,7 @@ def test_seed_hint_carries_stats_through_duplicate_characters():
             },
         ]
     }
-    seed_hint_vitality(hint)
+    seed_hint_vitality(hint, PC_NAME)
     for char in hint["characters"]:
         sheet = char["module_data"]["character_sheet"]
         assert sheet["hp"] == {"current": 36, "max": 36}
@@ -411,7 +414,7 @@ def test_seed_writes_carried_stats_into_the_later_fragment():
             op({"hp": {"current": 20, "max": 20}}),  # no stats
         ]
     }
-    seed_payload_vitality(payload)
+    seed_payload_vitality(payload, PC_NAME)
     last = payload["updates"][-1]["data"]["module_data"]["character_sheet"]
     assert last["stats"] == {"body": 6, "will": 5}  # carried through, not erased
     assert last["hp"] == {"current": 36, "max": 36}
@@ -447,8 +450,88 @@ def test_seed_merges_carried_stats_into_a_partial_or_malformed_later_sheet():
                 op({"stats": later_stats, "hp": {"current": 1, "max": 1}}),
             ]
         }
-        seed_payload_vitality(payload)
+        seed_payload_vitality(payload, PC_NAME)
         last = payload["updates"][-1]["data"]["module_data"]["character_sheet"]
         assert last["stats"]["body"] == 6 and last["stats"]["will"] == 5
         assert last["hp"] == {"current": 36, "max": 36}
         assert last["magic_pool"] == {"current": 10, "max": 10}
+
+
+def test_seed_never_touches_an_npc():
+    # codex: RFC-0019's authority is PC-scoped, like all progression enforcement.
+    # Seeding an NPC would silently heal an injured one (1/10 -> a derived 40/40)
+    # and strip a non-caster NPC's pool.
+    from engine.class_rules import seed_hint_vitality, seed_payload_vitality
+
+    npc_sheet = {"stats": {"body": 5, "will": 5}, "hp": {"current": 1, "max": 10}}
+    payload = {
+        "updates": [
+            {
+                "target_file": "data/state/core/entities/borin.json",
+                "operation": "update",
+                "data": {
+                    "name": "Borin",
+                    "role": "npc",
+                    "archetype": "warrior",
+                    "module_data": {"character_sheet": dict(npc_sheet)},
+                },
+            }
+        ]
+    }
+    assert seed_payload_vitality(payload, PC_NAME) == 0
+    assert payload["updates"][0]["data"]["module_data"]["character_sheet"]["hp"] == {
+        "current": 1,
+        "max": 10,
+    }
+
+    hint = {
+        "characters": [
+            {
+                "name": "Borin",
+                "role": "npc",
+                "archetype": "warrior",
+                "module_data": {"character_sheet": dict(npc_sheet)},
+            }
+        ]
+    }
+    assert seed_hint_vitality(hint, PC_NAME) == 0
+    assert hint["characters"][0]["module_data"]["character_sheet"]["hp"]["current"] == 1
+
+
+def test_seed_protects_a_module_data_only_duplicate():
+    # codex: a later PC fragment with module_data but NO character_sheet still
+    # replaces the stored module_data wholesale — a combat-only fragment would erase
+    # the seeded stats/hp/pool. The sheet is materialized so the carry lands.
+    from engine.class_rules import seed_payload_vitality
+
+    payload = {
+        "updates": [
+            {
+                "target_file": "data/state/core/entities/mira.json",
+                "operation": "update",
+                "data": {
+                    "name": "Mira",
+                    "archetype": "cleric",
+                    "module_data": {
+                        "character_sheet": {
+                            "stats": {"body": 6, "will": 5},
+                            "hp": {"current": 20, "max": 20},
+                        }
+                    },
+                },
+            },
+            {
+                "target_file": "data/state/core/entities/mira.json",
+                "operation": "update",
+                "data": {
+                    "name": "Mira",
+                    "module_data": {"combat": {"death_saves_failed": 0}},
+                },
+            },
+        ]
+    }
+    seed_payload_vitality(payload, PC_NAME)
+    last = payload["updates"][-1]["data"]["module_data"]
+    assert last["combat"] == {"death_saves_failed": 0}  # its own content kept
+    assert last["character_sheet"]["stats"] == {"body": 6, "will": 5}
+    assert last["character_sheet"]["hp"] == {"current": 36, "max": 36}

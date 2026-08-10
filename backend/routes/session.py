@@ -208,7 +208,7 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
         # classified. Enforcement never runs here, so otherwise the DM's invented
         # maxes persist: a cleric written as 20/20 is later reconciled to 20/36 and
         # never reaches full health (the max is engine-owned, the current isn't).
-        class_rules.seed_payload_vitality(extracted.payload)
+        class_rules.seed_payload_vitality(extracted.payload, body.player_character_name)
         engine.apply_world_update(config, extracted.payload, world_id=world_id)
 
     # 4. Build the session record with the opening turn.
@@ -222,7 +222,9 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
             f"{body.world_name}."
         ),
         "narrative": intro_result.narrative,
-        "world_updates": _intro_hint(intro_result.raw_response),
+        "world_updates": _intro_hint(
+            intro_result.raw_response, body.player_character_name
+        ),
         "created_at": started_at,
     }
 
@@ -311,7 +313,7 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
     )
 
 
-def _intro_hint(raw_response: str) -> dict:
+def _intro_hint(raw_response: str, player_name: str) -> dict:
     """The intro's frontend hint, archetype-sanitized and vitality-seeded
     (RFC-0019) so it matches what the intro dispatch persists.
 
@@ -325,7 +327,7 @@ def _intro_hint(raw_response: str) -> dict:
     # WorldCreation.jsx applies this hint directly and hydration is skipped after
     # creation, so an unseeded hint would show the DM's invented pools while the
     # persisted entity holds the engine's — until a reload.
-    class_rules.seed_hint_vitality(hint)
+    class_rules.seed_hint_vitality(hint, player_name)
     return hint
 
 
