@@ -597,3 +597,49 @@ def test_seed_hint_groups_slug_equivalent_names():
         sheet = char["module_data"]["character_sheet"]
         assert sheet["hp"] == {"current": 36, "max": 36}
         assert sheet["stats"] == {"body": 6, "will": 5}
+
+
+def test_seed_carry_accumulates_across_three_fragments():
+    # codex: freezing the carry on the FIRST fragment that has any stats key let an
+    # empty/malformed one poison every later fragment. The carry now accumulates —
+    # the last VALID sheet is what a subsequent fragment inherits, matching what
+    # fs-manager's in-order shallow update produces.
+    from engine.class_rules import seed_payload_vitality
+
+    def op(sheet, arch=None):
+        data = {"name": "Mira", "module_data": {"character_sheet": sheet}}
+        if arch:
+            data["archetype"] = arch
+        return {
+            "target_file": "data/state/core/entities/mira.json",
+            "operation": "update",
+            "data": data,
+        }
+
+    payload = {
+        "updates": [
+            op({"stats": {}}, "cleric"),  # empty stats first
+            op({"stats": {"body": 6, "will": 5}}),  # the real stats
+            op({"hp": {"current": 1, "max": 1}}),  # HP only, must inherit
+        ]
+    }
+    seed_payload_vitality(payload, PC_NAME)
+    last = payload["updates"][-1]["data"]["module_data"]["character_sheet"]
+    assert last["stats"] == {"body": 6, "will": 5}
+    assert last["hp"] == {"current": 36, "max": 36}
+
+
+def test_sanitize_hint_groups_slug_equivalent_names():
+    # codex: the payload sanitizer groups by target slug, so the hint must too —
+    # otherwise "O'Neil"=cleric then "O Neil"=warrior persists cleric but shows
+    # warrior in the UI.
+    from engine.class_rules import sanitize_hint_archetypes
+
+    hint = {
+        "characters": [
+            {"name": "O'Neil", "archetype": "cleric"},
+            {"name": "O Neil", "archetype": "warrior"},
+        ]
+    }
+    sanitize_hint_archetypes(hint)
+    assert [c["archetype"] for c in hint["characters"]] == ["cleric", "cleric"]

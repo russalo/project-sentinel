@@ -162,7 +162,9 @@ def sanitize_hint_archetypes(hint: Any, modules: dict[str, str] | None = None) -
     for char in chars:
         if not isinstance(char, dict) or "archetype" not in char:
             continue
-        key = str(char.get("name", "")).strip().lower()
+        # Slug identity, the same the payload sanitizer groups by — "O'Neil" and
+        # "O Neil" are one entity, so the pin must apply across both (codex).
+        key = _slugify_entity(str(char.get("name", "")))
         canonical = pinned.get(key) or canonical_archetype(
             modules, char.get("archetype")
         )
@@ -226,27 +228,26 @@ def seed_payload_vitality(
     # fs-manager applies ops in order with a shallow `existing.update(data)`, so a
     # later fragment carrying DM-authored module_data would otherwise overwrite the
     # seeded pools (reverting a cleric from 36/36 to 20/20; codex).
-    # …and the SHEET it was established with, so a later fragment that carries only
-    # DM-authored HP inherits the stats instead of erasing them under the shallow
-    # update (codex).
-    by_target: dict[str, dict[str, Any]] = {}
+    # The archetype can appear in ANY fragment, so resolve it up front…
+    rules_by_target: dict[str, dict[str, Any]] = {}
     for target, data in _entity_ops():
-        entry = by_target.setdefault(target, {})
-        if "rules" not in entry:
-            rules = _lookup(rules_data, data.get("archetype"))
-            if rules:
-                entry["rules"] = rules
-        if "sheet" not in entry:
-            sheet = data.get("module_data", {})
-            sheet = sheet.get("character_sheet") if isinstance(sheet, dict) else None
-            if isinstance(sheet, dict) and isinstance(sheet.get("stats"), dict):
-                entry["sheet"] = sheet
+        if target in rules_by_target:
+            continue
+        rules = _lookup(rules_data, data.get("archetype"))
+        if rules:
+            rules_by_target[target] = rules
 
+    # …then walk the fragments IN ORDER, carrying the running sheet forward. The
+    # carry accumulates (rather than freezing on the first sheet that happens to
+    # have a stats key) so an early fragment with empty/malformed stats can't poison
+    # every later one — the last VALID sheet is what a subsequent fragment inherits,
+    # which is exactly what fs-manager's in-order shallow update produces (codex).
+    carried: dict[str, dict[str, Any]] = {}
     for target, data in _entity_ops():
-        entry = by_target.get(target) or {}
-        rules = entry.get("rules")
+        rules = rules_by_target.get(target)
         if not rules:
             continue
+        entry = {"sheet": carried.get(target)}
         module_data = data.get("module_data")
         if not isinstance(module_data, dict):
             # No module_data at all: fs-manager's shallow update leaves the stored
@@ -260,6 +261,10 @@ def seed_payload_vitality(
             sheet = {}
             module_data["character_sheet"] = sheet
         seeded += _seed_sheet(sheet, rules, entry.get("sheet"))
+        if isinstance(sheet.get("stats"), dict) and any(
+            _valid_stat(v) for v in sheet["stats"].values()
+        ):
+            carried[target] = sheet
     return seeded
 
 
@@ -375,25 +380,23 @@ def seed_hint_vitality(
 
     # Same per-character carry as the payload seeder: a duplicate fragment may
     # repeat neither the archetype nor the stats.
-    by_name: dict[str, dict[str, Any]] = {}
+    rules_by_slug: dict[str, dict[str, Any]] = {}
     for char in chars:
         if not _is_pc(char):
             continue
-        entry = by_name.setdefault(_slugify_entity(str(char.get("name", ""))), {})
-        if "rules" not in entry:
-            rules = _lookup(rules_data, char.get("archetype"))
-            if rules:
-                entry["rules"] = rules
-        if "sheet" not in entry:
-            sheet = _sheet_of(char)
-            if isinstance(sheet, dict) and isinstance(sheet.get("stats"), dict):
-                entry["sheet"] = sheet
+        slug = _slugify_entity(str(char.get("name", "")))
+        if slug in rules_by_slug:
+            continue
+        rules = _lookup(rules_data, char.get("archetype"))
+        if rules:
+            rules_by_slug[slug] = rules
 
+    carried: dict[str, dict[str, Any]] = {}
     for char in chars:
         if not _is_pc(char):
             continue
-        entry = by_name.get(_slugify_entity(str(char.get("name", "")))) or {}
-        rules = entry.get("rules")
+        slug = _slugify_entity(str(char.get("name", "")))
+        rules = rules_by_slug.get(slug)
         if not rules:
             continue
         module_data = char.get("module_data")
@@ -403,7 +406,11 @@ def seed_hint_vitality(
         if not isinstance(sheet, dict):
             sheet = {}
             module_data["character_sheet"] = sheet
-        seeded += _seed_sheet(sheet, rules, entry.get("sheet"))
+        seeded += _seed_sheet(sheet, rules, carried.get(slug))
+        if isinstance(sheet.get("stats"), dict) and any(
+            _valid_stat(v) for v in sheet["stats"].values()
+        ):
+            carried[slug] = sheet
     return seeded
 
 
