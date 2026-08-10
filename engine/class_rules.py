@@ -113,18 +113,32 @@ def sanitize_payload_archetypes(
     updates = payload.get("updates")
     if not isinstance(updates, list):
         return 0
+    # First valid archetype seen per entity file. The intro can emit the same
+    # character more than once (duplicate entries, or a second <world_update>
+    # block — the Fact-Extractor keeps them all and fs-manager applies them in
+    # order), so canonicalizing each op independently would let the LAST valid
+    # value win and bypass write-once during establishment itself (codex). The
+    # first valid one is pinned onto every later op for that entity — the same
+    # rule enforce_progression applies on a normal turn.
+    pinned: dict[str, str] = {}
     for op in updates:
-        if not isinstance(op, dict) or "/entities/" not in str(op.get("target_file")):
+        if not isinstance(op, dict):
+            continue
+        target = str(op.get("target_file"))
+        if "/entities/" not in target:
             continue
         data = op.get("data")
         if not isinstance(data, dict) or "archetype" not in data:
             continue
-        canonical = canonical_archetype(modules, data.get("archetype"))
+        canonical = pinned.get(target) or canonical_archetype(
+            modules, data.get("archetype")
+        )
         if canonical is None:
             data.pop("archetype")
             dropped += 1
         else:
             data["archetype"] = canonical
+            pinned.setdefault(target, canonical)
     return dropped
 
 

@@ -119,3 +119,29 @@ def test_sanitize_tolerates_malformed_payloads():
     assert sanitize_payload_archetypes({}) == 0
     assert sanitize_payload_archetypes({"updates": "oops"}) == 0
     assert sanitize_payload_archetypes({"updates": [None, {"data": None}]}) == 0
+
+
+def test_sanitize_pins_first_valid_archetype_per_entity():
+    # codex: the intro can emit the same PC twice (duplicate entries or a second
+    # world_update block); canonicalizing each op independently let the LAST valid
+    # value win, bypassing write-once during establishment.
+    from engine.class_rules import sanitize_payload_archetypes
+
+    def op(target, archetype):
+        return {
+            "target_file": f"data/state/core/entities/{target}.json",
+            "operation": "update",
+            "data": {"name": target, "archetype": archetype},
+        }
+
+    payload = {
+        "updates": [
+            op("bran", "cleric"),
+            op("bran", "warrior"),  # a second, different VALID value
+            op("bran", "paladin"),  # invalid: takes the pin, not a drop
+            op("other", "mage"),  # a different entity keeps its own
+        ]
+    }
+    assert sanitize_payload_archetypes(payload) == 0  # nothing dropped: pin applies
+    got = [o["data"]["archetype"] for o in payload["updates"]]
+    assert got == ["cleric", "cleric", "cleric", "mage"]
