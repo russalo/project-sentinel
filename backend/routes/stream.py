@@ -615,10 +615,13 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
         _pc_for_class = death_stakes.find_player_character(
             world_context.characters, session.player_character_name
         )
+        # RFC-0019: archetype-first (the pinned mechanical handle), class fallback.
         _class_rules = class_rules.resolve_class_rules(
-            world_context.modules,
-            _pc_for_class.get("class") if isinstance(_pc_for_class, dict) else None,
+            world_context.modules, _pc_for_class
         )
+        # The bound class module's archetype slugs — the valid set the write-once
+        # archetype pin validates a DM-emitted value against.
+        _archetypes = class_rules.archetypes(world_context.modules)
 
         # RFC-0014: mirror the engine-committed death outcome into the SSE hint so
         # the UI shows the authoritative status immediately — otherwise the DM's
@@ -733,6 +736,7 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
                     body.level_up.model_dump() if body.level_up is not None else None
                 ),
                 class_rules=_class_rules,
+                archetypes=_archetypes,
             )
             for notice in progression_notices:
                 yield _sse_event({"type": "error", "content": notice})
