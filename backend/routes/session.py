@@ -33,6 +33,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Request, status
 
 import engine
+from engine import class_rules
 from engine.agents import dm as dm_agent
 from engine.agents import fact_extractor
 
@@ -197,6 +198,17 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
     #    as a system-like note if necessary. For now we just skip
     #    silently — observability is a later concern.
     if extracted.payload is not None:
+        # RFC-0019: this path does NOT run enforce_progression, so apply the
+        # archetype establishment gate here — otherwise an intro emitting e.g.
+        # "archetype": "paladin" persists at world creation, and later turns (which
+        # only prompt when one is MISSING) would see it as set while the PC stays
+        # mechanically unresolved (codex). A new world uses the default module set.
+        class_rules.sanitize_payload_archetypes(extracted.payload)
+        # …and seed the engine-derived vitality for a PC the intro validly
+        # classified. Enforcement never runs here, so otherwise the DM's invented
+        # maxes persist: a cleric written as 20/20 is later reconciled to 20/36 and
+        # never reaches full health (the max is engine-owned, the current isn't).
+        class_rules.seed_payload_vitality(extracted.payload, body.player_character_name)
         engine.apply_world_update(config, extracted.payload, world_id=world_id)
 
     # 4. Build the session record with the opening turn.
@@ -210,7 +222,9 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
             f"{body.world_name}."
         ),
         "narrative": intro_result.narrative,
-        "world_updates": _parse_hint_block_for_frontend(intro_result.raw_response),
+        "world_updates": _intro_hint(
+            intro_result.raw_response, body.player_character_name
+        ),
         "created_at": started_at,
     }
 
@@ -297,6 +311,24 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
         world_name=body.world_name,
         session_token=session_token,
     )
+
+
+def _intro_hint(raw_response: str, player_name: str) -> dict:
+    """The intro's frontend hint, archetype-sanitized and vitality-seeded
+    (RFC-0019) so it matches what the intro dispatch persists.
+
+    ``WorldCreation.jsx`` applies this straight into ``worldStore``, which copies
+    character fields verbatim — so an invalid archetype would live on in the UI even
+    though the dispatched payload was sanitized (coderabbit).
+    """
+    hint = _parse_hint_block_for_frontend(raw_response)
+    class_rules.sanitize_hint_archetypes(hint)
+    # …and seed the SAME engine-derived vitality the dispatched payload gets.
+    # WorldCreation.jsx applies this hint directly and hydration is skipped after
+    # creation, so an unseeded hint would show the DM's invented pools while the
+    # persisted entity holds the engine's — until a reload.
+    class_rules.seed_hint_vitality(hint, player_name)
+    return hint
 
 
 def _parse_hint_block_for_frontend(raw_response: str) -> dict:

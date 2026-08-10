@@ -188,3 +188,139 @@ def test_dm_inflated_max_never_reaches_the_sse_hint(
     # …and the persisted payload agrees (the shared verdict).
     op = _pc_op(fake_dispatch_log[0]["payload"])
     assert op["data"]["module_data"]["character_sheet"]["hp"]["max"] == 48
+
+
+SESSION_ARCH = "d4d4d4d4-4444-4444-8444-d4d4d4d4d4d4"
+
+
+def _prime_pc_with_archetype(data_dir: Path, *, pc_class: str, archetype: str | None):
+    d = data_dir / "state" / "core" / "entities"
+    d.mkdir(parents=True, exist_ok=True)
+    pc = {
+        "name": PC,
+        "role": "player",
+        "status": "alive",
+        "class": pc_class,
+        "level": 2,
+        "module_data": {
+            "character_sheet": {"stats": {"body": 6, "mind": 5, "heart": 5, "will": 5}}
+        },
+    }
+    if archetype is not None:
+        pc["archetype"] = archetype
+    (d / "bran.json").write_text(json.dumps(pc), encoding="utf-8")
+
+
+def test_archetype_gives_a_free_text_class_engine_owned_maxes(
+    client, fake_openai, fake_dispatch_log, fake_commit_log, tmp_data_dir
+):
+    # RFC-0019 payoff: a "Proctor" pinned to cleric now gets engine-derived
+    # hp.max = Body6 × 6 = 36 and a caster pool (Will5 × 2 = 10) — where the same
+    # PC without an archetype stays fail-safe (see the sibling test below).
+    _prime_session(tmp_data_dir, SESSION_ARCH)
+    _prime_pc_with_archetype(tmp_data_dir, pc_class="Proctor", archetype="cleric")
+    # An ordinary PC write (enforcement rides existing PC ops; it only appends one
+    # for an enacted level-up).
+    world_update = json.dumps(
+        {
+            "characters": [
+                {"name": "Bran", "action": "upsert", "currentLocation": "The Mill"}
+            ]
+        }
+    )
+    fake_openai.chat.completions.set_stream_tokens(
+        ["You steady yourself. ", f"<world_update>{world_update}</world_update>"]
+    )
+
+    resp = client.post(
+        "/api/stream", json={"action": "look around", "sessionId": SESSION_ARCH}
+    )
+    assert resp.status_code == 200
+    _ = resp.text
+
+    op = _pc_op(fake_dispatch_log[0]["payload"])
+    assert op is not None
+    sheet = op["data"]["module_data"]["character_sheet"]
+    assert sheet["hp"]["max"] == 36  # 6 × cleric factor 6
+    assert sheet["magic_pool"]["max"] == 10  # Will 5 × 2, a caster
+    assert op["data"]["archetype"] == "cleric"  # pinned on every op
+
+
+def test_dm_cannot_remap_archetype_end_to_end(
+    client, fake_openai, fake_dispatch_log, fake_commit_log, tmp_data_dir
+):
+    # The attack: re-map cleric → warrior mid-session for a bigger HP factor.
+    _prime_session(tmp_data_dir, SESSION_ARCH)
+    _prime_pc_with_archetype(tmp_data_dir, pc_class="Proctor", archetype="cleric")
+    world_update = json.dumps(
+        {"characters": [{"name": "Bran", "action": "upsert", "archetype": "warrior"}]}
+    )
+    fake_openai.chat.completions.set_stream_tokens(
+        ["You feel like a new person. ", f"<world_update>{world_update}</world_update>"]
+    )
+
+    resp = client.post(
+        "/api/stream", json={"action": "reinvent myself", "sessionId": SESSION_ARCH}
+    )
+    assert resp.status_code == 200
+    body = resp.text
+
+    op = _pc_op(fake_dispatch_log[0]["payload"])
+    assert op["data"]["archetype"] == "cleric"  # re-map overridden
+    sheet = op["data"]["module_data"]["character_sheet"]
+    assert sheet["hp"]["max"] == 36  # still the cleric factor, not warrior's 48
+    assert "archetype is set once" in body  # surfaced to the player
+
+
+SESSION_EST = "e5e5e5e5-5555-4555-8555-e5e5e5e5e5e5"
+
+
+def test_establishing_turn_derives_maxes_end_to_end(
+    client, fake_openai, fake_dispatch_log, fake_commit_log, tmp_data_dir
+):
+    # An UNCLASSIFIED free-text PC is classified by the DM this turn; the same
+    # dispatch must also derive the maxes (coderabbit + codex: resolving the class
+    # rules from stored state alone left the classifying turn DM-authored).
+    _prime_session(tmp_data_dir, SESSION_EST)
+    _prime_pc_with_archetype(tmp_data_dir, pc_class="Proctor", archetype=None)
+    world_update = json.dumps(
+        {"characters": [{"name": "Bran", "action": "upsert", "archetype": "cleric"}]}
+    )
+    fake_openai.chat.completions.set_stream_tokens(
+        [
+            "You are, at heart, a healer. ",
+            f"<world_update>{world_update}</world_update>",
+        ]
+    )
+
+    resp = client.post(
+        "/api/stream", json={"action": "tend the wounded", "sessionId": SESSION_EST}
+    )
+    assert resp.status_code == 200
+    _ = resp.text
+
+    op = _pc_op(fake_dispatch_log[0]["payload"])
+    assert op["data"]["archetype"] == "cleric"
+    sheet = op["data"]["module_data"]["character_sheet"]
+    assert sheet["hp"]["max"] == 36  # Body 6 x cleric 6 — on the SAME turn
+    assert sheet["magic_pool"]["max"] == 10
+
+
+def test_invalid_archetype_never_persists_end_to_end(
+    client, fake_openai, fake_dispatch_log, fake_commit_log, tmp_data_dir
+):
+    _prime_session(tmp_data_dir, SESSION_EST)
+    _prime_pc_with_archetype(tmp_data_dir, pc_class="Proctor", archetype=None)
+    world_update = json.dumps(
+        {"characters": [{"name": "Bran", "action": "upsert", "archetype": "paladin"}]}
+    )
+    fake_openai.chat.completions.set_stream_tokens(
+        ["A holy warrior. ", f"<world_update>{world_update}</world_update>"]
+    )
+
+    resp = client.post("/api/stream", json={"action": "pray", "sessionId": SESSION_EST})
+    assert resp.status_code == 200
+    _ = resp.text
+
+    op = _pc_op(fake_dispatch_log[0]["payload"])
+    assert "archetype" not in op["data"]  # unresolvable slug never stored

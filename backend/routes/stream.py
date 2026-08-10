@@ -38,6 +38,7 @@ from engine import death_stakes
 from engine import progression
 from engine.agents import dm as dm_agent
 from engine.agents import fact_extractor
+from engine.agents.fact_extractor import _slugify as _slugify_entity
 
 from .. import mock_dm
 
@@ -186,6 +187,24 @@ def _locate_pc_in_hint(hint: dict, player_name: str, *, create: bool) -> dict | 
     return pc
 
 
+def _normalize_archetype_hint(hint: dict, player_name: str, pin: str | None) -> None:
+    """Make the streamed hint's PC ``archetype`` agree with what enforcement
+    persists (RFC-0019).
+
+    The hint is emitted from the DM's raw block BEFORE ``enforce_progression`` runs,
+    so a re-map would show ``warrior`` in the UI while ``cleric`` is persisted — and
+    with no per-turn re-hydration it sticks until reload (coderabbit; the same
+    hint-vs-persisted class as the RFC-0018 fast-follow). Forces ``pin`` onto every
+    matching PC fragment, or removes the field when the engine pinned nothing (an
+    unclassified PC / invalid value), mirroring enforcement exactly. In-place;
+    tolerant of a malformed hint."""
+    for pc in _locate_all_pc_in_hint(hint, player_name):
+        if pin is not None:
+            pc["archetype"] = pin
+        else:
+            pc.pop("archetype", None)
+
+
 def _normalize_pool(
     sheet: dict,
     key: str,
@@ -230,6 +249,54 @@ def _normalize_pool(
             sheet[key] = {"current": engine_max, "max": engine_max}
     elif may_synthesize and isinstance(engine_pool, dict):
         sheet[key] = dict(engine_pool)
+
+
+def _incoming_archetype_candidate(
+    raw: str, player_name: str, archetypes: tuple[str, ...]
+) -> str | None:
+    """The first VALID archetype the DM offers for the PC anywhere in this turn's
+    response (RFC-0019).
+
+    Two reasons this scans the raw response rather than the parsed hint:
+    ``_parse_frontend_hint`` reads only the FIRST ``<world_update>`` block while the
+    Fact-Extractor processes them all, and taking the first *truthy* value would let
+    a leading junk slug ("paladin") shadow a valid one ("cleric") emitted after it —
+    the pin would come back None and enforcement would drop the good write too
+    (codex). Skipping invalid candidates keeps the hint's decision identical to the
+    one the dispatched payload deserves. Tolerant of malformed JSON.
+    """
+    if not archetypes or not isinstance(raw, str):
+        return None
+    player_slug = _slugify_entity((player_name or "").strip())
+    if not player_slug:
+        return None
+    for match in _BLOCK_RE.finditer(raw):
+        try:
+            block = json.loads(match.group(1).strip())
+        except (json.JSONDecodeError, ValueError):
+            continue
+        chars = block.get("characters") if isinstance(block, dict) else None
+        if not isinstance(chars, list):
+            continue
+        for char in chars:
+            if not isinstance(char, dict):
+                continue
+            # Match on the SLUG the Fact-Extractor would build the op's target file
+            # from — the same predicate `_pc_entity_op` uses at enforcement. A
+            # role-only fragment with no usable name is discarded by extraction, so
+            # its archetype must never become the pin (it would be forced onto the
+            # PC forever); but a name that merely differs in punctuation — stored
+            # "O'Neil" vs emitted "O Neil", both `o_neil.json` — IS the PC's write,
+            # and an exact-string check would drop its valid archetype (codex).
+            name = str(char.get("name", "")).strip()
+            if not name or _slugify_entity(name) != player_slug:
+                continue
+            canonical = progression.effective_archetype(
+                None, char.get("archetype"), archetypes
+            )
+            if canonical is not None:
+                return canonical
+    return None
 
 
 def _locate_all_pc_in_hint(hint: dict, player_name: str) -> list[dict]:
@@ -615,9 +682,29 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
         _pc_for_class = death_stakes.find_player_character(
             world_context.characters, session.player_character_name
         )
+        # RFC-0019: decide the PC's archetype ONCE — the valid stored pin, else a
+        # valid one the DM is establishing in THIS turn's hint. Deciding before the
+        # class rules resolve is what lets the classifying turn also get its
+        # engine-derived maxes; resolving from stored state alone would leave that
+        # turn's own write DM-authored (coderabbit + codex).
+        _archetypes = class_rules.archetypes(world_context.modules)
+        _incoming_archetype = _incoming_archetype_candidate(
+            raw_response, session.player_character_name, _archetypes
+        )
+        _pin_archetype = progression.effective_archetype(
+            _pc_for_class, _incoming_archetype, _archetypes
+        )
+        # Archetype-first (the mechanical handle), free-text class as the fallback.
         _class_rules = class_rules.resolve_class_rules(
             world_context.modules,
-            _pc_for_class.get("class") if isinstance(_pc_for_class, dict) else None,
+            {
+                "archetype": _pin_archetype,
+                "class": (
+                    _pc_for_class.get("class")
+                    if isinstance(_pc_for_class, dict)
+                    else None
+                ),
+            },
         )
 
         # RFC-0014: mirror the engine-committed death outcome into the SSE hint so
@@ -666,6 +753,12 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
         _normalize_vitality_hint(
             frontend_hint, session.player_character_name, _vitality
         )
+        # RFC-0019: same truthfulness rule for the pinned archetype — the hint must
+        # not show a re-map (or an invalid value) that enforcement rejects.
+        if _archetypes:
+            _normalize_archetype_hint(
+                frontend_hint, session.player_character_name, _pin_archetype
+            )
 
         # Emit the world_update event in the shape the frontend
         # expects (DM hint shape, not the fs-manager schema shape).
@@ -733,6 +826,8 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
                     body.level_up.model_dump() if body.level_up is not None else None
                 ),
                 class_rules=_class_rules,
+                archetypes=_archetypes,
+                pin_archetype=_pin_archetype,
             )
             for notice in progression_notices:
                 yield _sse_event({"type": "error", "content": notice})

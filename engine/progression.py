@@ -62,6 +62,42 @@ def _to_int(value: Any, default: int = 0) -> int:
         return default
 
 
+def effective_archetype(
+    character: Any, incoming: Any, archetypes: tuple[str, ...] | None
+) -> str | None:
+    """The archetype the engine will commit this turn (RFC-0019) — ONE decision,
+    shared by the class-rules resolution and the write-once pin.
+
+    - A valid **stored** archetype wins: it's write-once, so nothing this turn can
+      change it. (An invalid stored slug counts as absent — self-healing.)
+    - Otherwise a valid **incoming** DM value establishes it.
+    - Otherwise None: the PC stays unclassified rather than persisting a slug the
+      rules-data can't resolve.
+
+    Deciding this BEFORE the derived maxes are computed is what lets an
+    establishing turn also get its engine-derived ``hp.max``/``magic_pool.max`` —
+    resolving the class rules from the stored PC alone would leave the classifying
+    turn's own write DM-authored (coderabbit + codex, convergent).
+    """
+    stored = _canonical_archetype(_as_dict(character).get("archetype"), archetypes)
+    if stored is not None:
+        return stored
+    return _canonical_archetype(incoming, archetypes)
+
+
+def _canonical_archetype(value: Any, archetypes: tuple[str, ...] | None) -> str | None:
+    """The canonically-cased archetype slug for ``value``, or None if it isn't one of
+    ``archetypes`` (RFC-0019). Pure — the caller resolves the valid set from the
+    bound class module (``engine/class_rules.canonical_archetype`` does the IO)."""
+    if not archetypes or not isinstance(value, str) or not value.strip():
+        return None
+    key = value.strip().lower()
+    for name in archetypes:
+        if isinstance(name, str) and name.lower() == key:
+            return name
+    return None
+
+
 def _apply_max(
     pool: Any, new_max: int, growth: int, stored_pool: dict[str, Any]
 ) -> dict[str, Any]:
@@ -290,6 +326,8 @@ def enforce_progression(
     player_name: str,
     choice: dict[str, Any] | None,
     class_rules: dict[str, Any] | None = None,
+    archetypes: tuple[str, ...] | None = None,
+    pin_archetype: str | None = None,
 ) -> list[str]:
     """Make the engine's ``level`` + ``stats`` (+ derived maxes) the authoritative
     PC write.
@@ -310,8 +348,19 @@ def enforce_progression(
     that max is left DM-authored — fail-safe (see ``authoritative_maxes``). Clamping
     ``current ≤ max`` is out of scope (a combat-lane follow-up).
 
+    RFC-0019 (``archetypes`` supplied — the bound class module's archetype slugs):
+    also pin the top-level ``archetype``, the mechanical handle that maps a
+    free-text ``class`` ("Proctor") onto a rules-data key ("cleric"). ``pin_archetype``
+    is the caller's ``effective_archetype`` decision — the valid stored value, else a
+    valid establishing one — and it is **forced on every PC op**, so a DM re-map
+    (``rogue`` → ``warrior``, i.e. Body×6 → Body×8 free HP) is overridden with a
+    notice, and a second same-turn op can't quietly re-establish a different value
+    (codex). When it's None the PC stays unclassified: any ``archetype`` in the ops
+    is dropped rather than persisting a slug the rules-data can't resolve.
+    ``class`` itself is untouched — it stays the character's flavor.
+
     Returns player-facing notices when the DM attempted an unauthorized
-    level/stats/max change (parity with ``death_stakes.enforce_permadeath``
+    level/stats/max/archetype change (parity with ``death_stakes.enforce_permadeath``
     rejections). PC-scoped; NPC writes pass through untouched.
     """
     if not isinstance(payload, dict):
@@ -330,6 +379,12 @@ def enforce_progression(
     cur_level = stored_level(pc)
     cur_stats = stored_stats(pc)
     auth_level, auth_stats = authoritative_progression(cur_level, cur_stats, choice)
+
+    # RFC-0019: the STORED archetype (a slug that isn't a real archetype counts as
+    # absent, so a garbage/legacy value can be re-established — self-healing). Used
+    # only to tell an override attempt from an establishing write; the value that
+    # gets committed is the caller's `pin_archetype` decision.
+    stored_archetype = _canonical_archetype(_as_dict(pc).get("archetype"), archetypes)
 
     # RFC-0018 derived maxes, computed once against the STORED sheet (the baseline
     # before this turn) so the growth delta and the DM-attempt check are stable
@@ -392,6 +447,7 @@ def enforce_progression(
 
     dm_attempted = False
     max_attempted = False
+    archetype_attempted = False
     for op in matching:
         data = op.get("data")
         if not isinstance(data, dict):
@@ -421,6 +477,29 @@ def enforce_progression(
             and _to_int(mp_in.get("max")) != new_mp_max
         )
         max_attempted = max_attempted or hp_max_bad or mp_max_bad
+        # RFC-0019 archetype pin (write-once). Precedence:
+        #  - a valid STORED archetype is forced on every PC op, so a DM re-map is
+        #    overridden (it would otherwise be a free HP lever via the class factor);
+        #  - otherwise a DM-emitted value establishes it, but only if it names a real
+        #    archetype — an invalid one is dropped so the PC stays unclassified and
+        #    the next turn can retry, rather than persisting an unresolvable slug.
+        if archetypes:
+            if pin_archetype is not None:
+                # A DM value that differs from the committed pin is an override
+                # attempt — but only flag it when the pin came from STORED state
+                # (on the establishing turn the DM's own value IS the pin).
+                if (
+                    stored_archetype is not None
+                    and "archetype" in data
+                    and _canonical_archetype(data.get("archetype"), archetypes)
+                    != pin_archetype
+                ):
+                    archetype_attempted = True
+                data["archetype"] = pin_archetype
+            else:
+                # Unclassified and nothing valid to establish → never persist the
+                # DM's unresolvable slug.
+                data.pop("archetype", None)
         # Force on EVERY PC op — as the stats owner, protect them on the common turn
         # too (a plain damage turn writing only hp would otherwise let fs-manager's
         # shallow merge wipe stored stats/combat; finder issue 3). Write the FULL
@@ -468,5 +547,10 @@ def enforce_progression(
         notices.append(
             "Maximum health and magic are derived by the engine from your stats and "
             "class — the DM's values were corrected."
+        )
+    if archetype_attempted:
+        notices.append(
+            "Your character's archetype is set once, when they're established — the "
+            "DM's attempt to change it was ignored."
         )
     return notices

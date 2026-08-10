@@ -226,3 +226,103 @@ def test_new_session_returns_502_when_session_write_fails(
     assert len(fake_commit_log) == 1
     assert "Session start" in fake_commit_log[0]["summary"]
     assert "Unreliable" in fake_commit_log[0]["summary"]
+
+
+def _intro_with_pc(archetype: str, hp_max: int) -> str:
+    """An intro that establishes the PC with an archetype and DM-invented vitality."""
+    import json as _j
+
+    block = _j.dumps(
+        {
+            "characters": [
+                {
+                    "name": "Mira",
+                    "action": "upsert",
+                    "role": "player",
+                    "class": "Proctor",
+                    "archetype": archetype,
+                    "module_data": {
+                        "character_sheet": {
+                            "stats": {"body": 6, "mind": 5, "heart": 5, "will": 5},
+                            "hp": {"current": hp_max, "max": hp_max},
+                        }
+                    },
+                }
+            ]
+        }
+    )
+    return f"You wake in the ward.\n<world_update>\n{block}\n</world_update>"
+
+
+def _pc_from(payload: dict) -> dict | None:
+    for op in payload.get("updates", []):
+        if str(op.get("target_file", "")).endswith("/entities/mira.json"):
+            return op["data"]
+    return None
+
+
+def test_intro_hint_vitality_matches_the_persisted_entity(
+    client, fake_openai, fake_dispatch_log
+):
+    """RFC-0019: the returned world_updates hint must carry the SAME engine-derived
+    pools the intro dispatch persists. WorldCreation.jsx applies the hint directly
+    and hydration is skipped after creation, so a mismatch would show the DM's
+    invented vitality until a reload (coderabbit + codex)."""
+    fake_openai.chat.completions.set_blocking_response(_intro_with_pc("cleric", 20))
+
+    response = client.post(
+        "/api/session/new",
+        json={
+            "worldName": "Ward of Ash",
+            "playerCharacterName": "Mira",
+            "playerCharacterClass": "Proctor",
+        },
+    )
+    assert response.status_code == 200
+
+    persisted = _pc_from(fake_dispatch_log[0]["payload"])
+    assert persisted is not None
+    persisted_sheet = persisted["module_data"]["character_sheet"]
+    # Body 6 × cleric factor 6, seeded full — not the DM's 20/20.
+    assert persisted_sheet["hp"] == {"current": 36, "max": 36}
+    assert persisted_sheet["magic_pool"] == {"current": 10, "max": 10}
+
+    hint_pc = next(
+        c
+        for c in response.json()["turns"][0]["worldUpdates"]["characters"]
+        if c.get("name") == "Mira"
+    )
+    hint_sheet = hint_pc["module_data"]["character_sheet"]
+    assert hint_sheet["hp"] == persisted_sheet["hp"]
+    assert hint_sheet["magic_pool"] == persisted_sheet["magic_pool"]
+
+
+def test_intro_drops_an_invalid_archetype_from_both_payload_and_hint(
+    client, fake_openai, fake_dispatch_log
+):
+    fake_openai.chat.completions.set_blocking_response(_intro_with_pc("paladin", 20))
+
+    response = client.post(
+        "/api/session/new",
+        json={
+            "worldName": "Ward of Ash",
+            "playerCharacterName": "Mira",
+            "playerCharacterClass": "Proctor",
+        },
+    )
+    assert response.status_code == 200
+
+    persisted = _pc_from(fake_dispatch_log[0]["payload"])
+    assert "archetype" not in persisted  # unresolvable slug never stored
+    # …and it doesn't linger in the UI either.
+    hint_pc = next(
+        c
+        for c in response.json()["turns"][0]["worldUpdates"]["characters"]
+        if c.get("name") == "Mira"
+    )
+    assert "archetype" not in hint_pc
+    # No archetype → no engine-derived vitality; the DM's value stands (fail-safe).
+    assert persisted["module_data"]["character_sheet"]["hp"] == {
+        "current": 20,
+        "max": 20,
+    }

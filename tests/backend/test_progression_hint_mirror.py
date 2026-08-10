@@ -377,3 +377,117 @@ def test_normalize_growth_pool_reaches_every_fragment():
     )
     sheets = [c["module_data"]["character_sheet"] for c in hint["characters"]]
     assert all(s["hp"] == {"current": 38, "max": 64} for s in sheets)
+
+
+# ── RFC-0019: picking the DM's establishing archetype ────────────────────────
+
+from backend.routes.stream import _incoming_archetype_candidate  # noqa: E402
+
+VALID = ("warrior", "rogue", "mage", "cleric")
+
+
+def _blocks(*payloads):
+    import json as _j
+
+    return " narrative ".join(
+        f"<world_update>{_j.dumps(p)}</world_update>" for p in payloads
+    )
+
+
+def test_candidate_skips_invalid_and_scans_all_blocks():
+    # codex: taking the first TRUTHY value from only the FIRST block let a leading
+    # junk slug shadow a valid one — the pin came back None and enforcement then
+    # dropped the good write too. The Fact-Extractor reads every block, so we must.
+    raw = _blocks(
+        {"characters": [{"name": "Bran", "archetype": "paladin"}]},
+        {"characters": [{"name": "Bran", "archetype": "Cleric"}]},
+    )
+    assert _incoming_archetype_candidate(raw, "Bran", VALID) == "cleric"
+
+
+def test_candidate_ignores_entries_the_extractor_would_discard():
+    # codex: a role-only fragment (or one named for someone else) never reaches the
+    # PC's entity file — the Fact-Extractor builds the target from the NAME — so its
+    # archetype must not become the pin and get forced onto the PC forever.
+    raw = _blocks({"characters": [{"role": "player", "archetype": "warrior"}]})
+    assert _incoming_archetype_candidate(raw, "Bran", VALID) is None
+    raw2 = _blocks(
+        {"characters": [{"name": "Someone", "role": "player", "archetype": "mage"}]}
+    )
+    assert _incoming_archetype_candidate(raw2, "Bran", VALID) is None
+    # …and a properly named PC entry still counts.
+    raw3 = _blocks(
+        {
+            "characters": [
+                {"role": "player", "archetype": "warrior"},
+                {"name": "Bran", "archetype": "cleric"},
+            ]
+        }
+    )
+    assert _incoming_archetype_candidate(raw3, "Bran", VALID) == "cleric"
+
+
+def test_candidate_ignores_non_pc_entries():
+    raw = _blocks(
+        {"characters": [{"name": "Borin", "role": "npc", "archetype": "warrior"}]}
+    )
+    assert _incoming_archetype_candidate(raw, "Bran", VALID) is None
+
+
+def test_candidate_tolerates_malformed_and_empty():
+    assert (
+        _incoming_archetype_candidate(
+            "<world_update>{oops</world_update>", "Bran", VALID
+        )
+        is None
+    )
+    assert _incoming_archetype_candidate("no blocks here", "Bran", VALID) is None
+    assert _incoming_archetype_candidate(None, "Bran", VALID) is None
+    assert (
+        _incoming_archetype_candidate(_blocks({"characters": "oops"}), "Bran", VALID)
+        is None
+    )
+    # Inert when the world has no archetypes at all.
+    assert (
+        _incoming_archetype_candidate(
+            _blocks({"characters": [{"name": "Bran", "archetype": "mage"}]}), "Bran", ()
+        )
+        is None
+    )
+
+
+def test_normalize_archetype_hint_forces_the_pin():
+    from backend.routes.stream import _normalize_archetype_hint
+
+    hint = {"characters": [{"name": "Bran", "role": "player", "archetype": "warrior"}]}
+    _normalize_archetype_hint(hint, "Bran", "cleric")
+    assert hint["characters"][0]["archetype"] == "cleric"
+
+
+def test_normalize_archetype_hint_removes_when_unpinned():
+    from backend.routes.stream import _normalize_archetype_hint
+
+    hint = {"characters": [{"name": "Bran", "role": "player", "archetype": "paladin"}]}
+    _normalize_archetype_hint(hint, "Bran", None)
+    assert "archetype" not in hint["characters"][0]
+
+
+def test_normalize_archetype_hint_touches_every_fragment():
+    from backend.routes.stream import _normalize_archetype_hint
+
+    hint = {
+        "characters": [
+            {"name": "Bran", "role": "player", "archetype": "warrior"},
+            {"name": "Bran", "archetype": "mage"},
+        ]
+    }
+    _normalize_archetype_hint(hint, "Bran", "cleric")
+    assert [c["archetype"] for c in hint["characters"]] == ["cleric", "cleric"]
+
+
+def test_candidate_matches_the_extracted_slug_not_the_exact_name():
+    # codex: stored "O'Neil" vs emitted "O Neil" both target o_neil.json, so
+    # enforcement treats it as the PC write — an exact-string check would drop the
+    # valid archetype and leave a free-text PC unresolved.
+    raw = _blocks({"characters": [{"name": "O Neil", "archetype": "cleric"}]})
+    assert _incoming_archetype_candidate(raw, "O'Neil", VALID) == "cleric"
