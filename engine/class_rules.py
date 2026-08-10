@@ -255,8 +255,21 @@ def _seed_sheet(
     if not isinstance(sheet, dict):
         return 0
     if isinstance(carried_sheet, dict):
+        carried_stats = carried_sheet.get("stats")
         for key, value in carried_sheet.items():
-            sheet.setdefault(key, value)
+            if key not in sheet:
+                sheet[key] = value
+        # `setdefault` alone isn't enough for `stats`: a fragment carrying an
+        # explicit but PARTIAL or malformed stats dict (e.g. `{"stats": {}}`) keeps
+        # the key, bypasses the carry, and then erases the real stats under the
+        # shallow update — leaving the PC unseeded (codex). Fill in per stat, and
+        # replace a non-dict outright.
+        if isinstance(carried_stats, dict):
+            if isinstance(sheet.get("stats"), dict):
+                for stat, value in carried_stats.items():
+                    sheet["stats"].setdefault(stat, value)
+            else:
+                sheet["stats"] = carried_stats
     stats = sheet.get("stats")
     if not isinstance(stats, dict):
         return 0

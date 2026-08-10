@@ -416,3 +416,39 @@ def test_seed_writes_carried_stats_into_the_later_fragment():
     assert last["stats"] == {"body": 6, "will": 5}  # carried through, not erased
     assert last["hp"] == {"current": 36, "max": 36}
     assert last["magic_pool"] == {"current": 10, "max": 10}
+
+
+def test_seed_merges_carried_stats_into_a_partial_or_malformed_later_sheet():
+    # codex: `setdefault` only fires when the key is entirely absent, so a fragment
+    # with an explicit empty/partial/malformed stats dict bypassed the carry and
+    # then erased the real stats under the shallow update.
+    from engine.class_rules import seed_payload_vitality
+
+    def op(sheet, arch=None):
+        data = {"name": "Mira", "module_data": {"character_sheet": sheet}}
+        if arch:
+            data["archetype"] = arch
+        return {
+            "target_file": "data/state/core/entities/mira.json",
+            "operation": "update",
+            "data": data,
+        }
+
+    for later_stats in ({}, {"body": 6}, "oops"):
+        payload = {
+            "updates": [
+                op(
+                    {
+                        "stats": {"body": 6, "will": 5},
+                        "hp": {"current": 20, "max": 20},
+                    },
+                    "cleric",
+                ),
+                op({"stats": later_stats, "hp": {"current": 1, "max": 1}}),
+            ]
+        }
+        seed_payload_vitality(payload)
+        last = payload["updates"][-1]["data"]["module_data"]["character_sheet"]
+        assert last["stats"]["body"] == 6 and last["stats"]["will"] == 5
+        assert last["hp"] == {"current": 36, "max": 36}
+        assert last["magic_pool"] == {"current": 10, "max": 10}
