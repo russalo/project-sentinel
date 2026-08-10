@@ -209,9 +209,9 @@ def seed_payload_vitality(payload: Any, modules: dict[str, str] | None = None) -
     # fs-manager applies ops in order with a shallow `existing.update(data)`, so a
     # later fragment carrying DM-authored module_data would otherwise overwrite the
     # seeded pools (reverting a cleric from 36/36 to 20/20; codex).
-    # …and the stats it was established WITH, since a later fragment may carry only
-    # DM-authored HP without repeating them — `_seed_sheet` would then skip it and
-    # the shallow update would replace the seeded sheet (codex).
+    # …and the SHEET it was established with, so a later fragment that carries only
+    # DM-authored HP inherits the stats instead of erasing them under the shallow
+    # update (codex).
     by_target: dict[str, dict[str, Any]] = {}
     for target, data in _entity_ops():
         entry = by_target.setdefault(target, {})
@@ -219,12 +219,11 @@ def seed_payload_vitality(payload: Any, modules: dict[str, str] | None = None) -
             rules = _lookup(rules_data, data.get("archetype"))
             if rules:
                 entry["rules"] = rules
-        if "stats" not in entry:
+        if "sheet" not in entry:
             sheet = data.get("module_data", {})
             sheet = sheet.get("character_sheet") if isinstance(sheet, dict) else None
-            stats = sheet.get("stats") if isinstance(sheet, dict) else None
-            if isinstance(stats, dict):
-                entry["stats"] = stats
+            if isinstance(sheet, dict) and isinstance(sheet.get("stats"), dict):
+                entry["sheet"] = sheet
 
     for target, data in _entity_ops():
         entry = by_target.get(target) or {}
@@ -233,28 +232,32 @@ def seed_payload_vitality(payload: Any, modules: dict[str, str] | None = None) -
             continue
         sheet = data.get("module_data", {})
         sheet = sheet.get("character_sheet") if isinstance(sheet, dict) else None
-        seeded += _seed_sheet(sheet, rules, entry.get("stats"))
+        seeded += _seed_sheet(sheet, rules, entry.get("sheet"))
     return seeded
 
 
 def _seed_sheet(
-    sheet: Any, rules: dict[str, Any], carried_stats: dict[str, Any] | None = None
+    sheet: Any, rules: dict[str, Any], carried_sheet: dict[str, Any] | None = None
 ) -> int:
     """Write full engine-derived pools onto one ``character_sheet``. Returns how
     many pools were written. Shared by the payload (persisted) and hint (displayed)
     seeders so the two can't disagree.
 
-    ``carried_stats`` supplies the stats when this fragment doesn't repeat them —
-    a later duplicate op for the same entity may carry only DM-authored HP, and
-    fs-manager's shallow update would otherwise let it replace the seeded sheet.
+    ``carried_sheet`` is the sheet this entity was established with. A later
+    duplicate fragment may carry only DM-authored HP, and fs-manager applies ops
+    with a shallow ``existing.update(data)`` — so that fragment's ``module_data``
+    becomes authoritative and would ERASE the stats. Any key the fragment omits is
+    therefore copied in from the carried sheet, not merely borrowed for the
+    calculation (codex).
     """
     from .progression import STAT_CAP, authoritative_maxes  # local: import cycle
 
     if not isinstance(sheet, dict):
         return 0
+    if isinstance(carried_sheet, dict):
+        for key, value in carried_sheet.items():
+            sheet.setdefault(key, value)
     stats = sheet.get("stats")
-    if not isinstance(stats, dict):
-        stats = carried_stats
     if not isinstance(stats, dict):
         return 0
 
@@ -319,11 +322,10 @@ def seed_hint_vitality(hint: Any, modules: dict[str, str] | None = None) -> int:
             rules = _lookup(rules_data, char.get("archetype"))
             if rules:
                 entry["rules"] = rules
-        if "stats" not in entry:
+        if "sheet" not in entry:
             sheet = _sheet_of(char)
-            stats = sheet.get("stats") if isinstance(sheet, dict) else None
-            if isinstance(stats, dict):
-                entry["stats"] = stats
+            if isinstance(sheet, dict) and isinstance(sheet.get("stats"), dict):
+                entry["sheet"] = sheet
 
     for char in chars:
         if not isinstance(char, dict):
@@ -332,7 +334,7 @@ def seed_hint_vitality(hint: Any, modules: dict[str, str] | None = None) -> int:
         rules = entry.get("rules")
         if not rules:
             continue
-        seeded += _seed_sheet(_sheet_of(char), rules, entry.get("stats"))
+        seeded += _seed_sheet(_sheet_of(char), rules, entry.get("sheet"))
     return seeded
 
 

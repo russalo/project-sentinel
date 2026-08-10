@@ -384,3 +384,35 @@ def test_seed_hint_carries_stats_through_duplicate_characters():
     for char in hint["characters"]:
         sheet = char["module_data"]["character_sheet"]
         assert sheet["hp"] == {"current": 36, "max": 36}
+
+
+def test_seed_writes_carried_stats_into_the_later_fragment():
+    # codex: borrowing the carried stats for the CALCULATION isn't enough — the
+    # later fragment's module_data becomes authoritative under fs-manager's shallow
+    # update, so the stats must be written into it or they're erased.
+    from engine.class_rules import seed_payload_vitality
+
+    def op(sheet, arch=None):
+        data = {"name": "Mira", "module_data": {"character_sheet": sheet}}
+        if arch:
+            data["archetype"] = arch
+        return {
+            "target_file": "data/state/core/entities/mira.json",
+            "operation": "update",
+            "data": data,
+        }
+
+    payload = {
+        "updates": [
+            op(
+                {"stats": {"body": 6, "will": 5}, "hp": {"current": 20, "max": 20}},
+                "cleric",
+            ),
+            op({"hp": {"current": 20, "max": 20}}),  # no stats
+        ]
+    }
+    seed_payload_vitality(payload)
+    last = payload["updates"][-1]["data"]["module_data"]["character_sheet"]
+    assert last["stats"] == {"body": 6, "will": 5}  # carried through, not erased
+    assert last["hp"] == {"current": 36, "max": 36}
+    assert last["magic_pool"] == {"current": 10, "max": 10}
