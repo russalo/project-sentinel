@@ -185,8 +185,6 @@ def seed_payload_vitality(payload: Any, modules: dict[str, str] | None = None) -
     but leaves the (narrative-owned) current (codex). A newly established character
     starts at full: ``current = max``.
     """
-    from .progression import authoritative_maxes  # local: avoid an import cycle
-
     seeded = 0
     if not isinstance(payload, dict):
         return 0
@@ -224,28 +222,70 @@ def seed_payload_vitality(payload: Any, modules: dict[str, str] | None = None) -
             continue
         sheet = data.get("module_data", {})
         sheet = sheet.get("character_sheet") if isinstance(sheet, dict) else None
-        stats = sheet.get("stats") if isinstance(sheet, dict) else None
-        if not isinstance(stats, dict):
-            continue
+        seeded += _seed_sheet(sheet, rules)
+    return seeded
 
-        def _governing(stat: str) -> bool:
-            """A usable governing stat. Malformed LLM output reaches here (the
-            Fact-Extractor doesn't validate the sheet shape), and a missing or
-            non-numeric value would coerce to 0 — replacing the DM's pool with a
-            0/0 one, i.e. a character with no hit points (codex)."""
-            value = stats.get(stat)
-            return isinstance(value, int) and not isinstance(value, bool) and value > 0
 
-        hp_max, mp_max = authoritative_maxes(stats, rules)
-        if hp_max is not None and _governing("body"):
-            sheet["hp"] = {"current": hp_max, "max": hp_max}
+def _seed_sheet(sheet: Any, rules: dict[str, Any]) -> int:
+    """Write full engine-derived pools onto one ``character_sheet``. Returns how
+    many pools were written. Shared by the payload (persisted) and hint (displayed)
+    seeders so the two can't disagree."""
+    from .progression import authoritative_maxes  # local: avoid an import cycle
+
+    if not isinstance(sheet, dict):
+        return 0
+    stats = sheet.get("stats")
+    if not isinstance(stats, dict):
+        return 0
+
+    def _governing(stat: str) -> bool:
+        """A usable governing stat. Malformed LLM output reaches here (the
+        Fact-Extractor doesn't validate the sheet shape), and a missing or
+        non-numeric value would coerce to 0 — replacing the DM's pool with a 0/0
+        one, i.e. a character with no hit points (codex)."""
+        value = stats.get(stat)
+        return isinstance(value, int) and not isinstance(value, bool) and value > 0
+
+    seeded = 0
+    hp_max, mp_max = authoritative_maxes(stats, rules)
+    if hp_max is not None and _governing("body"):
+        sheet["hp"] = {"current": hp_max, "max": hp_max}
+        seeded += 1
+    if mp_max is not None:
+        if _governing("will"):
+            sheet["magic_pool"] = {"current": mp_max, "max": mp_max}
             seeded += 1
-        if mp_max is not None:
-            if _governing("will"):
-                sheet["magic_pool"] = {"current": mp_max, "max": mp_max}
-                seeded += 1
-        elif "magic_pool" in sheet:
-            sheet.pop("magic_pool")  # a resolved non-caster owns no pool
+    elif "magic_pool" in sheet:
+        sheet.pop("magic_pool")  # a resolved non-caster owns no pool
+    return seeded
+
+
+def seed_hint_vitality(hint: Any, modules: dict[str, str] | None = None) -> int:
+    """The display-side twin of ``seed_payload_vitality``: seed the same derived
+    pools onto a DM **hint** block's characters, in place. Returns pools written.
+
+    ``WorldCreation.jsx`` applies the intro hint straight into ``worldStore`` and
+    ``useWorldHydration`` deliberately skips re-fetching after creation, so without
+    this the UI shows the DM's invented vitality (a cleric's 20/20) while the
+    persisted entity holds the engine's 36/36 — until a reload (coderabbit + codex,
+    convergent). Uses the same rules and guards as the payload seeder.
+    """
+    seeded = 0
+    if not isinstance(hint, dict):
+        return 0
+    chars = hint.get("characters")
+    if not isinstance(chars, list):
+        return 0
+    rules_data = _rules_data(modules) or {}
+    for char in chars:
+        if not isinstance(char, dict):
+            continue
+        rules = _lookup(rules_data, char.get("archetype"))
+        if not rules:
+            continue
+        sheet = char.get("module_data", {})
+        sheet = sheet.get("character_sheet") if isinstance(sheet, dict) else None
+        seeded += _seed_sheet(sheet, rules)
     return seeded
 
 

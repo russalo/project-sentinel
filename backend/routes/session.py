@@ -312,7 +312,8 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
 
 
 def _intro_hint(raw_response: str) -> dict:
-    """The intro's frontend hint, with archetypes sanitized (RFC-0019).
+    """The intro's frontend hint, archetype-sanitized and vitality-seeded
+    (RFC-0019) so it matches what the intro dispatch persists.
 
     ``WorldCreation.jsx`` applies this straight into ``worldStore``, which copies
     character fields verbatim — so an invalid archetype would live on in the UI even
@@ -320,6 +321,11 @@ def _intro_hint(raw_response: str) -> dict:
     """
     hint = _parse_hint_block_for_frontend(raw_response)
     class_rules.sanitize_hint_archetypes(hint)
+    # …and seed the SAME engine-derived vitality the dispatched payload gets.
+    # WorldCreation.jsx applies this hint directly and hydration is skipped after
+    # creation, so an unseeded hint would show the DM's invented pools while the
+    # persisted entity holds the engine's — until a reload.
+    class_rules.seed_hint_vitality(hint)
     return hint
 
 
