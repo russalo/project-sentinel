@@ -38,6 +38,7 @@ from engine import death_stakes
 from engine import progression
 from engine.agents import dm as dm_agent
 from engine.agents import fact_extractor
+from engine.agents.fact_extractor import _slugify as _slugify_entity
 
 from .. import mock_dm
 
@@ -266,7 +267,9 @@ def _incoming_archetype_candidate(
     """
     if not archetypes or not isinstance(raw, str):
         return None
-    lowered = (player_name or "").strip().lower()
+    player_slug = _slugify_entity((player_name or "").strip())
+    if not player_slug:
+        return None
     for match in _BLOCK_RE.finditer(raw):
         try:
             block = json.loads(match.group(1).strip())
@@ -278,11 +281,15 @@ def _incoming_archetype_candidate(
         for char in chars:
             if not isinstance(char, dict):
                 continue
-            # Match by NAME only. The Fact-Extractor builds an op's target file from
-            # the name, so a role-only fragment with no usable name is DISCARDED —
-            # accepting its archetype would pin a value that never reaches the PC's
-            # entity file and then force it forever (codex).
-            if str(char.get("name", "")).strip().lower() != lowered:
+            # Match on the SLUG the Fact-Extractor would build the op's target file
+            # from — the same predicate `_pc_entity_op` uses at enforcement. A
+            # role-only fragment with no usable name is discarded by extraction, so
+            # its archetype must never become the pin (it would be forced onto the
+            # PC forever); but a name that merely differs in punctuation — stored
+            # "O'Neil" vs emitted "O Neil", both `o_neil.json` — IS the PC's write,
+            # and an exact-string check would drop its valid archetype (codex).
+            name = str(char.get("name", "")).strip()
+            if not name or _slugify_entity(name) != player_slug:
                 continue
             canonical = progression.effective_archetype(
                 None, char.get("archetype"), archetypes

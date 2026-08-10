@@ -193,13 +193,33 @@ def seed_payload_vitality(payload: Any, modules: dict[str, str] | None = None) -
     updates = payload.get("updates")
     if not isinstance(updates, list):
         return 0
-    for op in updates:
-        if not isinstance(op, dict) or "/entities/" not in str(op.get("target_file")):
-            continue
-        data = op.get("data")
-        if not isinstance(data, dict):
-            continue
-        rules = _lookup(_rules_data(modules) or {}, data.get("archetype"))
+    rules_data = _rules_data(modules) or {}
+
+    def _entity_ops():
+        for op in updates:
+            if not isinstance(op, dict):
+                continue
+            target = str(op.get("target_file"))
+            if "/entities/" not in target:
+                continue
+            data = op.get("data")
+            if isinstance(data, dict):
+                yield target, data
+
+    # The archetype each entity is being established with, so DUPLICATE ops for the
+    # same entity are all seeded — not just the one that happens to carry the field.
+    # fs-manager applies ops in order with a shallow `existing.update(data)`, so a
+    # later fragment carrying DM-authored module_data would otherwise overwrite the
+    # seeded pools (reverting a cleric from 36/36 to 20/20; codex).
+    by_target: dict[str, Any] = {}
+    for target, data in _entity_ops():
+        if target not in by_target:
+            rules = _lookup(rules_data, data.get("archetype"))
+            if rules:
+                by_target[target] = rules
+
+    for target, data in _entity_ops():
+        rules = by_target.get(target)
         if not rules:
             continue
         sheet = data.get("module_data", {})
@@ -207,13 +227,23 @@ def seed_payload_vitality(payload: Any, modules: dict[str, str] | None = None) -
         stats = sheet.get("stats") if isinstance(sheet, dict) else None
         if not isinstance(stats, dict):
             continue
+
+        def _governing(stat: str) -> bool:
+            """A usable governing stat. Malformed LLM output reaches here (the
+            Fact-Extractor doesn't validate the sheet shape), and a missing or
+            non-numeric value would coerce to 0 — replacing the DM's pool with a
+            0/0 one, i.e. a character with no hit points (codex)."""
+            value = stats.get(stat)
+            return isinstance(value, int) and not isinstance(value, bool) and value > 0
+
         hp_max, mp_max = authoritative_maxes(stats, rules)
-        if hp_max is not None:
+        if hp_max is not None and _governing("body"):
             sheet["hp"] = {"current": hp_max, "max": hp_max}
             seeded += 1
         if mp_max is not None:
-            sheet["magic_pool"] = {"current": mp_max, "max": mp_max}
-            seeded += 1
+            if _governing("will"):
+                sheet["magic_pool"] = {"current": mp_max, "max": mp_max}
+                seeded += 1
         elif "magic_pool" in sheet:
             sheet.pop("magic_pool")  # a resolved non-caster owns no pool
     return seeded

@@ -234,3 +234,76 @@ def test_seed_payload_vitality_skips_unclassified_and_strips_non_caster_pool():
     sheet = p2["updates"][0]["data"]["module_data"]["character_sheet"]
     assert sheet["hp"] == {"current": 48, "max": 48}
     assert "magic_pool" not in sheet
+
+
+def test_seed_propagates_across_duplicate_intro_ops():
+    # codex: fs-manager applies ops in order with a shallow update, so a later
+    # fragment carrying DM-authored module_data would overwrite the seeded pools
+    # (reverting a cleric from 36/36 to 20/20) if only the archetype-bearing op
+    # were seeded.
+    from engine.class_rules import seed_payload_vitality
+
+    def op(with_archetype, hp):
+        data = {
+            "name": "Mira",
+            "module_data": {
+                "character_sheet": {"stats": {"body": 6, "will": 5}, "hp": hp}
+            },
+        }
+        if with_archetype:
+            data["archetype"] = "cleric"
+        return {
+            "target_file": "data/state/core/entities/mira.json",
+            "operation": "update",
+            "data": data,
+        }
+
+    payload = {
+        "updates": [
+            op(True, {"current": 20, "max": 20}),
+            op(False, {"current": 20, "max": 20}),  # no archetype field
+        ]
+    }
+    seed_payload_vitality(payload)
+    for entry in payload["updates"]:
+        sheet = entry["data"]["module_data"]["character_sheet"]
+        assert sheet["hp"] == {"current": 36, "max": 36}
+
+
+def test_seed_skips_malformed_or_missing_governing_stats():
+    # codex: a partial/malformed stats object would coerce Body to 0 and replace the
+    # DM's pool with a 0/0 one — a character with no hit points.
+    from engine.class_rules import seed_payload_vitality
+
+    def payload_with(stats):
+        return {
+            "updates": [
+                {
+                    "target_file": "data/state/core/entities/mira.json",
+                    "operation": "update",
+                    "data": {
+                        "name": "Mira",
+                        "archetype": "cleric",
+                        "module_data": {
+                            "character_sheet": {
+                                "stats": stats,
+                                "hp": {"current": 20, "max": 20},
+                            }
+                        },
+                    },
+                }
+            ]
+        }
+
+    for stats in ({}, {"body": 0}, {"body": "six"}, {"body": None}, {"body": True}):
+        p = payload_with(stats)
+        assert seed_payload_vitality(p) == 0
+        sheet = p["updates"][0]["data"]["module_data"]["character_sheet"]
+        assert sheet["hp"] == {"current": 20, "max": 20}  # DM value untouched
+
+    # A valid Body but no Will: HP seeded, caster pool left alone.
+    p = payload_with({"body": 6})
+    assert seed_payload_vitality(p) == 1
+    sheet = p["updates"][0]["data"]["module_data"]["character_sheet"]
+    assert sheet["hp"] == {"current": 36, "max": 36}
+    assert "magic_pool" not in sheet

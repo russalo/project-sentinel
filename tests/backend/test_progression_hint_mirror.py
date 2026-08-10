@@ -483,3 +483,11 @@ def test_normalize_archetype_hint_touches_every_fragment():
     }
     _normalize_archetype_hint(hint, "Bran", "cleric")
     assert [c["archetype"] for c in hint["characters"]] == ["cleric", "cleric"]
+
+
+def test_candidate_matches_the_extracted_slug_not_the_exact_name():
+    # codex: stored "O'Neil" vs emitted "O Neil" both target o_neil.json, so
+    # enforcement treats it as the PC write — an exact-string check would drop the
+    # valid archetype and leave a free-text PC unresolved.
+    raw = _blocks({"characters": [{"name": "O Neil", "archetype": "cleric"}]})
+    assert _incoming_archetype_candidate(raw, "O'Neil", VALID) == "cleric"
