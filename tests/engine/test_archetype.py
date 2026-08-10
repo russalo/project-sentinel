@@ -223,3 +223,23 @@ def test_multiple_ops_cannot_establish_different_archetypes():
     _enforce(payload, _pc())
     got = [op["data"]["archetype"] for op in payload["updates"]]
     assert got == ["cleric", "cleric"]  # first valid wins, both pinned
+
+
+# ── the DM must be able to SEE it (codex) ────────────────────────────────────
+
+
+def test_archetype_note_marks_an_invalid_stored_value_unset():
+    from engine.agents.dm import _archetype_note
+
+    # An invalid stored slug can't be deleted through fs-manager's shallow update,
+    # so the ONLY way the PC is reclassified is the DM being told it's missing —
+    # showing "paladin" verbatim would strand them unresolved forever.
+    assert _archetype_note({"role": "player", "archetype": "paladin"}, ARCHETYPES) == (
+        ", archetype UNSET"
+    )
+    assert _archetype_note({"role": "player"}, ARCHETYPES) == ", archetype UNSET"
+    assert _archetype_note({"role": "player", "archetype": "cleric"}, ARCHETYPES) == (
+        ", archetype cleric"
+    )
+    # NPCs are never nagged about it.
+    assert _archetype_note({"role": "npc"}, ARCHETYPES) == ""

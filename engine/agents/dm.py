@@ -58,6 +58,7 @@ import re
 from typing import Any, Iterator
 
 from ..llm import build_client
+from .. import class_rules
 from ..modules import build_dm_prompt
 from ..types import Config, DMTurnInput, DMTurnResult, IntroInput, WorldContext
 from .lorekeeper import render_canon_block
@@ -247,6 +248,26 @@ def _strip_world_update(raw: str) -> str:
     return _WORLD_UPDATE_BLOCK.sub("", raw).strip()
 
 
+def _archetype_note(character: dict, valid: tuple[str, ...]) -> str:
+    """The archetype fragment of a character's world-state line (RFC-0019).
+
+    A PC whose stored archetype isn't one of the bound class module's slugs reads
+    as **UNSET**, not as set-to-junk: the engine already treats an invalid stored
+    value as absent, but fs-manager's shallow update can't delete the key, so the
+    only way such a PC is ever reclassified is for the DM to be told it's missing
+    and emit a valid one (which then overwrites it). Showing the junk verbatim
+    would strand the character permanently unresolved (codex).
+    """
+    stored = character.get("archetype")
+    if str(character.get("role", "")).lower() != "player":
+        return f", archetype {stored}" if stored else ""
+    if isinstance(stored, str) and any(
+        a.lower() == stored.strip().lower() for a in valid
+    ):
+        return f", archetype {stored}"
+    return ", archetype UNSET"
+
+
 def _build_messages(
     ctx: WorldContext,
     player_action: str,
@@ -265,6 +286,7 @@ def _build_messages(
     (ADR-0005 resolution module), a structured ROLL RESULT block is
     appended so the DM resolves from the margin.
     """
+    _valid_archetypes = class_rules.archetypes(ctx.modules)
     chars = (
         ", ".join(
             # RFC-0013: surface a persisted threat tier so the DM reuses the
@@ -277,11 +299,7 @@ def _build_messages(
             # or notice one is MISSING — if it can see both. Same
             # never-shown-can't-maintain gap as threat/world.day (codex).
             + (f", class {c['class']}" if c.get("class") else "")
-            + (
-                f", archetype {c['archetype']}"
-                if c.get("archetype")
-                else (", archetype UNSET" if c.get("role") == "player" else "")
-            )
+            + _archetype_note(c, _valid_archetypes)
             + ")"
             for c in ctx.characters
         )

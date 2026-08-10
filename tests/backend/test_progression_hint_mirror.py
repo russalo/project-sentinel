@@ -377,3 +377,65 @@ def test_normalize_growth_pool_reaches_every_fragment():
     )
     sheets = [c["module_data"]["character_sheet"] for c in hint["characters"]]
     assert all(s["hp"] == {"current": 38, "max": 64} for s in sheets)
+
+
+# ── RFC-0019: picking the DM's establishing archetype ────────────────────────
+
+from backend.routes.stream import _incoming_archetype_candidate  # noqa: E402
+
+VALID = ("warrior", "rogue", "mage", "cleric")
+
+
+def _blocks(*payloads):
+    import json as _j
+
+    return " narrative ".join(
+        f"<world_update>{_j.dumps(p)}</world_update>" for p in payloads
+    )
+
+
+def test_candidate_skips_invalid_and_scans_all_blocks():
+    # codex: taking the first TRUTHY value from only the FIRST block let a leading
+    # junk slug shadow a valid one — the pin came back None and enforcement then
+    # dropped the good write too. The Fact-Extractor reads every block, so we must.
+    raw = _blocks(
+        {"characters": [{"name": "Bran", "archetype": "paladin"}]},
+        {"characters": [{"name": "Bran", "archetype": "Cleric"}]},
+    )
+    assert _incoming_archetype_candidate(raw, "Bran", VALID) == "cleric"
+
+
+def test_candidate_matches_pc_by_role_too():
+    raw = _blocks(
+        {"characters": [{"name": "Someone", "role": "player", "archetype": "mage"}]}
+    )
+    assert _incoming_archetype_candidate(raw, "Bran", VALID) == "mage"
+
+
+def test_candidate_ignores_non_pc_entries():
+    raw = _blocks(
+        {"characters": [{"name": "Borin", "role": "npc", "archetype": "warrior"}]}
+    )
+    assert _incoming_archetype_candidate(raw, "Bran", VALID) is None
+
+
+def test_candidate_tolerates_malformed_and_empty():
+    assert (
+        _incoming_archetype_candidate(
+            "<world_update>{oops</world_update>", "Bran", VALID
+        )
+        is None
+    )
+    assert _incoming_archetype_candidate("no blocks here", "Bran", VALID) is None
+    assert _incoming_archetype_candidate(None, "Bran", VALID) is None
+    assert (
+        _incoming_archetype_candidate(_blocks({"characters": "oops"}), "Bran", VALID)
+        is None
+    )
+    # Inert when the world has no archetypes at all.
+    assert (
+        _incoming_archetype_candidate(
+            _blocks({"characters": [{"name": "Bran", "archetype": "mage"}]}), "Bran", ()
+        )
+        is None
+    )

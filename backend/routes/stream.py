@@ -232,6 +232,48 @@ def _normalize_pool(
         sheet[key] = dict(engine_pool)
 
 
+def _incoming_archetype_candidate(
+    raw: str, player_name: str, archetypes: tuple[str, ...]
+) -> str | None:
+    """The first VALID archetype the DM offers for the PC anywhere in this turn's
+    response (RFC-0019).
+
+    Two reasons this scans the raw response rather than the parsed hint:
+    ``_parse_frontend_hint`` reads only the FIRST ``<world_update>`` block while the
+    Fact-Extractor processes them all, and taking the first *truthy* value would let
+    a leading junk slug ("paladin") shadow a valid one ("cleric") emitted after it —
+    the pin would come back None and enforcement would drop the good write too
+    (codex). Skipping invalid candidates keeps the hint's decision identical to the
+    one the dispatched payload deserves. Tolerant of malformed JSON.
+    """
+    if not archetypes or not isinstance(raw, str):
+        return None
+    lowered = (player_name or "").strip().lower()
+    for match in _BLOCK_RE.finditer(raw):
+        try:
+            block = json.loads(match.group(1).strip())
+        except (json.JSONDecodeError, ValueError):
+            continue
+        chars = block.get("characters") if isinstance(block, dict) else None
+        if not isinstance(chars, list):
+            continue
+        for char in chars:
+            if not isinstance(char, dict):
+                continue
+            is_pc = (
+                str(char.get("role", "")).lower() == "player"
+                or str(char.get("name", "")).strip().lower() == lowered
+            )
+            if not is_pc:
+                continue
+            canonical = progression.effective_archetype(
+                None, char.get("archetype"), archetypes
+            )
+            if canonical is not None:
+                return canonical
+    return None
+
+
 def _locate_all_pc_in_hint(hint: dict, player_name: str) -> list[dict]:
     """EVERY entry in the hint that refers to the player character.
 
@@ -621,9 +663,8 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
         # engine-derived maxes; resolving from stored state alone would leave that
         # turn's own write DM-authored (coderabbit + codex).
         _archetypes = class_rules.archetypes(world_context.modules)
-        _hint_pcs = _locate_all_pc_in_hint(frontend_hint, session.player_character_name)
-        _incoming_archetype = next(
-            (pc.get("archetype") for pc in _hint_pcs if pc.get("archetype")), None
+        _incoming_archetype = _incoming_archetype_candidate(
+            raw_response, session.player_character_name, _archetypes
         )
         _pin_archetype = progression.effective_archetype(
             _pc_for_class, _incoming_archetype, _archetypes
