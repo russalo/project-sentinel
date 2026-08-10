@@ -273,6 +273,15 @@ def _build_messages(
             # world.day on PR #164).
             f"{c.get('name', '?')} ({c.get('role', '?')}, {c.get('status', '?')}"
             + (f", threat {c['threat']}" if c.get("threat") else "")
+            # RFC-0019: the DM can only map a free-text class onto an archetype —
+            # or notice one is MISSING — if it can see both. Same
+            # never-shown-can't-maintain gap as threat/world.day (codex).
+            + (f", class {c['class']}" if c.get("class") else "")
+            + (
+                f", archetype {c['archetype']}"
+                if c.get("archetype")
+                else (", archetype UNSET" if c.get("role") == "player" else "")
+            )
             + ")"
             for c in ctx.characters
         )

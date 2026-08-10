@@ -33,6 +33,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Request, status
 
 import engine
+from engine import class_rules
 from engine.agents import dm as dm_agent
 from engine.agents import fact_extractor
 
@@ -197,6 +198,12 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
     #    as a system-like note if necessary. For now we just skip
     #    silently — observability is a later concern.
     if extracted.payload is not None:
+        # RFC-0019: this path does NOT run enforce_progression, so apply the
+        # archetype establishment gate here — otherwise an intro emitting e.g.
+        # "archetype": "paladin" persists at world creation, and later turns (which
+        # only prompt when one is MISSING) would see it as set while the PC stays
+        # mechanically unresolved (codex). A new world uses the default module set.
+        class_rules.sanitize_payload_archetypes(extracted.payload)
         engine.apply_world_update(config, extracted.payload, world_id=world_id)
 
     # 4. Build the session record with the opening turn.

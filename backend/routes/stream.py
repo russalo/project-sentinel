@@ -615,13 +615,31 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
         _pc_for_class = death_stakes.find_player_character(
             world_context.characters, session.player_character_name
         )
-        # RFC-0019: archetype-first (the pinned mechanical handle), class fallback.
-        _class_rules = class_rules.resolve_class_rules(
-            world_context.modules, _pc_for_class
-        )
-        # The bound class module's archetype slugs — the valid set the write-once
-        # archetype pin validates a DM-emitted value against.
+        # RFC-0019: decide the PC's archetype ONCE — the valid stored pin, else a
+        # valid one the DM is establishing in THIS turn's hint. Deciding before the
+        # class rules resolve is what lets the classifying turn also get its
+        # engine-derived maxes; resolving from stored state alone would leave that
+        # turn's own write DM-authored (coderabbit + codex).
         _archetypes = class_rules.archetypes(world_context.modules)
+        _hint_pcs = _locate_all_pc_in_hint(frontend_hint, session.player_character_name)
+        _incoming_archetype = next(
+            (pc.get("archetype") for pc in _hint_pcs if pc.get("archetype")), None
+        )
+        _pin_archetype = progression.effective_archetype(
+            _pc_for_class, _incoming_archetype, _archetypes
+        )
+        # Archetype-first (the mechanical handle), free-text class as the fallback.
+        _class_rules = class_rules.resolve_class_rules(
+            world_context.modules,
+            {
+                "archetype": _pin_archetype,
+                "class": (
+                    _pc_for_class.get("class")
+                    if isinstance(_pc_for_class, dict)
+                    else None
+                ),
+            },
+        )
 
         # RFC-0014: mirror the engine-committed death outcome into the SSE hint so
         # the UI shows the authoritative status immediately — otherwise the DM's
@@ -737,6 +755,7 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
                 ),
                 class_rules=_class_rules,
                 archetypes=_archetypes,
+                pin_archetype=_pin_archetype,
             )
             for notice in progression_notices:
                 yield _sse_event({"type": "error", "content": notice})

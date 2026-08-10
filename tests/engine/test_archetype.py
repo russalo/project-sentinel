@@ -52,8 +52,22 @@ def _data(payload, idx=-1):
 
 
 def _enforce(payload, pc, **kw):
+    """Drive enforcement the way the route does: decide the archetype ONCE from the
+    stored PC + whatever the DM emitted this turn, then pass that decision in."""
     kw.setdefault("class_rules", None)
     kw.setdefault("archetypes", ARCHETYPES)
+    if "pin_archetype" not in kw:
+        incoming = next(
+            (
+                op["data"].get("archetype")
+                for op in payload["updates"]
+                if isinstance(op.get("data"), dict) and op["data"].get("archetype")
+            ),
+            None,
+        )
+        kw["pin_archetype"] = progression.effective_archetype(
+            pc, incoming, kw["archetypes"]
+        )
     return progression.enforce_progression(
         payload,
         stored_characters=[pc],
@@ -163,3 +177,49 @@ def test_class_itself_is_never_touched():
     payload = _payload([_op(archetype="cleric")])
     _enforce(payload, _pc())
     assert "class" not in _data(payload)  # flavor untouched by the pin
+
+
+# ── the establishing turn also derives maxes (coderabbit + codex) ─────────────
+
+
+def test_effective_archetype_prefers_stored_then_incoming():
+    assert (
+        progression.effective_archetype(_pc(archetype="rogue"), "mage", ARCHETYPES)
+        == "rogue"
+    )
+    assert progression.effective_archetype(_pc(), "Mage", ARCHETYPES) == "mage"
+    assert progression.effective_archetype(_pc(), "paladin", ARCHETYPES) is None
+    assert (
+        progression.effective_archetype(_pc(archetype="paladin"), "cleric", ARCHETYPES)
+        == "cleric"
+    )
+    assert progression.effective_archetype(_pc(archetype="rogue"), "mage", ()) is None
+
+
+def test_establishing_turn_also_gets_derived_maxes():
+    # The bug both bots caught: resolving class rules from the STORED pc alone left
+    # the classifying turn's own write DM-authored. Deciding the archetype first
+    # means the same dispatch derives hp.max = Body6 × cleric 6 = 36.
+    pc = _pc()  # "Proctor", unclassified
+    payload = _payload([_op(archetype="cleric")])
+    pin = progression.effective_archetype(pc, "cleric", ARCHETYPES)
+    _enforce(
+        payload,
+        pc,
+        pin_archetype=pin,
+        class_rules={"hp_factor": 6, "magic": "divine"},
+    )
+    data = _data(payload)
+    assert data["archetype"] == "cleric"
+    sheet = data["module_data"]["character_sheet"]
+    assert sheet["hp"]["max"] == 36
+    assert sheet["magic_pool"]["max"] == 10  # Will 5 × 2
+
+
+def test_multiple_ops_cannot_establish_different_archetypes():
+    # codex: two same-turn ops each accepting their own value made the LAST win,
+    # silently bypassing write-once. One decision is forced onto both.
+    payload = _payload([_op(archetype="cleric"), _op(archetype="warrior")])
+    _enforce(payload, _pc())
+    got = [op["data"]["archetype"] for op in payload["updates"]]
+    assert got == ["cleric", "cleric"]  # first valid wins, both pinned

@@ -52,6 +52,27 @@ mechanism **(a)**, dispatch-recompute-and-inject, alongside `level`/`stats`. In
 already worked and still does), and "Proctor" + `cleric` now resolves to
 `{hp_factor: 6, magic: "divine"}`.
 
+**One decision, decided first.** `effective_archetype(character, incoming,
+archetypes)` resolves the valid stored pin, else a valid value the DM is
+establishing in *this* turn's hint. The backend computes it **before** the class
+rules — so the classifying turn's own write also gets its engine-derived maxes
+(resolving from stored state alone left that turn DM-authored) — and passes it to
+enforcement as `pin_archetype`, which forces it onto **every** PC op (so two
+same-turn ops can't quietly establish different values, last-wins).
+
+**Gates on the paths enforcement doesn't run.** `/api/session/new` dispatches the
+intro payload straight to `apply_world_update` with no `enforce_progression`, so
+`sanitize_payload_archetypes` applies the same canonicalize-or-drop gate there —
+otherwise an intro emitting `"archetype": "paladin"` persists at world creation
+and, because later turns only prompt when one is *missing*, the PC stays
+mechanically unresolved.
+
+**The DM has to be able to see it.** The turn prompt's character lines carried only
+name/role/status/threat, so on an established world the DM could neither read the
+free-text `class` to map nor tell that `archetype` was absent — the lazy
+classification could never fire. The lines now include `class` and either the
+archetype or `archetype UNSET` for the player.
+
 ## Implementation
 
 - **`engine/class_rules.py`** — `resolve_class_rules(modules, character)`

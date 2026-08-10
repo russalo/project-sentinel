@@ -62,6 +62,29 @@ def _to_int(value: Any, default: int = 0) -> int:
         return default
 
 
+def effective_archetype(
+    character: Any, incoming: Any, archetypes: tuple[str, ...] | None
+) -> str | None:
+    """The archetype the engine will commit this turn (RFC-0019) — ONE decision,
+    shared by the class-rules resolution and the write-once pin.
+
+    - A valid **stored** archetype wins: it's write-once, so nothing this turn can
+      change it. (An invalid stored slug counts as absent — self-healing.)
+    - Otherwise a valid **incoming** DM value establishes it.
+    - Otherwise None: the PC stays unclassified rather than persisting a slug the
+      rules-data can't resolve.
+
+    Deciding this BEFORE the derived maxes are computed is what lets an
+    establishing turn also get its engine-derived ``hp.max``/``magic_pool.max`` —
+    resolving the class rules from the stored PC alone would leave the classifying
+    turn's own write DM-authored (coderabbit + codex, convergent).
+    """
+    stored = _canonical_archetype(_as_dict(character).get("archetype"), archetypes)
+    if stored is not None:
+        return stored
+    return _canonical_archetype(incoming, archetypes)
+
+
 def _canonical_archetype(value: Any, archetypes: tuple[str, ...] | None) -> str | None:
     """The canonically-cased archetype slug for ``value``, or None if it isn't one of
     ``archetypes`` (RFC-0019). Pure — the caller resolves the valid set from the
@@ -304,6 +327,7 @@ def enforce_progression(
     choice: dict[str, Any] | None,
     class_rules: dict[str, Any] | None = None,
     archetypes: tuple[str, ...] | None = None,
+    pin_archetype: str | None = None,
 ) -> list[str]:
     """Make the engine's ``level`` + ``stats`` (+ derived maxes) the authoritative
     PC write.
@@ -326,12 +350,14 @@ def enforce_progression(
 
     RFC-0019 (``archetypes`` supplied — the bound class module's archetype slugs):
     also pin the top-level ``archetype``, the mechanical handle that maps a
-    free-text ``class`` ("Proctor") onto a rules-data key ("cleric"). **Write-once:**
-    a valid stored value is forced on every PC op (so a DM re-map — ``rogue`` →
-    ``warrior``, i.e. Body×6 → Body×8 free HP — is overridden with a notice); with
-    none stored, a DM-emitted value is accepted only if it names a real archetype,
-    and an invalid one is dropped so the PC stays unclassified and the next turn can
-    retry. ``class`` itself is untouched — it stays the character's flavor.
+    free-text ``class`` ("Proctor") onto a rules-data key ("cleric"). ``pin_archetype``
+    is the caller's ``effective_archetype`` decision — the valid stored value, else a
+    valid establishing one — and it is **forced on every PC op**, so a DM re-map
+    (``rogue`` → ``warrior``, i.e. Body×6 → Body×8 free HP) is overridden with a
+    notice, and a second same-turn op can't quietly re-establish a different value
+    (codex). When it's None the PC stays unclassified: any ``archetype`` in the ops
+    is dropped rather than persisting a slug the rules-data can't resolve.
+    ``class`` itself is untouched — it stays the character's flavor.
 
     Returns player-facing notices when the DM attempted an unauthorized
     level/stats/max/archetype change (parity with ``death_stakes.enforce_permadeath``
@@ -354,10 +380,11 @@ def enforce_progression(
     cur_stats = stored_stats(pc)
     auth_level, auth_stats = authoritative_progression(cur_level, cur_stats, choice)
 
-    # RFC-0019: the pinned archetype. A stored value that isn't a real archetype is
-    # treated as absent so a garbage/legacy slug can be re-established rather than
-    # forced forever (self-healing).
-    pinned_archetype = _canonical_archetype(_as_dict(pc).get("archetype"), archetypes)
+    # RFC-0019: the STORED archetype (a slug that isn't a real archetype counts as
+    # absent, so a garbage/legacy value can be re-established — self-healing). Used
+    # only to tell an override attempt from an establishing write; the value that
+    # gets committed is the caller's `pin_archetype` decision.
+    stored_archetype = _canonical_archetype(_as_dict(pc).get("archetype"), archetypes)
 
     # RFC-0018 derived maxes, computed once against the STORED sheet (the baseline
     # before this turn) so the growth delta and the DM-attempt check are stable
@@ -457,20 +484,22 @@ def enforce_progression(
         #    archetype — an invalid one is dropped so the PC stays unclassified and
         #    the next turn can retry, rather than persisting an unresolvable slug.
         if archetypes:
-            if pinned_archetype is not None:
+            if pin_archetype is not None:
+                # A DM value that differs from the committed pin is an override
+                # attempt — but only flag it when the pin came from STORED state
+                # (on the establishing turn the DM's own value IS the pin).
                 if (
-                    "archetype" in data
+                    stored_archetype is not None
+                    and "archetype" in data
                     and _canonical_archetype(data.get("archetype"), archetypes)
-                    != pinned_archetype
+                    != pin_archetype
                 ):
                     archetype_attempted = True
-                data["archetype"] = pinned_archetype
-            elif "archetype" in data:
-                accepted = _canonical_archetype(data.get("archetype"), archetypes)
-                if accepted is None:
-                    data.pop("archetype")
-                else:
-                    data["archetype"] = accepted
+                data["archetype"] = pin_archetype
+            else:
+                # Unclassified and nothing valid to establish → never persist the
+                # DM's unresolvable slug.
+                data.pop("archetype", None)
         # Force on EVERY PC op — as the stats owner, protect them on the common turn
         # too (a plain damage turn writing only hp would otherwise let fs-manager's
         # shallow merge wipe stored stats/combat; finder issue 3). Write the FULL

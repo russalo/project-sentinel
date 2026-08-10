@@ -270,3 +270,57 @@ def test_dm_cannot_remap_archetype_end_to_end(
     sheet = op["data"]["module_data"]["character_sheet"]
     assert sheet["hp"]["max"] == 36  # still the cleric factor, not warrior's 48
     assert "archetype is set once" in body  # surfaced to the player
+
+
+SESSION_EST = "e5e5e5e5-5555-4555-8555-e5e5e5e5e5e5"
+
+
+def test_establishing_turn_derives_maxes_end_to_end(
+    client, fake_openai, fake_dispatch_log, fake_commit_log, tmp_data_dir
+):
+    # An UNCLASSIFIED free-text PC is classified by the DM this turn; the same
+    # dispatch must also derive the maxes (coderabbit + codex: resolving the class
+    # rules from stored state alone left the classifying turn DM-authored).
+    _prime_session(tmp_data_dir, SESSION_EST)
+    _prime_pc_with_archetype(tmp_data_dir, pc_class="Proctor", archetype=None)
+    world_update = json.dumps(
+        {"characters": [{"name": "Bran", "action": "upsert", "archetype": "cleric"}]}
+    )
+    fake_openai.chat.completions.set_stream_tokens(
+        [
+            "You are, at heart, a healer. ",
+            f"<world_update>{world_update}</world_update>",
+        ]
+    )
+
+    resp = client.post(
+        "/api/stream", json={"action": "tend the wounded", "sessionId": SESSION_EST}
+    )
+    assert resp.status_code == 200
+    _ = resp.text
+
+    op = _pc_op(fake_dispatch_log[0]["payload"])
+    assert op["data"]["archetype"] == "cleric"
+    sheet = op["data"]["module_data"]["character_sheet"]
+    assert sheet["hp"]["max"] == 36  # Body 6 x cleric 6 — on the SAME turn
+    assert sheet["magic_pool"]["max"] == 10
+
+
+def test_invalid_archetype_never_persists_end_to_end(
+    client, fake_openai, fake_dispatch_log, fake_commit_log, tmp_data_dir
+):
+    _prime_session(tmp_data_dir, SESSION_EST)
+    _prime_pc_with_archetype(tmp_data_dir, pc_class="Proctor", archetype=None)
+    world_update = json.dumps(
+        {"characters": [{"name": "Bran", "action": "upsert", "archetype": "paladin"}]}
+    )
+    fake_openai.chat.completions.set_stream_tokens(
+        ["A holy warrior. ", f"<world_update>{world_update}</world_update>"]
+    )
+
+    resp = client.post("/api/stream", json={"action": "pray", "sessionId": SESSION_EST})
+    assert resp.status_code == 200
+    _ = resp.text
+
+    op = _pc_op(fake_dispatch_log[0]["payload"])
+    assert "archetype" not in op["data"]  # unresolvable slug never stored

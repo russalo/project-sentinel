@@ -66,7 +66,14 @@ def archetypes(modules: dict[str, str] | None) -> tuple[str, ...]:
     rules = _rules_data(modules)
     if not rules:
         return ()
-    return tuple(name for name in rules if isinstance(name, str))
+    # Only keys whose entry is a rules DICT — a stray scalar (e.g. a "schema": "1"
+    # metadata key) must not be pinnable as an archetype `resolve_class_rules`
+    # could never resolve (coderabbit).
+    return tuple(
+        name
+        for name, entry in rules.items()
+        if isinstance(name, str) and isinstance(entry, dict)
+    )
 
 
 def canonical_archetype(modules: dict[str, str] | None, value: Any) -> str | None:
@@ -78,14 +85,47 @@ def canonical_archetype(modules: dict[str, str] | None, value: Any) -> str | Non
     stored, so the PC stays unclassified and the next turn can retry — never
     persist a slug no rules-data can resolve.
     """
-    rules = _rules_data(modules)
-    if rules is None or not isinstance(value, str) or not value.strip():
+    if not isinstance(value, str) or not value.strip():
         return None
     key = value.strip().lower()
-    for name in rules:
-        if isinstance(name, str) and name.lower() == key:
+    for name in archetypes(modules):  # dict-valued keys only
+        if name.lower() == key:
             return name
     return None
+
+
+def sanitize_payload_archetypes(
+    payload: Any, modules: dict[str, str] | None = None
+) -> int:
+    """Canonicalize-or-drop every ``archetype`` in an apply_world_update payload's
+    entity ops, in place. Returns how many were dropped.
+
+    The establishment gate for dispatch paths that do NOT run
+    ``enforce_progression`` — notably the intro at ``/api/session/new``, which sends
+    the extracted payload straight to ``apply_world_update``. Without this an
+    LLM-emitted ``"archetype": "paladin"`` persists at world creation, and because
+    later turns see an archetype as *present* the PC can stay mechanically
+    unresolved (codex). Tolerant of any malformed payload shape.
+    """
+    dropped = 0
+    if not isinstance(payload, dict):
+        return 0
+    updates = payload.get("updates")
+    if not isinstance(updates, list):
+        return 0
+    for op in updates:
+        if not isinstance(op, dict) or "/entities/" not in str(op.get("target_file")):
+            continue
+        data = op.get("data")
+        if not isinstance(data, dict) or "archetype" not in data:
+            continue
+        canonical = canonical_archetype(modules, data.get("archetype"))
+        if canonical is None:
+            data.pop("archetype")
+            dropped += 1
+        else:
+            data["archetype"] = canonical
+    return dropped
 
 
 def resolve_class_rules(
