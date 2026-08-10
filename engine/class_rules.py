@@ -263,6 +263,23 @@ def seed_payload_vitality(
     return seeded
 
 
+def _valid_stat(value: Any) -> bool:
+    """A usable governing stat: a positive integer within the module's cap.
+
+    Malformed LLM output reaches the seeders (the Fact-Extractor doesn't validate
+    the sheet shape, and the intro runs no enforcement), so a missing/non-numeric
+    value would coerce to 0 — a 0/0 character — and an out-of-range one like
+    ``body: 100`` would mint 800 HP (codex).
+    """
+    from .progression import STAT_CAP  # local: avoid an import cycle
+
+    return (
+        isinstance(value, int)
+        and not isinstance(value, bool)
+        and 1 <= value <= STAT_CAP
+    )
+
+
 def _seed_sheet(
     sheet: Any, rules: dict[str, Any], carried_sheet: dict[str, Any] | None = None
 ) -> int:
@@ -277,7 +294,7 @@ def _seed_sheet(
     therefore copied in from the carried sheet, not merely borrowed for the
     calculation (codex).
     """
-    from .progression import STAT_CAP, authoritative_maxes  # local: import cycle
+    from .progression import authoritative_maxes  # local: avoid an import cycle
 
     if not isinstance(sheet, dict):
         return 0
@@ -293,8 +310,13 @@ def _seed_sheet(
         # replace a non-dict outright.
         if isinstance(carried_stats, dict):
             if isinstance(sheet.get("stats"), dict):
+                # `setdefault` alone preserves an explicitly present but INVALID
+                # value (`body: 100`), which skips seeding and then persists the bad
+                # stat over the correctly seeded first fragment — so replace those
+                # too, not just the missing ones (codex).
                 for stat, value in carried_stats.items():
-                    sheet["stats"].setdefault(stat, value)
+                    if not _valid_stat(sheet["stats"].get(stat)) and _valid_stat(value):
+                        sheet["stats"][stat] = value
             else:
                 sheet["stats"] = carried_stats
     stats = sheet.get("stats")
@@ -302,18 +324,7 @@ def _seed_sheet(
         return 0
 
     def _governing(stat: str) -> bool:
-        """A usable governing stat: a positive integer within the module's cap.
-        Malformed LLM output reaches here (the Fact-Extractor doesn't validate the
-        sheet shape, and the intro runs no enforcement), so a missing/non-numeric
-        value would coerce to 0 — a 0/0 character — and an out-of-range one like
-        ``body: 100`` would mint 800 HP. Either way, leave the DM's pool alone
-        (codex)."""
-        value = stats.get(stat)
-        return (
-            isinstance(value, int)
-            and not isinstance(value, bool)
-            and 1 <= value <= STAT_CAP
-        )
+        return _valid_stat(stats.get(stat))
 
     seeded = 0
     hp_max, mp_max = authoritative_maxes(stats, rules)
@@ -368,7 +379,7 @@ def seed_hint_vitality(
     for char in chars:
         if not _is_pc(char):
             continue
-        entry = by_name.setdefault(str(char.get("name", "")).strip().lower(), {})
+        entry = by_name.setdefault(_slugify_entity(str(char.get("name", ""))), {})
         if "rules" not in entry:
             rules = _lookup(rules_data, char.get("archetype"))
             if rules:
@@ -381,7 +392,7 @@ def seed_hint_vitality(
     for char in chars:
         if not _is_pc(char):
             continue
-        entry = by_name.get(str(char.get("name", "")).strip().lower()) or {}
+        entry = by_name.get(_slugify_entity(str(char.get("name", "")))) or {}
         rules = entry.get("rules")
         if not rules:
             continue

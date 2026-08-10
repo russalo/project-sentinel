@@ -535,3 +535,65 @@ def test_seed_protects_a_module_data_only_duplicate():
     assert last["combat"] == {"death_saves_failed": 0}  # its own content kept
     assert last["character_sheet"]["stats"] == {"body": 6, "will": 5}
     assert last["character_sheet"]["hp"] == {"current": 36, "max": 36}
+
+
+def test_seed_replaces_an_invalid_carried_stat_value():
+    # codex: setdefault preserves an explicitly present but INVALID value, so
+    # `{"body": 100}` in a later fragment skipped seeding and then persisted the bad
+    # stat over the correctly seeded first one.
+    from engine.class_rules import seed_payload_vitality
+
+    def op(sheet, arch=None):
+        data = {"name": "Mira", "module_data": {"character_sheet": sheet}}
+        if arch:
+            data["archetype"] = arch
+        return {
+            "target_file": "data/state/core/entities/mira.json",
+            "operation": "update",
+            "data": data,
+        }
+
+    payload = {
+        "updates": [
+            op(
+                {"stats": {"body": 6, "will": 5}, "hp": {"current": 20, "max": 20}},
+                "cleric",
+            ),
+            op({"stats": {"body": 100, "will": 5}, "hp": {"current": 1, "max": 1}}),
+        ]
+    }
+    seed_payload_vitality(payload, PC_NAME)
+    last = payload["updates"][-1]["data"]["module_data"]["character_sheet"]
+    assert last["stats"]["body"] == 6  # out-of-range value replaced from the carry
+    assert last["hp"] == {"current": 36, "max": 36}
+
+
+def test_seed_hint_groups_slug_equivalent_names():
+    # codex: the payload path groups by slug, so the hint must too — otherwise
+    # "O'Neil" then "O Neil" become separate entries and the later fragment keeps
+    # DM-authored vitality while persistence holds the seeded pools.
+    from engine.class_rules import seed_hint_vitality
+
+    hint = {
+        "characters": [
+            {
+                "name": "O'Neil",
+                "archetype": "cleric",
+                "module_data": {
+                    "character_sheet": {
+                        "stats": {"body": 6, "will": 5},
+                        "hp": {"current": 20, "max": 20},
+                    }
+                },
+            },
+            {
+                "name": "O Neil",
+                "module_data": {"character_sheet": {"hp": {"current": 1, "max": 1}}},
+            },
+        ]
+    }
+    seed_hint_vitality(hint, "O'Neil")
+    for char in hint["characters"]:
+        sheet = char["module_data"]["character_sheet"]
+        assert sheet["hp"] == {"current": 36, "max": 36}
+        assert sheet["stats"] == {"body": 6, "will": 5}
