@@ -188,3 +188,27 @@ describe('parseActionTags — hostile attribute shapes (codex)', () => {
     }
   });
 });
+
+describe('parseActionTags — pathological input must stay fast + precise (codex)', () => {
+  it('does not backtrack exponentially on an incomplete tag with many attributes', () => {
+    // NarrativeText reparses streamBuffer on EVERY streamed token, so an
+    // ambiguous attribute pattern could freeze the tab before the next token.
+    const attrs = Array.from({ length: 24 }, (_, i) => `a${i}="v${i}"`).join(' ');
+    const incomplete = `Do you <action ${attrs}`; // never closed
+    const started = Date.now();
+    expect(parseActionTags(incomplete)).toEqual([
+      { type: 'text', content: incomplete },
+    ]);
+    expect(Date.now() - started).toBeLessThan(200);
+  });
+
+  it('does not treat hyphenated or namespaced tags as actions', () => {
+    for (const text of [
+      '<action-menu>nope</action-menu>',
+      '<action:foo>nope</action:foo>',
+      '<actionable>nope</actionable>',
+    ]) {
+      expect(parseActionTags(text)).toEqual([{ type: 'text', content: text }]);
+    }
+  });
+});

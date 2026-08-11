@@ -33,8 +33,19 @@
 // a self-closing tag). `\b` keeps `<actionable>` from matching.
 // The attribute run consumes quoted values as UNITS, so a `>` or `/>` inside a
 // quoted attribute can't be mistaken for the end of the opening tag.
+//
+// The three alternatives are NON-OVERLAPPING on purpose: the unquoted branch
+// excludes quote characters, so a quoted value has exactly one way to match. An
+// ambiguous version (`[^>]` able to consume quotes too) backtracks exponentially
+// on an INCOMPLETE opening tag — and `NarrativeText` reparses `streamBuffer` on
+// every streamed token, so a model emitting a dozen-plus attributes could freeze
+// the tab mid-turn (codex).
+//
+// `(?=[\s/>])` requires a real tag-name delimiter rather than `\b`, which would
+// also match before `-` or `:` and turn `<action-menu>` / `<action:foo>` into
+// actions.
 const ACTION_RE =
-  /<action\b((?:"[^"]*"|'[^']*'|[^>])*?)\s*(?:\/>|>([\s\S]*?)<\/action>)/gi;
+  /<action(?=[\s/>])((?:"[^"]*"|'[^']*'|[^>"'])*?)\s*(?:\/>|>([\s\S]*?)<\/action>)/gi;
 const LABEL_ATTR_RE = /\blabel\s*=\s*"([^"]*)"|\blabel\s*=\s*'([^']*)'/i;
 
 /**
