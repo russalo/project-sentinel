@@ -159,3 +159,32 @@ describe('parseActionTags — attribute tolerance (LLM drift)', () => {
     expect(parseActionTags(text)).toEqual([{ type: 'text', content: text }]);
   });
 });
+
+describe('parseActionTags — hostile attribute shapes (codex)', () => {
+  it('matches mixed-case tags (the per-call clone must keep the i flag)', () => {
+    expect(parseActionTags('<Action>Run</Action>')).toEqual([
+      { type: 'action', label: 'Run' },
+    ]);
+    expect(parseActionTags('<ACTION tone="clever">think</ACTION>')).toEqual([
+      { type: 'action', label: 'think' },
+    ]);
+  });
+
+  it('survives > and /> inside a quoted attribute value', () => {
+    const text = '<action label="claim the reward > the risk">press on</action>';
+    expect(parseActionTags(text)).toEqual([
+      { type: 'action', label: 'press on' },
+    ]);
+    const selfClosing = `<action label="a /> b" />`;
+    expect(parseActionTags(selfClosing)).toEqual([
+      { type: 'action', label: 'a /> b' },
+    ]);
+    // No closing markup left visible in either case.
+    for (const t of [text, selfClosing]) {
+      const rendered = parseActionTags(t)
+        .map((s) => s.content ?? s.label)
+        .join('');
+      expect(rendered).not.toMatch(/<\/?action/i);
+    }
+  });
+});

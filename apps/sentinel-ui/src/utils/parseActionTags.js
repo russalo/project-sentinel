@@ -31,7 +31,10 @@
 
 // group 1 = raw attributes (possibly empty), group 2 = inner text (undefined for
 // a self-closing tag). `\b` keeps `<actionable>` from matching.
-const ACTION_RE = /<action\b([^>]*?)\s*(?:\/>|>([\s\S]*?)<\/action>)/gi;
+// The attribute run consumes quoted values as UNITS, so a `>` or `/>` inside a
+// quoted attribute can't be mistaken for the end of the opening tag.
+const ACTION_RE =
+  /<action\b((?:"[^"]*"|'[^']*'|[^>])*?)\s*(?:\/>|>([\s\S]*?)<\/action>)/gi;
 const LABEL_ATTR_RE = /\blabel\s*=\s*"([^"]*)"|\blabel\s*=\s*'([^']*)'/i;
 
 /**
@@ -49,7 +52,9 @@ export function parseActionTags(text) {
   let lastIndex = 0;
   // Clone the regex per call — global regexes carry lastIndex state across
   // invocations and produce wrong results when reused.
-  const re = new RegExp(ACTION_RE.source, 'g');
+  // Carry the ORIGINAL flags — rebuilding with a bare 'g' would silently drop the
+  // `i` and leave mixed-case markup (`<Action>`) rendering as raw prose.
+  const re = new RegExp(ACTION_RE.source, ACTION_RE.flags);
   let match;
   while ((match = re.exec(text)) !== null) {
     if (match.index > lastIndex) {
