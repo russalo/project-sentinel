@@ -108,3 +108,121 @@ describe('extractActionLabels', () => {
     expect(extractActionLabels('')).toEqual([]);
   });
 });
+
+describe('parseActionTags — attribute tolerance (LLM drift)', () => {
+  it('parses a tag carrying label/tone attributes and leaks no markup', () => {
+    // Observed on the alpha 2026-08-10: the DM invented attributes the prompt
+    // never asked for, the tag-name-only regex missed them, and the raw markup
+    // rendered as literal text in the narrative.
+    const text =
+      'Do you <action label="Retrieve the silver locket" tone="curious">retrieve the silver locket</action>?';
+    const segments = parseActionTags(text);
+    expect(segments).toEqual([
+      { type: 'text', content: 'Do you ' },
+      { type: 'action', label: 'retrieve the silver locket' },
+      { type: 'text', content: '?' },
+    ]);
+    // Nothing that looks like markup survives into a text segment.
+    const rendered = segments.map((s) => s.content ?? s.label).join('');
+    expect(rendered).not.toMatch(/<\/?action/);
+  });
+
+  it('mixes attributed and bare tags in one narrative', () => {
+    const text = '<action tone="clever">think</action> or <action>run</action>';
+    expect(parseActionTags(text).filter((s) => s.type === 'action')).toEqual([
+      { type: 'action', label: 'think' },
+      { type: 'action', label: 'run' },
+    ]);
+  });
+
+  it('falls back to the label attribute when there is no inner text', () => {
+    expect(parseActionTags('<action label="Flee the tree"></action>')).toEqual([
+      { type: 'action', label: 'Flee the tree' },
+    ]);
+    expect(parseActionTags("<action label='Hold fast' />")).toEqual([
+      { type: 'action', label: 'Hold fast' },
+    ]);
+  });
+
+  it('still drops a genuinely empty tag', () => {
+    expect(parseActionTags('<action></action>')).toEqual([]);
+    expect(parseActionTags('<action tone="curious"></action>')).toEqual([]);
+  });
+
+  it('does not match a different tag that merely starts with "action"', () => {
+    const text = '<actionable>nope</actionable>';
+    expect(parseActionTags(text)).toEqual([{ type: 'text', content: text }]);
+  });
+
+  it('leaves a half-written streaming tag as plain text', () => {
+    const text = 'Do you <action label="Retr';
+    expect(parseActionTags(text)).toEqual([{ type: 'text', content: text }]);
+  });
+});
+
+describe('parseActionTags — hostile attribute shapes (codex)', () => {
+  it('matches mixed-case tags (the per-call clone must keep the i flag)', () => {
+    expect(parseActionTags('<Action>Run</Action>')).toEqual([
+      { type: 'action', label: 'Run' },
+    ]);
+    expect(parseActionTags('<ACTION tone="clever">think</ACTION>')).toEqual([
+      { type: 'action', label: 'think' },
+    ]);
+  });
+
+  it('survives > and /> inside a quoted attribute value', () => {
+    const text = '<action label="claim the reward > the risk">press on</action>';
+    expect(parseActionTags(text)).toEqual([
+      { type: 'action', label: 'press on' },
+    ]);
+    const selfClosing = `<action label="a /> b" />`;
+    expect(parseActionTags(selfClosing)).toEqual([
+      { type: 'action', label: 'a /> b' },
+    ]);
+    // No closing markup left visible in either case.
+    for (const t of [text, selfClosing]) {
+      const rendered = parseActionTags(t)
+        .map((s) => s.content ?? s.label)
+        .join('');
+      expect(rendered).not.toMatch(/<\/?action/i);
+    }
+  });
+});
+
+describe('parseActionTags — pathological input must stay fast + precise (codex)', () => {
+  it('does not backtrack exponentially on an incomplete tag with many attributes', () => {
+    // NarrativeText reparses streamBuffer on EVERY streamed token, so an
+    // ambiguous attribute pattern could freeze the tab before the next token.
+    const attrs = Array.from({ length: 24 }, (_, i) => `a${i}="v${i}"`).join(' ');
+    const incomplete = `Do you <action ${attrs}`; // never closed
+    const started = Date.now();
+    expect(parseActionTags(incomplete)).toEqual([
+      { type: 'text', content: incomplete },
+    ]);
+    expect(Date.now() - started).toBeLessThan(200);
+  });
+
+  it('does not treat hyphenated or namespaced tags as actions', () => {
+    for (const text of [
+      '<action-menu>nope</action-menu>',
+      '<action:foo>nope</action:foo>',
+      '<actionable>nope</actionable>',
+    ]) {
+      expect(parseActionTags(text)).toEqual([{ type: 'text', content: text }]);
+    }
+  });
+});
+
+describe('parseActionTags — an incomplete tag must not eat later text (codex)', () => {
+  it('keeps a half-written opener as prose and still parses the next real action', () => {
+    const text = 'Do <action unfinished and then <action>run now</action>';
+    const segments = parseActionTags(text);
+    // The valid action is found…
+    expect(segments.filter((s) => s.type === 'action')).toEqual([
+      { type: 'action', label: 'run now' },
+    ]);
+    // …and NO narrative text is silently dropped.
+    const rendered = segments.map((s) => s.content ?? s.label).join('');
+    expect(rendered).toContain('unfinished and then');
+  });
+});
