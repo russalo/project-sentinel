@@ -108,3 +108,54 @@ describe('extractActionLabels', () => {
     expect(extractActionLabels('')).toEqual([]);
   });
 });
+
+describe('parseActionTags — attribute tolerance (LLM drift)', () => {
+  it('parses a tag carrying label/tone attributes and leaks no markup', () => {
+    // Observed on the alpha 2026-08-10: the DM invented attributes the prompt
+    // never asked for, the tag-name-only regex missed them, and the raw markup
+    // rendered as literal text in the narrative.
+    const text =
+      'Do you <action label="Retrieve the silver locket" tone="curious">retrieve the silver locket</action>?';
+    const segments = parseActionTags(text);
+    expect(segments).toEqual([
+      { type: 'text', content: 'Do you ' },
+      { type: 'action', label: 'retrieve the silver locket' },
+      { type: 'text', content: '?' },
+    ]);
+    // Nothing that looks like markup survives into a text segment.
+    const rendered = segments.map((s) => s.content ?? s.label).join('');
+    expect(rendered).not.toMatch(/<\/?action/);
+  });
+
+  it('mixes attributed and bare tags in one narrative', () => {
+    const text = '<action tone="clever">think</action> or <action>run</action>';
+    expect(parseActionTags(text).filter((s) => s.type === 'action')).toEqual([
+      { type: 'action', label: 'think' },
+      { type: 'action', label: 'run' },
+    ]);
+  });
+
+  it('falls back to the label attribute when there is no inner text', () => {
+    expect(parseActionTags('<action label="Flee the tree"></action>')).toEqual([
+      { type: 'action', label: 'Flee the tree' },
+    ]);
+    expect(parseActionTags("<action label='Hold fast' />")).toEqual([
+      { type: 'action', label: 'Hold fast' },
+    ]);
+  });
+
+  it('still drops a genuinely empty tag', () => {
+    expect(parseActionTags('<action></action>')).toEqual([]);
+    expect(parseActionTags('<action tone="curious"></action>')).toEqual([]);
+  });
+
+  it('does not match a different tag that merely starts with "action"', () => {
+    const text = '<actionable>nope</actionable>';
+    expect(parseActionTags(text)).toEqual([{ type: 'text', content: text }]);
+  });
+
+  it('leaves a half-written streaming tag as plain text', () => {
+    const text = 'Do you <action label="Retr';
+    expect(parseActionTags(text)).toEqual([{ type: 'text', content: text }]);
+  });
+});

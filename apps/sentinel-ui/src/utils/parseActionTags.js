@@ -7,6 +7,16 @@
 //
 //   "Do you <action>strike with shadow magic</action> or <action>flee</action>?"
 //
+// ...but the model DRIFTS. Observed on the alpha: `<action label="Retrieve the
+// silver locket" tone="curious">retrieve the silver locket</action>` — attributes
+// the prompt never asked for (tone belongs in the separate `suggestedActions`
+// array). A tag-name-only regex missed those and the raw markup rendered as
+// literal text in the narrative. We therefore accept ANY attributes, and a
+// self-closing form, and keep using the inner prose as the label so the sentence
+// still reads naturally — falling back to a `label` attribute when there is no
+// inner text. (The "malformed-LLM-output intolerance" hunt pattern: parse
+// defensively, never assume the model held the format.)
+//
 // The tags are byte-identical to the labels emitted in `world_update`'s
 // `suggestedActions` array, so a click on either surface (inline highlight or
 // pill rail) types the same string into the command bar. See engine/prompts/dm.py
@@ -19,7 +29,10 @@
 // `<action>...</action>` stays as plain text and the user sees it briefly until
 // the closing tag arrives.
 
-const ACTION_RE = /<action>([\s\S]*?)<\/action>/g;
+// group 1 = raw attributes (possibly empty), group 2 = inner text (undefined for
+// a self-closing tag). `\b` keeps `<actionable>` from matching.
+const ACTION_RE = /<action\b([^>]*?)\s*(?:\/>|>([\s\S]*?)<\/action>)/gi;
+const LABEL_ATTR_RE = /\blabel\s*=\s*"([^"]*)"|\blabel\s*=\s*'([^']*)'/i;
 
 /**
  * Parse narrative text into an array of segments:
@@ -42,7 +55,12 @@ export function parseActionTags(text) {
     if (match.index > lastIndex) {
       segments.push({ type: 'text', content: text.slice(lastIndex, match.index) });
     }
-    const label = match[1].trim();
+    // Prefer the inner prose (it reads as part of the sentence); fall back to a
+    // `label` attribute when the tag carries no inner text.
+    const attrs = match[1] || '';
+    const inner = (match[2] || '').trim();
+    const attrMatch = inner ? null : attrs.match(LABEL_ATTR_RE);
+    const label = inner || (attrMatch ? (attrMatch[1] ?? attrMatch[2] ?? '').trim() : '');
     if (label) {
       segments.push({ type: 'action', label });
     }
