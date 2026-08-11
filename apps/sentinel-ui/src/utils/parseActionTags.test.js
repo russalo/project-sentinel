@@ -212,3 +212,17 @@ describe('parseActionTags — pathological input must stay fast + precise (codex
     }
   });
 });
+
+describe('parseActionTags — an incomplete tag must not eat later text (codex)', () => {
+  it('keeps a half-written opener as prose and still parses the next real action', () => {
+    const text = 'Do <action unfinished and then <action>run now</action>';
+    const segments = parseActionTags(text);
+    // The valid action is found…
+    expect(segments.filter((s) => s.type === 'action')).toEqual([
+      { type: 'action', label: 'run now' },
+    ]);
+    // …and NO narrative text is silently dropped.
+    const rendered = segments.map((s) => s.content ?? s.label).join('');
+    expect(rendered).toContain('unfinished and then');
+  });
+});

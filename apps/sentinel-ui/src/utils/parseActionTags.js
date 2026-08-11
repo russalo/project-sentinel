@@ -43,9 +43,11 @@
 //
 // `(?=[\s/>])` requires a real tag-name delimiter rather than `\b`, which would
 // also match before `-` or `:` and turn `<action-menu>` / `<action:foo>` into
-// actions.
+// actions. The unquoted branch also excludes `<` so an INCOMPLETE opening tag
+// can't swallow a later valid one — that spanned the match across both and
+// silently deleted the narrative text between them (codex).
 const ACTION_RE =
-  /<action(?=[\s/>])((?:"[^"]*"|'[^']*'|[^>"'])*?)\s*(?:\/>|>([\s\S]*?)<\/action>)/gi;
+  /<action(?=[\s/>])((?:"[^"]*"|'[^']*'|[^>"'<])*?)\s*(?:\/>|>([\s\S]*?)<\/action>)/gi;
 const LABEL_ATTR_RE = /\blabel\s*=\s*"([^"]*)"|\blabel\s*=\s*'([^']*)'/i;
 
 /**
