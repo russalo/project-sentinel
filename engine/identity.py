@@ -31,6 +31,61 @@ from typing import Any
 from .agents.fact_extractor import _slugify as _slugify_entity
 
 
+def _is_pc(name: Any, player_slug: str) -> bool:
+    """True when this character name addresses the PC's entity — matched on the slug
+    the Fact-Extractor builds the target path from, so a punctuation variant
+    (``O Neil`` for stored ``O'Neil``) is still the PC."""
+    name = str(name or "").strip()
+    return bool(name) and _slugify_entity(name) == player_slug
+
+
+def sanitize_hint_pc_identity(hint: Any, player_name: str) -> list[str]:
+    """Strip a ``role: "player"`` claim from non-PC characters in a DM **hint**, in
+    place. Returns player-facing notices.
+
+    The display-side twin of ``enforce_pc_identity`` — and NOT optional. The hint is
+    emitted before the payload is enforced, ``useDMStream`` applies it straight into
+    ``worldStore``, and player-facing components fall back to *any*
+    ``role === 'player'`` character — so an imposter would drive live vitals, check
+    prompts and the level-up UI until a reload, even though disk state was clean.
+
+    It must also run BEFORE the other hint normalizers: ``_locate_pc_in_hint``
+    prefers ``role == "player"``, so an unsanitized imposter would be mistaken for
+    the PC and have the real PC's authoritative level/stats/maxes copied onto it
+    (codex).
+    """
+    if not isinstance(hint, dict):
+        return []
+    chars = hint.get("characters")
+    if not isinstance(chars, list):
+        return []
+    player_slug = _slugify_entity((player_name or "").strip())
+    if not player_slug:
+        return []
+
+    stripped: list[str] = []
+    for char in chars:
+        if not isinstance(char, dict):
+            continue
+        if str(char.get("role", "")).strip().lower() != "player":
+            continue
+        if _is_pc(char.get("name"), player_slug):
+            continue
+        char.pop("role")
+        stripped.append(str(char.get("name", "")).strip() or "an unnamed character")
+    return _notice(stripped)
+
+
+def _notice(stripped: list[str]) -> list[str]:
+    if not stripped:
+        return []
+    who = ", ".join(dict.fromkeys(stripped))  # de-duped, order-preserving
+    return [
+        f"Only your character is the player character — a stray claim on {who} "
+        "was ignored."
+    ]
+
+
 def enforce_pc_identity(payload: Any, player_name: str) -> list[str]:
     """Strip a ``role: "player"`` claim from every entity op that isn't the PC's.
 
@@ -65,18 +120,10 @@ def enforce_pc_identity(payload: Any, player_name: str) -> list[str]:
         # addressed — by target slug OR by name — so a punctuation variant of the
         # PC's name ("O Neil" for stored "O'Neil", both o_neil.json) is still the PC.
         name = str(data.get("name", "")).strip()
-        is_pc = target.endswith(f"/entities/{player_slug}.json") or (
-            bool(name) and _slugify_entity(name) == player_slug
-        )
-        if is_pc:
+        if target.endswith(f"/entities/{player_slug}.json") or _is_pc(
+            name, player_slug
+        ):
             continue
         data.pop("role")
         stripped.append(name or target.rsplit("/", 1)[-1])
-
-    if not stripped:
-        return []
-    who = ", ".join(dict.fromkeys(stripped))  # de-duped, order-preserving
-    return [
-        f"Only your character is the player character — a stray claim on {who} "
-        "was ignored."
-    ]
+    return _notice(stripped)

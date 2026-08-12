@@ -708,6 +708,16 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
             },
         )
 
+        # Entity-identity FIRST: `_locate_pc_in_hint` prefers role=="player", so an
+        # unsanitized imposter would be mistaken for the PC by every normalizer
+        # below and have the real PC's authoritative fields copied onto it — and
+        # the client falls back to any role=='player' character for vitals, checks
+        # and the level-up UI until a reload (codex).
+        for _notice in identity.sanitize_hint_pc_identity(
+            frontend_hint, session.player_character_name
+        ):
+            yield _sse_event({"type": "error", "content": _notice})
+
         # RFC-0014: mirror the engine-committed death outcome into the SSE hint so
         # the UI shows the authoritative status immediately — otherwise the DM's
         # (possibly "alive") version would render until a refresh re-hydrates the

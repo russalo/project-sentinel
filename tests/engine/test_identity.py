@@ -150,3 +150,68 @@ def test_imposter_can_no_longer_grant_itself_level_and_stats():
         archetypes=ARCHETYPES,
     )
     assert "role" not in payload["updates"][0]["data"]
+
+
+# ── the HINT is the other half: the client acts on it before the payload lands ─
+
+
+def test_hint_imposter_claim_is_stripped():
+    from engine.identity import sanitize_hint_pc_identity
+
+    hint = {
+        "characters": [
+            {"name": "0-imposter", "role": "player", "level": 5},
+            {"name": "Sal", "role": "player"},
+            {"name": "Borin", "role": "npc"},
+        ]
+    }
+    notices = sanitize_hint_pc_identity(hint, "Sal")
+    assert "role" not in hint["characters"][0]  # imposter neutralized
+    assert hint["characters"][0]["level"] == 5  # character otherwise intact
+    assert hint["characters"][1]["role"] == "player"  # the real PC keeps it
+    assert hint["characters"][2]["role"] == "npc"
+    assert any("player character" in n for n in notices)
+
+
+def test_hint_sanitizer_matches_the_pc_by_slug_and_is_inert_without_a_name():
+    from engine.identity import sanitize_hint_pc_identity
+
+    hint = {"characters": [{"name": "O Neil", "role": "player"}]}
+    assert sanitize_hint_pc_identity(hint, "O'Neil") == []
+    assert hint["characters"][0]["role"] == "player"
+
+    hint2 = {"characters": [{"name": "Someone", "role": "player"}]}
+    assert sanitize_hint_pc_identity(hint2, "") == []
+    assert hint2["characters"][0]["role"] == "player"
+
+
+def test_hint_sanitizer_tolerates_malformed_input():
+    from engine.identity import sanitize_hint_pc_identity
+
+    assert sanitize_hint_pc_identity(None, "Sal") == []
+    assert sanitize_hint_pc_identity({}, "Sal") == []
+    assert sanitize_hint_pc_identity({"characters": "oops"}, "Sal") == []
+    assert sanitize_hint_pc_identity({"characters": [None, 7]}, "Sal") == []
+
+
+def test_hint_sanitization_must_precede_pc_location():
+    """The ordering constraint: `_locate_pc_in_hint` prefers role=="player", so an
+    unsanitized imposter would be mistaken for the PC by the vitality/archetype
+    normalizers and have the real PC's authoritative fields copied onto it."""
+    from backend.routes.stream import _locate_pc_in_hint
+    from engine.identity import sanitize_hint_pc_identity
+
+    def build():
+        return {
+            "characters": [
+                {"name": "0-imposter", "role": "player"},
+                {"name": "Sal", "role": "player"},
+            ]
+        }
+
+    # Before sanitization the imposter IS what the normalizers would target…
+    assert _locate_pc_in_hint(build(), "Sal", create=False)["name"] == "0-imposter"
+    # …and after, they correctly target the real PC.
+    hint = build()
+    sanitize_hint_pc_identity(hint, "Sal")
+    assert _locate_pc_in_hint(hint, "Sal", create=False)["name"] == "Sal"
