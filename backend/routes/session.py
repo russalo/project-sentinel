@@ -34,6 +34,7 @@ from fastapi import APIRouter, HTTPException, Request, status
 
 import engine
 from engine import class_rules
+from engine import identity
 from engine.agents import dm as dm_agent
 from engine.agents import fact_extractor
 
@@ -203,6 +204,10 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
         # "archetype": "paladin" persists at world creation, and later turns (which
         # only prompt when one is MISSING) would see it as set while the PC stays
         # mechanically unresolved (codex). A new world uses the default module set.
+        # This path runs no enforce_* pass, so the identity guard has to be applied
+        # here too — otherwise the intro itself can mint a `role:"player"` imposter
+        # that shadows the PC from turn one (the RFC-0019 lesson).
+        identity.enforce_pc_identity(extracted.payload, body.player_character_name)
         class_rules.sanitize_payload_archetypes(extracted.payload)
         # …and seed the engine-derived vitality for a PC the intro validly
         # classified. Enforcement never runs here, so otherwise the DM's invented

@@ -119,20 +119,42 @@ def _deep_merge(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]
 def find_player_character(
     characters: list[dict[str, Any]], player_name: str
 ) -> dict[str, Any] | None:
-    """Locate the player's character entity: prefer ``role == "player"``, else name."""
+    """Locate the player's character entity by STABLE IDENTITY.
+
+    The session's ``player_character_name`` is the anchor: when it's supplied we
+    match on the entity **slug** — the same ``_slugify`` the Fact-Extractor uses to
+    build an op's target path, so punctuation variants (``O'Neil`` / ``O Neil``,
+    both ``o_neil.json``) still resolve — and we do **NOT** fall back to
+    ``role == "player"``.
+
+    Why the role scan can't be trusted once we know the name: characters load in
+    ``sorted(glob("*.json"))`` FILENAME order, ``fact_extractor`` passes ``role``
+    through and upserts to a NEW slug, and fs-manager writes an absent target — so a
+    hallucinated ``<world_update>`` introducing ``0-imposter`` with ``role:"player"``
+    sorted first and BECAME the PC. Its name/slug differ from the session PC, so
+    ``enforce_progression`` never matched it, and it could carry ``level: 5``, maxed
+    stats, derived maxes and any archetype — bypassing every RFC-0017/0018/0019
+    invariant through the shadow. Minting is separately blocked by
+    ``engine.identity.enforce_pc_identity``; this is the resolution half.
+
+    The role scan survives only for the legacy/unknown-name case. Returning None
+    (nothing matches yet) is normal and safe — enforcement no-ops, which is already
+    what happens in production for a world whose DM never wrote a PC entity.
+    """
     if not isinstance(characters, list):
         return None
+    slug = _slugify_entity((player_name or "").strip())
+    if slug:
+        for char in characters:
+            if not isinstance(char, dict):
+                continue
+            name = str(char.get("name", "")).strip()
+            if name and _slugify_entity(name) == slug:
+                return char
+        return None
+    # No session PC name to anchor on — legacy path.
     for char in characters:
         if isinstance(char, dict) and str(char.get("role", "")).lower() == "player":
-            return char
-    lowered = (player_name or "").strip().lower()
-    if not lowered:
-        return None
-    for char in characters:
-        if (
-            isinstance(char, dict)
-            and str(char.get("name", "")).strip().lower() == lowered
-        ):
             return char
     return None
 

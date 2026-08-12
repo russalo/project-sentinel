@@ -277,8 +277,11 @@ in `GEMINI.md`.
   `<world_update>` introducing e.g. `0-imposter` with `role:"player"` shadows the PC
   — and because it's a different name/slug than the session PC, `enforce_progression`
   doesn't match it, so it also **bypasses RFC-0017's level/stats invariant**. Shared
-  by progression + death-stakes. Wants a stable-identity PC resolver + a guard on
-  DM-created `role:"player"` entities; filed as an entity-identity BACKLOG slice.
+  by progression + death-stakes. **RESOLVED 2026-08-12**: `find_player_character` now anchors on the session PC
+  name via slug (no `role` fallback when the name is known), and
+  `engine/identity.py::enforce_pc_identity` strips a `role:"player"` claim from any
+  non-PC entity op at BOTH dispatch seams (stream + intro). Neutralize-not-delete:
+  the character lands as an NPC.
 - **Stale-cache-after-redeploy** — a cached `index.html` pointing at a purged
   hashed bundle → blank page.
 - **Provider/API param compat** (`max_completion_tokens` vs `max_tokens`);

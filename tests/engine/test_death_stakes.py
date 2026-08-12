@@ -74,11 +74,38 @@ def test_stored_readers_default_safely():
     assert stored_death_clock(_pc(failed=2)) == 2
 
 
-def test_find_player_prefers_role_then_name():
+def test_find_player_anchors_on_the_session_name_not_role():
+    """Entity-identity hardening: the session's PC name is the anchor, and
+    `role: "player"` is NOT trusted once we know it — an imposter sorting earlier
+    in filename order must not become the PC."""
+    imposter = _pc(name="0-imposter", role="player")
+    real = {"name": "Aria", "role": "npc"}
+    assert find_player_character([imposter, real], "Aria")["name"] == "Aria"
+
+
+def test_find_player_matches_on_slug_not_exact_string():
+    # "O Neil" and "O'Neil" are both o_neil.json — the same entity.
+    chars = [{"name": "O'Neil", "role": "npc"}]
+    assert find_player_character(chars, "O Neil")["name"] == "O'Neil"
+
+
+def test_find_player_returns_none_rather_than_trusting_role():
+    # A known PC name that matches nothing → None (enforcement safely no-ops).
+    # Falling back to role here is exactly how the imposter used to win.
+    chars = [_pc(name="0-imposter", role="player")]
+    assert find_player_character(chars, "Aria") is None
+
+
+def test_find_player_resolves_a_role_npc_pc_entity():
+    # Live-world case (`monkster`, 12 turns): the PC entity exists and matches the
+    # session name but was never tagged role=player. It must still resolve.
+    chars = [{"name": "monkster", "role": "npc"}]
+    assert find_player_character(chars, "monkster")["name"] == "monkster"
+
+
+def test_find_player_legacy_role_scan_when_no_name_is_known():
     chars = [_pc(name="Goblin", role="enemy"), _pc(name="Aria", role="player")]
-    assert find_player_character(chars, "someone")["name"] == "Aria"
-    chars2 = [{"name": "Aria", "role": "npc"}]  # no role=player → fall back to name
-    assert find_player_character(chars2, "aria")["name"] == "Aria"
+    assert find_player_character(chars, "")["name"] == "Aria"
 
 
 # ── apply_death_outcome (engine authority beats the DM) ──────────────────────

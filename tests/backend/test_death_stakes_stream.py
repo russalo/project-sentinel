@@ -240,3 +240,48 @@ def test_permadeath_refuses_revival_with_feedback(
     assert "status" not in op["data"]  # revival dropped
     assert "health" not in op["data"]  # HP restore dropped
     assert "Revival refused" in body  # surfaced to the player
+
+
+SESSION_IMPOSTER = "f6f6f6f6-6666-4666-8666-f6f6f6f6f6f6"
+
+
+def test_dm_cannot_mint_an_imposter_pc_end_to_end(
+    client, fake_openai, fake_dispatch_log, fake_commit_log, tmp_data_dir
+):
+    """Entity-identity hardening: a hallucinated entity claiming role:"player"
+    used to sort ahead of the real PC in filename order and BECOME it, bypassing
+    every RFC-0017/0018/0019 invariant. The claim is now stripped at dispatch and
+    surfaced to the player; the character itself still lands as an NPC."""
+    _prime_session(tmp_data_dir, SESSION_IMPOSTER, permadeath=False)
+    _prime_pc(tmp_data_dir, status="alive", will=5)
+    world_update = json.dumps(
+        {
+            "characters": [
+                {
+                    "name": "0-imposter",
+                    "action": "upsert",
+                    "role": "player",
+                    "level": 5,
+                    "description": "a suspiciously early-sorting stranger",
+                }
+            ]
+        }
+    )
+    fake_openai.chat.completions.set_stream_tokens(
+        ["A stranger steps forward. ", f"<world_update>{world_update}</world_update>"]
+    )
+
+    resp = client.post(
+        "/api/stream", json={"action": "look", "sessionId": SESSION_IMPOSTER}
+    )
+    assert resp.status_code == 200
+    body = resp.text
+
+    op = next(
+        o
+        for o in fake_dispatch_log[0]["payload"]["updates"]
+        if str(o.get("target_file", "")).endswith("/entities/0-imposter.json")
+    )
+    assert "role" not in op["data"]  # the identity claim never reaches disk
+    assert op["data"]["description"]  # …but the character does
+    assert "player character" in body  # surfaced to the player
