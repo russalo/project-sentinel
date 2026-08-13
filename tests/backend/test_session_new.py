@@ -326,3 +326,32 @@ def test_intro_drops_an_invalid_archetype_from_both_payload_and_hint(
         "current": 20,
         "max": 20,
     }
+
+
+def test_blank_player_character_name_is_rejected(client, fake_openai):
+    """codex: a blank/whitespace name disabled `enforce_pc_identity` AND sent
+    `find_player_character` to its legacy first-`role:"player"` scan — recreating
+    the shadowing bypass the entity-identity hardening closes. It's the anchor for
+    PC identity, so it must not be blank."""
+    for bad in ["", "   ", "\t"]:
+        resp = client.post(
+            "/api/session/new",
+            json={
+                "worldName": "W",
+                "playerCharacterName": bad,
+                "playerCharacterClass": "Adventurer",
+            },
+        )
+        assert resp.status_code == 422, bad
+    # …and a padded name is accepted, stripped (so the slug/anchor is stable).
+    fake_openai.chat.completions.set_blocking_response(_opening_response())
+    ok = client.post(
+        "/api/session/new",
+        json={
+            "worldName": "W",
+            "playerCharacterName": "  Sal  ",
+            "playerCharacterClass": "Adventurer",
+        },
+    )
+    assert ok.status_code == 200
+    assert ok.json()["turns"][0]["playerAction"].startswith("[Session Start] Sal ")
