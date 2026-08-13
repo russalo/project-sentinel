@@ -354,4 +354,8 @@ def test_blank_player_character_name_is_rejected(client, fake_openai):
         },
     )
     assert ok.status_code == 200
-    assert ok.json()["turns"][0]["playerAction"].startswith("[Session Start] Sal ")
+    # Full equality: `startswith("... Sal ")` would still pass if TRAILING
+    # whitespace survived the strip (coderabbit).
+    assert ok.json()["turns"][0]["playerAction"] == (
+        "[Session Start] Sal the Adventurer begins their journey in W."
+    )
