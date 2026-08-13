@@ -282,6 +282,6 @@ def test_dm_cannot_mint_an_imposter_pc_end_to_end(
         for o in fake_dispatch_log[0]["payload"]["updates"]
         if str(o.get("target_file", "")).endswith("/entities/0-imposter.json")
     )
-    assert "role" not in op["data"]  # the identity claim never reaches disk
+    assert op["data"]["role"] == "npc"  # demoted before it reaches disk
     assert op["data"]["description"]  # …but the character does
     assert "player character" in body  # surfaced to the player

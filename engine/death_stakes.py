@@ -34,6 +34,7 @@ from typing import Any
 # copy is the "sibling-path drift" hazard (a slug rule change in one place would
 # silently mis-target the other). Both are pure engine code.
 from engine.agents.fact_extractor import _slugify as _slugify_entity
+from engine.identity import _identity_key
 
 # The death-save contract (RFC-0007 `hp-pool-v1`, made authoritative here).
 DEATH_SAVE_TARGET = 60  # Moderate — fixed for death saves, not DM-chosen.
@@ -137,19 +138,21 @@ def find_player_character(
     invariant through the shadow. Minting is separately blocked by
     ``engine.identity.enforce_pc_identity``; this is the resolution half.
 
-    The role scan survives only for the legacy/unknown-name case. Returning None
+    A name with no ASCII slug characters (``李``) still anchors — it compares
+    casefolded rather than degrading to "no identity", which would hand the session
+    back to the first ``role:"player"`` entity (codex). The role scan survives only
+    for the genuinely-unknown-name case. Returning None
     (nothing matches yet) is normal and safe — enforcement no-ops, which is already
     what happens in production for a world whose DM never wrote a PC entity.
     """
     if not isinstance(characters, list):
         return None
-    slug = _slugify_entity((player_name or "").strip())
-    if slug:
+    key = _identity_key(player_name)
+    if key:
         for char in characters:
             if not isinstance(char, dict):
                 continue
-            name = str(char.get("name", "")).strip()
-            if name and _slugify_entity(name) == slug:
+            if _identity_key(char.get("name")) == key:
                 return char
         return None
     # No session PC name to anchor on — legacy path.

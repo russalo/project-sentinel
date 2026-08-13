@@ -39,7 +39,7 @@ def test_imposter_role_claim_is_stripped_entity_survives_as_npc():
     )
     notices = enforce_pc_identity(payload, "Sal")
     data = payload["updates"][0]["data"]
-    assert "role" not in data  # the CLAIM is gone…
+    assert data["role"] == "npc"  # demoted, not merely omitted…
     assert (
         data["name"] == "0-imposter" and data["description"] == "hi"
     )  # …not the entity
@@ -74,7 +74,7 @@ def test_multiple_imposters_are_all_stripped_and_named_once():
         ]
     )
     notices = enforce_pc_identity(payload, "Sal")
-    assert all("role" not in op["data"] for op in payload["updates"])
+    assert all(op["data"]["role"] == "npc" for op in payload["updates"])
     assert len(notices) == 1
     assert notices[0].count("0-imposter") == 1  # de-duped
 
@@ -137,7 +137,7 @@ def test_imposter_can_no_longer_grant_itself_level_and_stats():
         ]
     )
     enforce_pc_identity(payload, "Sal")
-    assert "role" not in payload["updates"][0]["data"]
+    assert payload["updates"][0]["data"]["role"] == "npc"
 
     # 3. Progression still refuses to grant the imposter anything: it isn't the PC,
     #    so its op is not a PC op and its level/stats are left as the DM's problem —
@@ -149,7 +149,7 @@ def test_imposter_can_no_longer_grant_itself_level_and_stats():
         choice=None,
         archetypes=ARCHETYPES,
     )
-    assert "role" not in payload["updates"][0]["data"]
+    assert payload["updates"][0]["data"]["role"] == "npc"
 
 
 # ── the HINT is the other half: the client acts on it before the payload lands ─
@@ -166,7 +166,7 @@ def test_hint_imposter_claim_is_stripped():
         ]
     }
     notices = sanitize_hint_pc_identity(hint, "Sal")
-    assert "role" not in hint["characters"][0]  # imposter neutralized
+    assert hint["characters"][0]["role"] == "npc"  # demoted, not omitted
     assert hint["characters"][0]["level"] == 5  # character otherwise intact
     assert hint["characters"][1]["role"] == "player"  # the real PC keeps it
     assert hint["characters"][2]["role"] == "npc"
@@ -215,3 +215,42 @@ def test_hint_sanitization_must_precede_pc_location():
     hint = build()
     sanitize_hint_pc_identity(hint, "Sal")
     assert _locate_pc_in_hint(hint, "Sal", create=False)["name"] == "Sal"
+
+
+# ── round-2 review fixes ─────────────────────────────────────────────────────
+
+
+def test_claim_is_authorized_by_target_path_not_by_name():
+    """coderabbit: an op for entities/imposter.json carrying {"name": "Sal"} used to
+    pass a name-based check and write a player role onto the IMPOSTER entity."""
+    payload = _payload([_op("imposter", name="Sal", role="player")])
+    notices = enforce_pc_identity(payload, "Sal")
+    assert payload["updates"][0]["data"]["role"] == "npc"
+    assert notices
+    # …while the PC's own file is still authorized.
+    ok = _payload([_op("sal", name="Sal", role="player")])
+    assert enforce_pc_identity(ok, "Sal") == []
+    assert ok["updates"][0]["data"]["role"] == "player"
+
+
+def test_demotion_overwrites_a_previously_stored_claim():
+    """codex: fs-manager applies `existing.update(data)`, so omitting `role` would
+    leave a stored role:"player" in place — the write must demote explicitly."""
+    payload = _payload([_op("0-imposter", name="0-imposter", role="player")])
+    enforce_pc_identity(payload, "Sal")
+    # The dispatched op carries an explicit demotion that the shallow merge applies.
+    assert payload["updates"][0]["data"]["role"] == "npc"
+
+
+def test_an_unsluggable_player_name_still_anchors():
+    """codex: `_slugify` returns None for a name with no ASCII slug characters, and
+    NewSessionRequest imposes no charset — treating that as "no identity" disabled
+    the guard AND made the resolver trust the first role:"player" entity."""
+    payload = _payload([_op("0-imposter", name="0-imposter", role="player")])
+    assert enforce_pc_identity(payload, "李")  # guard is NOT disabled
+    assert payload["updates"][0]["data"]["role"] == "npc"
+    # Resolution anchors on the same key.
+    assert find_player_character([{"name": "李", "role": "npc"}], "李")["name"] == "李"
+    assert (
+        find_player_character([{"name": "0-imposter", "role": "player"}], "李") is None
+    )
