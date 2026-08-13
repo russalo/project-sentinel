@@ -34,6 +34,7 @@ from fastapi import APIRouter, HTTPException, Request, status
 
 import engine
 from engine import class_rules
+from engine import identity
 from engine.agents import dm as dm_agent
 from engine.agents import fact_extractor
 
@@ -203,6 +204,15 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
         # "archetype": "paladin" persists at world creation, and later turns (which
         # only prompt when one is MISSING) would see it as set while the PC stays
         # mechanically unresolved (codex). A new world uses the default module set.
+        # This path runs no enforce_* pass, so the identity guard has to be applied
+        # here too — otherwise the intro itself can mint a `role:"player"` imposter
+        # that shadows the PC from turn one (the RFC-0019 lesson).
+        for _notice in identity.enforce_pc_identity(
+            extracted.payload, body.player_character_name
+        ):
+            # No per-turn player-notice channel exists at session creation (the SSE
+            # `error` events are stream-only), so record it for triage.
+            logger.warning("intro identity guard: %s", _notice)
         class_rules.sanitize_payload_archetypes(extracted.payload)
         # …and seed the engine-derived vitality for a PC the intro validly
         # classified. Enforcement never runs here, so otherwise the DM's invented
@@ -322,6 +332,10 @@ def _intro_hint(raw_response: str, player_name: str) -> dict:
     though the dispatched payload was sanitized (coderabbit).
     """
     hint = _parse_hint_block_for_frontend(raw_response)
+    # Identity first — WorldCreation.jsx applies this hint directly and skips
+    # hydration after creation, so an imposter claim would make the client treat it
+    # as the player for the entire initial session (codex).
+    identity.sanitize_hint_pc_identity(hint, player_name)
     class_rules.sanitize_hint_archetypes(hint)
     # …and seed the SAME engine-derived vitality the dispatched payload gets.
     # WorldCreation.jsx applies this hint directly and hydration is skipped after

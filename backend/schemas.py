@@ -12,9 +12,9 @@ omitted here per the frontend-contract verification done before
 writing this file.
 """
 
-from typing import Any
+from typing import Any, Annotated
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 
 class _CamelModel(BaseModel):
@@ -38,7 +38,14 @@ class _CamelModel(BaseModel):
 
 class NewSessionRequest(_CamelModel):
     world_name: str = Field(default="The Shattered Realm")
-    player_character_name: str = Field(default="Traveler")
+    # A BLANK player name is rejected (422), not defaulted: it is the anchor for
+    # PC identity. With no anchor `enforce_pc_identity` disables itself AND
+    # `find_player_character` falls back to the legacy first-`role:"player"` scan,
+    # which is exactly the shadowing bypass the entity-identity hardening closes
+    # (codex). `strip_whitespace` also stops " " from passing the length check.
+    player_character_name: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1)
+    ] = "Traveler"
     player_character_class: str = Field(default="Adventurer")
     world_seed: str | None = None
 

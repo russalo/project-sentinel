@@ -35,6 +35,7 @@ from fastapi.responses import StreamingResponse
 import engine
 from engine import class_rules
 from engine import death_stakes
+from engine import identity
 from engine import progression
 from engine.agents import dm as dm_agent
 from engine.agents import fact_extractor
@@ -707,6 +708,16 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
             },
         )
 
+        # Entity-identity FIRST: `_locate_pc_in_hint` prefers role=="player", so an
+        # unsanitized imposter would be mistaken for the PC by every normalizer
+        # below and have the real PC's authoritative fields copied onto it — and
+        # the client falls back to any role=='player' character for vitals, checks
+        # and the level-up UI until a reload (codex).
+        for _notice in identity.sanitize_hint_pc_identity(
+            frontend_hint, session.player_character_name
+        ):
+            yield _sse_event({"type": "error", "content": _notice})
+
         # RFC-0014: mirror the engine-committed death outcome into the SSE hint so
         # the UI shows the authoritative status immediately — otherwise the DM's
         # (possibly "alive") version would render until a refresh re-hydrates the
@@ -818,6 +829,15 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
             # surfaces as a player notice. RFC-0018 (Slice 1b): also forces the
             # derived `hp.max` / `magic_pool.max` from `_class_rules` (fail-safe when
             # the class isn't a known archetype — then those maxes stay DM-authored).
+            # Entity-identity: neutralize a `role:"player"` claim on any entity
+            # that isn't the session PC, so an imposter can't be minted and then
+            # shadow the real PC in resolution next turn (bypassing every
+            # RFC-0017/0018/0019 invariant).
+            for _notice in identity.enforce_pc_identity(
+                payload, session.player_character_name
+            ):
+                yield _sse_event({"type": "error", "content": _notice})
+
             progression_notices = progression.enforce_progression(
                 payload,
                 stored_characters=world_context.characters,
