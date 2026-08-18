@@ -93,7 +93,10 @@ lane: read `docs/SESSION_LANES.md` before your first action — you never touch
 against a stack without `SENTINEL_WORLDS_ROOT`.
 
 Every unit of work gets its own branch off fresh master, named after
-the kind of change it is:
+the kind of change it is (lane sessions branch the same way but never check
+out `master`: `git fetch origin && git checkout -b <prefix>/<name> origin/master`,
+and rebase onto `origin/master` — the `git checkout master && git pull` step
+below is Orchestrator-only):
 
 - `feat/<short-description>` — new feature or capability
 - `fix/<short-description>` — bug fix or regression
@@ -104,7 +107,7 @@ the kind of change it is:
 
 Workflow for each unit of work:
 
-1. `git checkout master && git pull --ff-only`
+1. `git checkout master && git pull --ff-only` (Orchestrator / single-session only; lanes: `git fetch origin` and branch from `origin/master`)
 2. `git checkout -b <prefix>/<short-description>`
 3. Make the changes and commit them with DCO sign-off
    (`git commit -s`). Multiple commits are fine; they get squashed

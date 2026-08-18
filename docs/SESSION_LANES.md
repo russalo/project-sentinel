@@ -166,9 +166,10 @@ smoke transcript ≠ coverage."
   `docs/ALPHA_FEEDBACK.md` → `docs/BACKLOG.md`.
 - **Spend cap: ≤ 40 turns/day** (staging's `SENTINEL_LLM_DAILY_CEILING` is 200;
   the cap leaves room for the deploy gate). If a run needs more, ask.
-- **MUST NOT:** edit any repo file (its worktree is detached at `master`, reference
-  only), open PRs, touch prod (`:8001` or the alpha URL), deploy, restart units,
-  or relay outward.
+- **MUST NOT:** modify any *tracked* file or any path outside gitignored
+  `scratch/collab/` (its worktree is detached at `master`, reference only — the
+  playtest reports are the one thing it writes, and they are gitignored), open PRs,
+  touch prod (`:8001` or the alpha URL), deploy, restart units, or relay outward.
 - Off-server candidate #1 (needs only tailnet reach to `:8101` + read access to the
   staging store — the store is the one thing that keeps it on-box). `sentinel-fe`
   is candidate #2. Trigger to move either: sustained origin-core stress.
@@ -180,7 +181,21 @@ Four agent rows: `sentinel-claude` (Orchestrator, only relayer), `sentinel-be-cl
 launched flag-form `claude --remote-control <app_name>` from each worktree).
 Edges: `sentinel-play ──tester──▶ project-sentinel`. Ports per § 3.2.
 
-## 7. Trial exit
+## 7. Near-term target vs vision target
+
+**Near-term target (this trial, ≈ 2026-08-17 → 2026-08-25).** Three lanes, the
+initial assignments in the briefs, and one success criterion: Russell's
+review/merge queue felt better, not worse. No live-stack change of any kind.
+
+**Vision target (direction, not a plan).** If lanes earn their keep, they become the
+standing operating model: engineering lanes pick up independent BACKLOG items
+without a per-item brief, the play lane runs continuously as the corpus-bias
+counterweight (and moves off-server first if origin-core needs headroom), and the
+seam list in § 4 becomes the doc that new lanes are onboarded from. Open questions:
+whether a shared inbox bus is ever worth it for a solo repo, and whether the
+Orchestrator should keep doing engineering at all.
+
+### Trial exit
 
 At ≈ 2026-08-25 Russell picks one: **keep** (this file loses the TRIAL banner),
 **shrink** (drop a lane — `git worktree remove`, retire its Blueprint row), or
