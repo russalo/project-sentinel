@@ -181,6 +181,22 @@ Four agent rows: `sentinel-claude` (Orchestrator, only relayer), `sentinel-be-cl
 launched flag-form `claude --remote-control <app_name>` from each worktree).
 Edges: `sentinel-play ──tester──▶ project-sentinel`. Ports per § 3.2.
 
+## 6a. Lane onboarding check (after every launch)
+
+A launched lane is not *in* the family until it has proven it can talk to the
+Orchestrator and knows its boundary. After the launcher reports a lane READY, the
+Orchestrator sends it **one** message: read this file + its brief at
+`scratch/collab/<lane>-brief.md`, then reply to the Orchestrator with
+`ack <lane>` plus one line each — what it OWNS, what it MUST NOT do, and (be / fe)
+the branch name it intends for its first item, *not yet created*, or (play) its
+target host:port + world store, its daily turn cap, and its report path — and then
+**stop and wait for Russell's "go" inside its own session**. Blueprint's
+`parked → active` flip follows the ack, not the spawn. A lane that acts before
+acking, or acks the wrong boundary, is re-briefed before it does anything else.
+
+The 2026-08-18 launch ran this check on all three lanes; each acked its boundary
+correctly and none acted before Russell's go.
+
 ## 7. Near-term target vs vision target
 
 **Near-term target (this trial, ≈ 2026-08-17 → 2026-08-25).** Three lanes, the
