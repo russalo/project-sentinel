@@ -84,6 +84,14 @@ Healthy critique is part of the job. Silent compliance that ships a wrong answer
 
 The default branch is `master`. Never push to `master` directly.
 
+**Session lanes (trial since 2026-08-17).** The repo may be worked by an
+Orchestrator session (`/srv/projects/project-sentinel`, the only tree that owns
+`master`) plus lane sessions in their own worktrees (`sentinel-be`, `sentinel-fe`,
+`sentinel-play`). If your cwd is a `/srv/projects/sentinel-*` worktree, you are a
+lane: read `docs/SESSION_LANES.md` before your first action — you never touch
+`master`, never deploy, never relay outward, and (engineering lanes) never play
+against a stack without `SENTINEL_WORLDS_ROOT`.
+
 Every unit of work gets its own branch off fresh master, named after
 the kind of change it is:
 

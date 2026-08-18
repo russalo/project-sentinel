@@ -40,6 +40,7 @@ DIRS=(
 # Files that must exist
 FILES=(
   "docs/BACKLOG.md"
+  "docs/SESSION_LANES.md"
   "infrastructure/docker-compose.yml"
   "folder_structure.json"
   "justfile"
