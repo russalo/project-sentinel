@@ -41,6 +41,7 @@ DIRS=(
 FILES=(
   "docs/BACKLOG.md"
   "docs/SESSION_LANES.md"
+  "docs/blueprint-kb-manifest.txt"
   "infrastructure/docker-compose.yml"
   "folder_structure.json"
   "justfile"
