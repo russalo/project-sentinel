@@ -43,8 +43,11 @@ the brief says so.
 
 A lane's unit of work is: **read the brief → plan → get Russell's explicit "go"
 in the lane's own session → implement on a branch off fresh `master` → run the
-lane's own suite + `ruff format` / `ruff check` (be) or vitest + `pnpm typecheck`
-(fe) → `git commit -s` → push → `gh pr create` (title/body matched to recent PRs)
+lane's own gate — be: `pytest tests` + `ruff format` + `ruff check`; fe:
+`pnpm --filter @sentinel/ui test` + `pnpm --filter @sentinel/ui lint` + a
+worktree-local `pnpm --filter @sentinel/ui build` (see § 3.4; the apps are plain
+`.jsx`, so root `pnpm typecheck` covers only `scripts/` — do not treat it as a
+gate) → `git commit -s` → push → `gh pr create` (title/body matched to recent PRs)
 → address PR-bot comments as follow-up commits → tell the Orchestrator the PR is
 ready.** Then stop. The Orchestrator swarms, merges, and deploys.
 
@@ -89,18 +92,34 @@ Only one `just stage-candidate` may run at a time → Orchestrator-owned.
 
 ### 3.3 Per-worktree dependencies
 
-`node_modules` and `.venv` are not shared across worktrees. Each engineering lane
-runs `pnpm install` once, and `sentinel-be` runs `just install-backend` so its
-`.venv` lands in its own tree (keeps the CI-pinned `ruff` version local to the lane
-— see the `project_ci_ruff_pin` memory: CI runs **both** `ruff check` and
-`ruff format --check`).
+`node_modules` and `.venv` are not shared across worktrees, and `just
+install-backend` is a bare `pip install` (no venv, backend deps only) — it does NOT
+give a lane an isolated environment. Setup, once per worktree:
+
+```sh
+# sentinel-be — worktree-local venv with every Python requirements file + CI's ruff pin
+python3 -m venv .venv && .venv/bin/pip install --upgrade pip
+.venv/bin/pip install -r backend/requirements.txt -r engine/requirements.txt \
+  -r mcp-servers/fs-manager/requirements.txt -r mcp-servers/git-sync/requirements.txt \
+  -r tests/requirements.txt "ruff==0.15.15"        # keep in step with ruff.toml / ci.yml
+.venv/bin/python -m pytest -q tests && .venv/bin/ruff --version
+
+# sentinel-fe — worktree-local node_modules (Node via nvm on origin-core)
+pnpm install --frozen-lockfile && pnpm --filter @sentinel/ui test
+```
+
+`just` recipes that call `venv_python` pick up the worktree's `.venv` automatically.
+The ruff pin matters because CI runs **both** `ruff check` and `ruff format --check`
+(see the `project_ci_ruff_pin` memory).
 
 ### 3.4 `dist` and the dev site
 
-A raw `pnpm --filter @sentinel/ui build:alpha` in a worktree writes *that
-worktree's* `dist` (harmless), but the fe lane still never runs
-`just build-alpha-release` (it refuses off-master anyway) — a lane verifies with
-vitest + typecheck, not a build.
+In the **Orchestrator's** tree `apps/sentinel-ui/dist` IS the tailnet dev site, so a
+raw `build:alpha` there breaks it. In a **lane worktree** `dist` is just a directory:
+`pnpm --filter @sentinel/ui build` (plain `vite build`) is a legitimate part of the fe
+gate — it is the only thing that catches import/JSX errors, since the apps have no
+`tsc` step. The fe lane still never runs `build:alpha` (pointless off-master) and never
+`just build-alpha-release` (refuses off-master anyway).
 
 ### 3.5 `docs/BACKLOG.md` is one file
 
