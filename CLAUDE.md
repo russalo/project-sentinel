@@ -313,6 +313,7 @@ in `GEMINI.md`.
 ## Directory Conventions
 
 - `docs/` — project documentation (BACKLOG.md, ROADMAP.md, VISION.md, QUICKSTART.md, ADRs)
+  - `docs/blueprint-kb-manifest.txt` — the list of docs Blueprint's nightly `/knowledge` sync ingests (one repo-relative path per line). **Append a new ADR / RFC / operating doc when you commit it; remove on retirement.** Never list `data/`, `infrastructure/.env*`, `scratch/`, or churn docs (BACKLOG, ALPHA_FEEDBACK, handoffs).
 - `backend/` — FastAPI production backend (`:8001`)
 - `engine/` — pure-Python Inference Node package (agents, dispatch, schema)
 - `mcp-servers/` — Python MCP server implementations (fs-manager, git-sync)
