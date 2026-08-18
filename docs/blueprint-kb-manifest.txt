@@ -30,6 +30,7 @@ docs/adr/0005-subsystem-modularity.md
 docs/adr/0006-retrieval-substrate.md
 
 # === RFCs ===
+docs/rfc/README.md
 docs/rfc/0001-player-vitals-vitality-fill.md
 docs/rfc/0002-system-messages.md
 docs/rfc/0003-tester-guide.md
