@@ -96,7 +96,11 @@ def canonical_archetype(modules: dict[str, str] | None, value: Any) -> str | Non
 
 
 def sanitize_payload_archetypes(
-    payload: Any, modules: dict[str, str] | None = None
+    payload: Any,
+    modules: dict[str, str] | None = None,
+    *,
+    player_name: str = "",
+    established_archetype: str | None = None,
 ) -> int:
     """Canonicalize-or-drop every ``archetype`` in an apply_world_update payload's
     entity ops, in place. Returns how many were dropped.
@@ -107,6 +111,15 @@ def sanitize_payload_archetypes(
     LLM-emitted ``"archetype": "paladin"`` persists at world creation, and because
     later turns see an archetype as *present* the PC can stay mechanically
     unresolved (codex). Tolerant of any malformed payload shape.
+
+    ``established_archetype`` (with ``player_name``) pre-seeds the pin with the
+    archetype the engine just provisioned the PC with, so establishment is where
+    write-once STARTS: a DM intro emitting a different archetype for the PC is
+    overwritten with the provisioned one, and a PC op that omits the field gets
+    it injected — which also lets ``seed_payload_vitality`` derive pools from a
+    stats-only fragment. Callers pass it ONLY when provisioning actually created
+    the entity (never on the 409 already-established path, where the stored
+    archetype — not the new session's class text — is authoritative).
     """
     dropped = 0
     if not isinstance(payload, dict):
@@ -122,6 +135,12 @@ def sanitize_payload_archetypes(
     # first valid one is pinned onto every later op for that entity — the same
     # rule enforce_progression applies on a normal turn.
     pinned: dict[str, str] = {}
+    pc_target = ""
+    if established_archetype is not None:
+        slug = _slugify_entity(str(player_name or "").strip())
+        if slug:
+            pc_target = f"data/state/core/entities/{slug}.json"
+            pinned[pc_target] = established_archetype
     for op in updates:
         if not isinstance(op, dict):
             continue
@@ -129,7 +148,14 @@ def sanitize_payload_archetypes(
         if "/entities/" not in target:
             continue
         data = op.get("data")
-        if not isinstance(data, dict) or "archetype" not in data:
+        if not isinstance(data, dict):
+            continue
+        if "archetype" not in data:
+            # Inject the established archetype onto a PC op that omits it —
+            # write-once from establishment, and the vitality seeder can then
+            # resolve rules from any fragment that carries stats.
+            if pc_target and target == pc_target:
+                data["archetype"] = established_archetype
             continue
         canonical = pinned.get(target) or canonical_archetype(
             modules, data.get("archetype")
@@ -143,7 +169,13 @@ def sanitize_payload_archetypes(
     return dropped
 
 
-def sanitize_hint_archetypes(hint: Any, modules: dict[str, str] | None = None) -> int:
+def sanitize_hint_archetypes(
+    hint: Any,
+    modules: dict[str, str] | None = None,
+    *,
+    player_name: str = "",
+    established_archetype: str | None = None,
+) -> int:
     """Canonicalize-or-drop every character ``archetype`` in a DM **hint** block, in
     place. Returns how many were dropped.
 
@@ -151,6 +183,10 @@ def sanitize_hint_archetypes(hint: Any, modules: dict[str, str] | None = None) -
     ``world_updates`` hint goes straight into the frontend's ``worldStore``, which
     copies character fields verbatim — so without this an invalid archetype lives on
     in the UI even though the persisted payload was sanitized (coderabbit).
+
+    ``established_archetype`` / ``player_name`` mirror the payload sanitizer's
+    establishment pin (the #189 lesson: the displayed archetype must match the
+    persisted one), including the injection onto a PC entry that omits it.
     """
     dropped = 0
     if not isinstance(hint, dict):
@@ -159,12 +195,21 @@ def sanitize_hint_archetypes(hint: Any, modules: dict[str, str] | None = None) -
     if not isinstance(chars, list):
         return 0
     pinned: dict[str, str] = {}
+    player_slug = None
+    if established_archetype is not None:
+        player_slug = _slugify_entity(str(player_name or "").strip())
+        if player_slug:
+            pinned[player_slug] = established_archetype
     for char in chars:
-        if not isinstance(char, dict) or "archetype" not in char:
+        if not isinstance(char, dict):
             continue
         # Slug identity, the same the payload sanitizer groups by — "O'Neil" and
         # "O Neil" are one entity, so the pin must apply across both (codex).
         key = _slugify_entity(str(char.get("name", "")))
+        if "archetype" not in char:
+            if player_slug and key == player_slug:
+                char["archetype"] = established_archetype
+            continue
         canonical = pinned.get(key) or canonical_archetype(
             modules, char.get("archetype")
         )

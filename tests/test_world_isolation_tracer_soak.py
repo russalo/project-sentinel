@@ -37,6 +37,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import engine
+from engine import provisioning
 from backend.state.world_context import load_world_context
 from backend.state.world_root import resolve_world_data_dir
 
@@ -157,6 +158,27 @@ def test_tracer_soak_no_cross_world_leak(soak_env):
         try:
             init = engine.init_world(config, world_id=world_id, client=client)
             assert init.ok, init.error
+            # Deterministic PC provisioning is now the first write a new world
+            # sees (ADR-0004; /api/session/new) — soak it through the same
+            # real fs-manager path. The PC's name is the world's own token so
+            # the leak assertions below cover this write too.
+            prov, _arch = provisioning.pc_provision_payload(
+                sessions[world_id], world_id, "Warrior"
+            )
+            assert prov is not None
+            disp = engine.apply_world_update(
+                config, prov, world_id=world_id, client=client
+            )
+            assert disp.ok, disp.error
+            # Idempotency is fs-manager's create-409: a re-dispatch (retry /
+            # duplicate) must refuse to re-mint, not clobber the entity.
+            again = engine.apply_world_update(
+                config, prov, world_id=world_id, client=client
+            )
+            assert not again.ok and again.status_code == 409, (
+                again.status_code,
+                again.error,
+            )
             for r in range(ROUNDS):
                 disp = engine.apply_world_update(
                     config,

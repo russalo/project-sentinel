@@ -643,3 +643,123 @@ def test_sanitize_hint_groups_slug_equivalent_names():
     }
     sanitize_hint_archetypes(hint)
     assert [c["archetype"] for c in hint["characters"]] == ["cleric", "cleric"]
+
+
+# ── establishment pins (PC provisioning at session creation) ─────────
+
+
+def test_payload_pin_overrides_a_conflicting_dm_archetype():
+    """Write-once starts at establishment: the engine provisioned the PC as a
+    warrior, so a DM intro claiming "mage" for the PC is overwritten — while an
+    NPC's own archetype is untouched."""
+    from engine.class_rules import sanitize_payload_archetypes
+
+    payload = {
+        "updates": [
+            {
+                "target_file": "data/state/core/entities/kael.json",
+                "operation": "update",
+                "data": {"name": "Kael", "archetype": "mage"},
+            },
+            {
+                "target_file": "data/state/core/entities/goblin.json",
+                "operation": "update",
+                "data": {"name": "Goblin", "archetype": "rogue"},
+            },
+        ]
+    }
+    sanitize_payload_archetypes(
+        payload, player_name="Kael", established_archetype="warrior"
+    )
+    assert payload["updates"][0]["data"]["archetype"] == "warrior"
+    assert payload["updates"][1]["data"]["archetype"] == "rogue"
+
+
+def test_payload_pin_injects_onto_a_pc_op_that_omits_it():
+    """A stats-only PC fragment gets the established archetype injected, so
+    seed_payload_vitality can derive pools from it in the same dispatch."""
+    from engine.class_rules import sanitize_payload_archetypes, seed_payload_vitality
+
+    payload = {
+        "updates": [
+            {
+                "target_file": "data/state/core/entities/kael.json",
+                "operation": "update",
+                "data": {
+                    "name": "Kael",
+                    "module_data": {
+                        "character_sheet": {
+                            "stats": {"body": 6, "mind": 5, "heart": 5, "will": 5}
+                        }
+                    },
+                },
+            }
+        ]
+    }
+    sanitize_payload_archetypes(
+        payload, player_name="Kael", established_archetype="warrior"
+    )
+    data = payload["updates"][0]["data"]
+    assert data["archetype"] == "warrior"
+    seed_payload_vitality(payload, "Kael")
+    # Body 6 × warrior factor 8, seeded full; no pool for a non-caster.
+    sheet = data["module_data"]["character_sheet"]
+    assert sheet["hp"] == {"current": 48, "max": 48}
+    assert "magic_pool" not in sheet
+
+
+def test_payload_pin_absent_keeps_legacy_behavior():
+    """Without an establishment pin (the 409 already-established path) a valid
+    DM archetype stands — the stored entity, not the new session's class text,
+    is authoritative and normal-turn enforcement owns the reconciliation."""
+    from engine.class_rules import sanitize_payload_archetypes
+
+    payload = {
+        "updates": [
+            {
+                "target_file": "data/state/core/entities/kael.json",
+                "operation": "update",
+                "data": {"name": "Kael", "archetype": "mage"},
+            }
+        ]
+    }
+    sanitize_payload_archetypes(payload, player_name="Kael")
+    assert payload["updates"][0]["data"]["archetype"] == "mage"
+
+
+def test_hint_pin_mirrors_the_payload_pin():
+    from engine.class_rules import sanitize_hint_archetypes
+
+    hint = {
+        "characters": [
+            {"name": "Kael", "archetype": "mage"},
+            {"name": "Kael"},  # duplicate fragment without the field
+            {"name": "Goblin", "archetype": "rogue"},
+        ]
+    }
+    sanitize_hint_archetypes(hint, player_name="Kael", established_archetype="warrior")
+    assert hint["characters"][0]["archetype"] == "warrior"
+    assert hint["characters"][1]["archetype"] == "warrior"  # injected
+    assert hint["characters"][2]["archetype"] == "rogue"
+
+
+def test_pins_tolerate_an_unsluggable_player_name():
+    from engine.class_rules import sanitize_hint_archetypes, sanitize_payload_archetypes
+
+    payload = {
+        "updates": [
+            {
+                "target_file": "data/state/core/entities/kael.json",
+                "operation": "update",
+                "data": {"name": "Kael", "archetype": "mage"},
+            }
+        ]
+    }
+    # No slug → no pin target → legacy behavior, no crash.
+    sanitize_payload_archetypes(
+        payload, player_name="李", established_archetype="warrior"
+    )
+    assert payload["updates"][0]["data"]["archetype"] == "mage"
+    hint = {"characters": [{"name": "Kael", "archetype": "mage"}]}
+    sanitize_hint_archetypes(hint, player_name="李", established_archetype="warrior")
+    assert hint["characters"][0]["archetype"] == "mage"

@@ -35,6 +35,7 @@ from fastapi import APIRouter, HTTPException, Request, status
 import engine
 from engine import class_rules
 from engine import identity
+from engine import provisioning
 from engine.agents import dm as dm_agent
 from engine.agents import fact_extractor
 
@@ -192,6 +193,55 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
         turn_number=0,
     )
 
+    # 2b. Deterministic PC establishment (ADR-0004): the entity every
+    # enforcement mechanism anchors on (RFC-0014/0017/0018/0019, the #192
+    # identity anchoring) must exist even when the intro's <world_update>
+    # never emits it — a live world ran five turns with no PC file at all.
+    # Dispatched through the same schema-gated engine → fs-manager path as
+    # every other write, BEFORE the intro payload so the DM's own fragments
+    # shallow-merge onto the skeleton. Placed AFTER generate_intro so a
+    # 502'd intro can't leave a stray uncommitted entity write behind.
+    prov_payload, established_archetype = provisioning.pc_provision_payload(
+        session_id,
+        body.player_character_name,
+        body.player_character_class,
+    )
+    pc_established = False
+    if prov_payload is None:
+        # Fail LOUD, not fatal: an unsluggable (e.g. non-ASCII) name has no
+        # entity file the Fact-Extractor could target either, so the session
+        # behaves exactly as before this feature — but the gap must be visible.
+        # The non-ASCII slug story is a pending product decision; not solved here.
+        logger.error(
+            "PC provisioning skipped: player name %r has no usable entity slug; "
+            "ADR-0004 enforcement has nothing to anchor on for this world.",
+            body.player_character_name,
+        )
+    else:
+        prov_result = engine.apply_world_update(config, prov_payload, world_id=world_id)
+        if prov_result.ok:
+            pc_established = True
+        elif prov_result.status_code == 409:
+            # fs-manager's create-409 IS the idempotency mechanism: the entity
+            # already exists (a shared-tree slug surviving from a prior
+            # session), and re-minting would clobber a leveled character back
+            # to level 1. The stored entity stays authoritative — no
+            # establishment pins are applied below.
+            logger.info(
+                "PC entity already exists for %r — provisioning skipped.",
+                body.player_character_name,
+            )
+        else:
+            # Guaranteeing the entity is the point of provisioning; a silent
+            # continue would recreate the no-PC-file world this feature closes.
+            # Nothing has been written to this world yet, so raising here
+            # leaves no uncommitted partial state behind.
+            logger.error("PC provisioning failed: %s", prov_result.error)
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="player character provisioning failed; please retry.",
+            )
+
     # 3. Dispatch the world state through the engine → fs-manager path.
     #    Failure here does NOT abort the session — the narrative has
     #    value on its own, and the world can still evolve from the next
@@ -213,7 +263,18 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
             # No per-turn player-notice channel exists at session creation (the SSE
             # `error` events are stream-only), so record it for triage.
             logger.warning("intro identity guard: %s", _notice)
-        class_rules.sanitize_payload_archetypes(extracted.payload)
+        class_rules.sanitize_payload_archetypes(
+            extracted.payload,
+            player_name=body.player_character_name,
+            established_archetype=established_archetype if pc_established else None,
+        )
+        # `level` is engine-owned (RFC-0017) and this path runs no
+        # enforce_progression — strip the DM's claim so the committed level
+        # (the provisioned 1, or the stored one in the already-established
+        # case) stands under fs-manager's shallow merge.
+        provisioning.strip_payload_pc_level(
+            extracted.payload, body.player_character_name
+        )
         # …and seed the engine-derived vitality for a PC the intro validly
         # classified. Enforcement never runs here, so otherwise the DM's invented
         # maxes persist: a cleric written as 20/20 is later reconciled to 20/36 and
@@ -233,7 +294,10 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
         ),
         "narrative": intro_result.narrative,
         "world_updates": _intro_hint(
-            intro_result.raw_response, body.player_character_name
+            intro_result.raw_response,
+            body.player_character_name,
+            established_archetype=established_archetype if pc_established else None,
+            established_level=(provisioning.STARTING_LEVEL if pc_established else None),
         ),
         "created_at": started_at,
     }
@@ -323,9 +387,16 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
     )
 
 
-def _intro_hint(raw_response: str, player_name: str) -> dict:
+def _intro_hint(
+    raw_response: str,
+    player_name: str,
+    established_archetype: str | None = None,
+    established_level: int | None = None,
+) -> dict:
     """The intro's frontend hint, archetype-sanitized and vitality-seeded
-    (RFC-0019) so it matches what the intro dispatch persists.
+    (RFC-0019) so it matches what the intro dispatch persists — including the
+    establishment pins, when provisioning created the PC (the #189 lesson:
+    every engine-owned field needs a hint mirror).
 
     ``WorldCreation.jsx`` applies this straight into ``worldStore``, which copies
     character fields verbatim — so an invalid archetype would live on in the UI even
@@ -336,7 +407,14 @@ def _intro_hint(raw_response: str, player_name: str) -> dict:
     # hydration after creation, so an imposter claim would make the client treat it
     # as the player for the entire initial session (codex).
     identity.sanitize_hint_pc_identity(hint, player_name)
-    class_rules.sanitize_hint_archetypes(hint)
+    class_rules.sanitize_hint_archetypes(
+        hint,
+        player_name=player_name,
+        established_archetype=established_archetype,
+    )
+    # Mirror the payload-side level handling: pin the engine's establishment
+    # level when the PC was just provisioned, strip the DM's claim otherwise.
+    provisioning.pin_hint_pc_level(hint, player_name, established_level)
     # …and seed the SAME engine-derived vitality the dispatched payload gets.
     # WorldCreation.jsx applies this hint directly and hydration is skipped after
     # creation, so an unseeded hint would show the DM's invented pools while the
