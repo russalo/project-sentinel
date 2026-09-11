@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { Router, Route } from 'wouter';
 import { AppShell } from './components/shell/AppShell';
 import WorldCreation from './pages/WorldCreation';
@@ -17,6 +18,14 @@ import './index.css';
 // hand-coded constant to drift.
 const routerBase = import.meta.env.BASE_URL.replace(/\/$/, '');
 
+// DEV-only vitals gallery (per-race silhouette iteration). The
+// import.meta.env.DEV guard is statically false in production builds, so
+// both the route and the lazy chunk are dead-code-eliminated — nothing
+// dev-only ships to the alpha bundle.
+const DevVitalsGallery = import.meta.env.DEV
+  ? lazy(() => import('./pages/DevVitalsGallery'))
+  : null;
+
 export default function App() {
   return (
     <Router base={routerBase}>
@@ -35,6 +44,14 @@ export default function App() {
           on the public bundle but every API call from it fails unless you
           reach the backend over tailnet. Topology IS the credential. */}
       <Route path="/admin/messages" component={AdminMessages} />
+      {/* DEV-only silhouette gallery — absent from production builds. */}
+      {import.meta.env.DEV && DevVitalsGallery && (
+        <Route path="/dev/vitals">
+          <Suspense fallback={null}>
+            <DevVitalsGallery />
+          </Suspense>
+        </Route>
+      )}
       {/* The game lives at a world's own URL (ADR 0002 Slice 4) so it's
           shareable and survives a refresh — AppShell hydrates from the
           worldId param. */}

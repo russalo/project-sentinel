@@ -7,7 +7,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { PlayerVitals } from './PlayerVitals'
+import { PlayerVitals, FANTASY_RACES } from './PlayerVitals'
 import { useWorldStore } from '../../stores/worldStore'
 import { usePlayerStore } from '../../stores/playerStore'
 
@@ -306,27 +306,25 @@ describe('PlayerVitals — edge cases', () => {
   })
 })
 
-describe('PlayerVitals — race-keyed body geometry (stub)', () => {
-  // Stub status: every known race resolves to the same human silhouette
-  // today; real per-race art is BACKLOG. These tests lock the dispatch so
-  // that (a) known races never crash, (b) unknown races fall back to the
-  // human default, (c) the lookup is case-insensitive + trim-tolerant
-  // against whatever spelling the DM emits.
+describe('PlayerVitals — race-keyed body geometry', () => {
+  // Per-race art is real now: every registered Fantasy race resolves its
+  // own { body, head } path pair. These tests lock (a) known races never
+  // crash and are visually DISTINCT, (b) the clip-path and the outline
+  // share the same path constants (fill can't drift from the drawn body),
+  // (c) unknown races fall back to the human default, (d) the lookup is
+  // case-insensitive + trim-tolerant against whatever spelling the DM
+  // emits.
   function svgPaths() {
-    // The component renders BOTH a clipPath <path> and an outline <path>
-    // with the same d attribute. Either one is fine for the assertion;
-    // querySelectorAll lets us pick out both for sanity.
+    // The component renders each geometry path TWICE with identical d:
+    // once inside <clipPath> (vitality fill region) and once as the stroke
+    // outline. Order within each group is body first, head second.
     return Array.from(document.querySelectorAll('svg path')).map(
       (p) => p.getAttribute('d') || '',
     )
   }
 
   it('renders without crashing for each registered Fantasy race', () => {
-    const fantasyRaces = [
-      'human', 'elf', 'half-elf', 'dwarf', 'halfling',
-      'gnome', 'orc', 'half-orc', 'tiefling', 'dragonborn',
-    ]
-    for (const race of fantasyRaces) {
+    for (const race of FANTASY_RACES) {
       useWorldStore.setState({
         characters: [{ name: 'Russalo', role: 'player', health: 100, race }],
       })
@@ -336,20 +334,45 @@ describe('PlayerVitals — race-keyed body geometry (stub)', () => {
     }
   })
 
-  it('renders identical geometry across all stubbed races (proves they all resolve to HUMAN_BODY_PATH today)', () => {
-    seedPlayer({ race: 'human' })
-    const view1 = render(<PlayerVitals />)
-    const humanPaths = svgPaths()
-    view1.unmount()
+  it('every race resolves DISTINCT body geometry (no two races share a silhouette)', () => {
+    const seen = new Map()
+    for (const race of FANTASY_RACES) {
+      useWorldStore.setState({
+        characters: [{ name: 'Russalo', role: 'player', health: 100, race }],
+      })
+      const view = render(<PlayerVitals />)
+      const [body, head] = svgPaths()
+      expect(body, `${race} body path should be non-empty`).toBeTruthy()
+      expect(head, `${race} head path should be non-empty`).toBeTruthy()
+      const key = body + '\n' + head
+      expect(
+        seen.has(key),
+        `${race} shares its geometry with ${seen.get(key)}`,
+      ).toBe(false)
+      seen.set(key, race)
+      view.unmount()
+    }
+    expect(seen.size).toBe(FANTASY_RACES.length)
+  })
 
-    // Pick a non-human race; should produce the same path strings until
-    // per-race art lands.
-    useWorldStore.setState({
-      characters: [{ name: 'Russalo', role: 'player', health: 100, race: 'dwarf' }],
-    })
-    const view2 = render(<PlayerVitals />)
-    expect(svgPaths()).toEqual(humanPaths)
-    view2.unmount()
+  it('clip-path and outline share the same path constants (fill region == drawn body)', () => {
+    for (const race of FANTASY_RACES) {
+      useWorldStore.setState({
+        characters: [{ name: 'Russalo', role: 'player', health: 100, race }],
+      })
+      const view = render(<PlayerVitals />)
+      const clipPaths = Array.from(
+        document.querySelectorAll('svg clipPath path'),
+      ).map((p) => p.getAttribute('d'))
+      const outlinePaths = Array.from(
+        document.querySelectorAll('svg g[stroke] path'),
+      ).map((p) => p.getAttribute('d'))
+      expect(clipPaths).toHaveLength(2) // body + head
+      expect(outlinePaths, `${race} outline should mirror the clip`).toEqual(
+        clipPaths,
+      )
+      view.unmount()
+    }
   })
 
   it('falls back to human geometry for an unknown race (no crash)', () => {
@@ -369,21 +392,31 @@ describe('PlayerVitals — race-keyed body geometry (stub)', () => {
     expect(svgPaths()[0]).toMatch(/M 36 36/)
   })
 
-  it('lookup is case-insensitive (Elf / ELF / elf all resolve)', () => {
+  it('lookup is case-insensitive (Elf / ELF / elf all resolve to the SAME elf geometry)', () => {
+    const bodies = []
     for (const race of ['Elf', 'ELF', 'elf', 'eLf']) {
       useWorldStore.setState({
         characters: [{ name: 'Russalo', role: 'player', health: 100, race }],
       })
       const view = render(<PlayerVitals />)
-      expect(svgPaths()[0]).toMatch(/M 36 36/)
+      bodies.push(svgPaths()[0])
       view.unmount()
     }
+    // All spellings agree with each other…
+    expect(new Set(bodies).size).toBe(1)
+    // …and resolve to elf art, not the human fallback.
+    expect(bodies[0]).not.toMatch(/^M 36 36/)
   })
 
   it('lookup trims surrounding whitespace from race', () => {
+    seedPlayer({ race: 'dwarf' })
+    const view = render(<PlayerVitals />)
+    const dwarfBody = svgPaths()[0]
+    view.unmount()
+
     seedPlayer({ race: '  dwarf  ' })
     render(<PlayerVitals />)
-    expect(svgPaths()[0]).toMatch(/M 36 36/)
+    expect(svgPaths()[0]).toBe(dwarfBody)
   })
 
   it('non-string race (number, object, null) falls back to human without crashing', () => {
