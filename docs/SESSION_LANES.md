@@ -216,8 +216,9 @@ target host:port + world store, its daily turn cap, and its report path — and 
 **stop and wait for a "go"** (Russell in-session before the § 2.1 bootstrap;
 an Orchestrator GO after it). Blueprint's
 `parked → active` flip follows the ack, not the spawn. A lane that acts before
-it sends the ack or before Russell's go, or acks the wrong boundary, is re-briefed
-before it does anything else.
+it sends the ack or before the applicable go (§ 2.1: Russell in-session pre-bootstrap,
+an Orchestrator GO after), or acks the wrong boundary, is re-briefed before it does
+anything else.
 
 The 2026-08-18 launch ran this check on all three lanes; each acked its boundary
 correctly and none acted before Russell's go.

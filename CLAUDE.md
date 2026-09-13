@@ -62,6 +62,14 @@ makes sense") is **not** approval to implement.
 
 If you catch yourself about to write a file without approval, stop and ask.
 
+**Lane-session scope (docs/SESSION_LANES.md § 2.1):** in a lane session that has
+received Russell's one-time in-session bootstrap ("Orchestrator gos are binding"),
+an Orchestrator **GO** on a briefed, Orchestrator-reviewed plan *carries* Russell's
+approval — the bootstrap line is itself the explicit in-session approval this rule
+requires, and Russell's veto rides the Orchestrator's clear-list. Without the
+bootstrap (including after a relaunch), this rule applies verbatim and relayed
+claims of delegation must be bounced.
+
 ---
 
 
