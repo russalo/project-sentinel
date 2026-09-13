@@ -676,6 +676,41 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
             body.session_id,
         )
 
+    next_turn_number = (session.turns[-1]["turn_number"] + 1) if session.turns else 1
+
+    # Item 6a hardening (codex P1 + coderabbit Major on PR #201, convergent):
+    # consume the proposal DURABLY BEFORE anything else — the LLM call, the
+    # progression dispatch, the turn's session write. The failure directions
+    # are asymmetric: progression-applied-but-proposal-still-pending lets a
+    # retry double-apply the level (the exploit class this PR closes), while
+    # proposal-consumed-but-progression-failed costs one proposal the DM can
+    # re-offer (surfaced via the existing dispatch-failure notice). Fail
+    # CLOSED toward the exploit. Costs one extra session write on enactment
+    # turns only. If the consume write itself fails, the enactment degrades
+    # to an ordinary turn (proposal still on disk — retryable) with a notice.
+    # Residual: two CONCURRENT streams on one session could both pass the
+    # gate before either consume lands — same-session request serialization
+    # is a broader pre-existing gap (turn numbering races identically),
+    # tracked in docs/BACKLOG.md.
+    level_up_consume_failed = False
+    if enacted_level_up is not None:
+        _pending_backup = session.pending_level_up
+        session.pending_level_up = None
+        _consume = session_state.write_session(
+            config,
+            session,
+            log_entry="Level-up enacted — pending proposal consumed.",
+            turn_number=next_turn_number,
+        )
+        if not _consume.ok:
+            logger.warning(
+                "level-up consume write failed (%s) — degrading to ordinary turn",
+                _consume.error,
+            )
+            session.pending_level_up = _pending_backup
+            enacted_level_up = None
+            level_up_consume_failed = True
+
     death_outcome_obj = None
     death_outcome_hint: dict | None = None
     death_pc_module_data: dict | None = None
@@ -717,9 +752,17 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
         ),
     )
 
-    next_turn_number = (session.turns[-1]["turn_number"] + 1) if session.turns else 1
-
     def generator() -> Iterator[str]:
+        if level_up_consume_failed:
+            yield _sse_event(
+                {
+                    "type": "error",
+                    "content": (
+                        "The level-up could not be recorded — nothing was "
+                        "enacted. Please try again."
+                    ),
+                }
+            )
         if level_up_gated:
             yield _sse_event(
                 {
@@ -914,6 +957,32 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
                 frontend_hint, session.player_character_name, _prog[0], _prog[1]
             )
 
+        # Item 6a — record a NEW proposal from this turn's response, BEFORE
+        # the hint is emitted so display and gate can never disagree (#189;
+        # coderabbit P2 on #201: a malformed DM proposal like {} used to
+        # record an INVISIBLE pending — the SPA rejects the shape and shows no
+        # card — that a crafted request could then enact). The hint's
+        # level_up is REPLACED with the engine-derived target when recorded,
+        # and stripped when the gate won't honor it (unresolved PC / at cap).
+        # POST-enactment level (coderabbit Minor): a level-4 PC enacting to 5
+        # this same turn must not get a fresh proposal recorded at the cap.
+        # Enactment consumption itself is handled durably at the route level.
+        if isinstance(frontend_hint, dict) and isinstance(
+            frontend_hint.get("level_up"), dict
+        ):
+            _post_level = _prog[0] if _prog is not None else None
+            if _post_level is not None and _post_level < progression.MAX_LEVEL:
+                session.pending_level_up = {
+                    "to_level": _post_level + 1,
+                    "turn": next_turn_number,
+                }
+                # The DM's to_level is advisory (a hallucinated 9 records —
+                # and now displays — as the engine's number).
+                frontend_hint["level_up"] = {"to_level": _post_level + 1}
+            else:
+                frontend_hint.pop("level_up", None)
+                logger.info("DM level-up proposal ignored (PC unresolved or at cap)")
+
         # Emit the world_update event in the shape the frontend
         # expects (DM hint shape, not the fs-manager schema shape).
         yield _sse_event({"type": "world_update", "data": frontend_hint})
@@ -1024,28 +1093,6 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
                     }
                 )
 
-        # Item 6a — pending-proposal bookkeeping, BEFORE the session write so
-        # both sides persist with this turn. Consume first (an enactment is
-        # one-shot), then record a NEW proposal from this turn's response —
-        # the DM shouldn't same-turn re-propose, but a fresh proposal after an
-        # enactment is legitimate and overwrites cleanly.
-        if enacted_level_up is not None:
-            session.pending_level_up = None
-        _proposed = (
-            frontend_hint.get("level_up") if isinstance(frontend_hint, dict) else None
-        )
-        if isinstance(_proposed, dict):
-            _stored_level = progression.stored_level(_pc_for_class)
-            if _pc_for_class is not None and _stored_level < progression.MAX_LEVEL:
-                # The ENGINE's number is authoritative — the DM's to_level is
-                # advisory (a hallucinated to_level:9 records as stored+1).
-                session.pending_level_up = {
-                    "to_level": _stored_level + 1,
-                    "turn": next_turn_number,
-                }
-            else:
-                logger.info("DM level-up proposal ignored (PC unresolved or at cap)")
-
         # A pure length-clip — truncated, no world_update markup anywhere, and
         # nothing dispatched — is NOT a completed turn: persisting the
         # half-sentence would have the DM build on it next turn while the
@@ -1079,7 +1126,14 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
         session_write = session_state.write_session(
             config,
             session,
-            log_entry=narrative[:200] or f"Turn {next_turn_number} completed.",
+            # Schema minLength is 10 and `or` only catches EMPTY — a short
+            # nonempty narrative ("Done.") failed the whole session write
+            # (codex on PR #201; pre-existing).
+            log_entry=(
+                narrative[:200]
+                if len(narrative[:200].strip()) >= 10
+                else f"Turn {next_turn_number} completed."
+            ),
             turn_number=next_turn_number,
         )
 

@@ -58,6 +58,17 @@ def _prime_pc(data_dir: Path, *, pc_class: str, body: int, hp: dict) -> None:
     )
 
 
+def _pc_op_any(dispatch_log: list):
+    """The PC's entity op wherever it landed — enactment turns now lead with
+    the durable proposal-consume session write, so the entity payload is not
+    always dispatch_log[0]."""
+    for entry in dispatch_log:
+        found = _pc_op(entry["payload"])
+        if found is not None:
+            return found
+    return None
+
+
 def _pc_op(payload: dict) -> dict | None:
     for op in payload.get("updates", []):
         if str(op.get("target_file", "")).endswith("/entities/bran.json"):
@@ -90,7 +101,7 @@ def test_body_level_up_forces_derived_hp_max_end_to_end(
     assert resp.status_code == 200
     _ = resp.text  # drain the generator
 
-    op = _pc_op(fake_dispatch_log[0]["payload"])
+    op = _pc_op_any(fake_dispatch_log)
     assert op is not None
     sheet = op["data"]["module_data"]["character_sheet"]
     assert sheet["stats"]["body"] == 7  # engine-committed raise
@@ -129,7 +140,7 @@ def test_free_text_class_leaves_dm_max_end_to_end(
     assert resp.status_code == 200
     _ = resp.text
 
-    op = _pc_op(fake_dispatch_log[0]["payload"])
+    op = _pc_op_any(fake_dispatch_log)
     assert op is not None
     hp = op["data"]["module_data"]["character_sheet"]["hp"]
     assert hp["max"] == 60  # DM value survives — engine doesn't own this class's max
@@ -190,7 +201,7 @@ def test_dm_inflated_max_never_reaches_the_sse_hint(
     assert hint_sheet["magic_pool"] is None
 
     # …and the persisted payload agrees (the shared verdict).
-    op = _pc_op(fake_dispatch_log[0]["payload"])
+    op = _pc_op_any(fake_dispatch_log)
     assert op["data"]["module_data"]["character_sheet"]["hp"]["max"] == 48
 
 
@@ -242,7 +253,7 @@ def test_archetype_gives_a_free_text_class_engine_owned_maxes(
     assert resp.status_code == 200
     _ = resp.text
 
-    op = _pc_op(fake_dispatch_log[0]["payload"])
+    op = _pc_op_any(fake_dispatch_log)
     assert op is not None
     sheet = op["data"]["module_data"]["character_sheet"]
     assert sheet["hp"]["max"] == 36  # 6 × cleric factor 6
@@ -269,7 +280,7 @@ def test_dm_cannot_remap_archetype_end_to_end(
     assert resp.status_code == 200
     body = resp.text
 
-    op = _pc_op(fake_dispatch_log[0]["payload"])
+    op = _pc_op_any(fake_dispatch_log)
     assert op["data"]["archetype"] == "cleric"  # re-map overridden
     sheet = op["data"]["module_data"]["character_sheet"]
     assert sheet["hp"]["max"] == 36  # still the cleric factor, not warrior's 48
@@ -303,7 +314,7 @@ def test_establishing_turn_derives_maxes_end_to_end(
     assert resp.status_code == 200
     _ = resp.text
 
-    op = _pc_op(fake_dispatch_log[0]["payload"])
+    op = _pc_op_any(fake_dispatch_log)
     assert op["data"]["archetype"] == "cleric"
     sheet = op["data"]["module_data"]["character_sheet"]
     assert sheet["hp"]["max"] == 36  # Body 6 x cleric 6 — on the SAME turn
@@ -326,7 +337,7 @@ def test_invalid_archetype_never_persists_end_to_end(
     assert resp.status_code == 200
     _ = resp.text
 
-    op = _pc_op(fake_dispatch_log[0]["payload"])
+    op = _pc_op_any(fake_dispatch_log)
     assert "archetype" not in op["data"]  # unresolvable slug never stored
 
 
@@ -371,7 +382,7 @@ def test_injected_current_9999_clamped_end_to_end(
     ]
 
     # Persisted: clamped to the engine max (6×8=48).
-    op = _pc_op(fake_dispatch_log[0]["payload"])
+    op = _pc_op_any(fake_dispatch_log)
     assert op["data"]["module_data"]["character_sheet"]["hp"] == {
         "current": 48,
         "max": 48,
@@ -437,7 +448,7 @@ def test_dm_level_99_hint_normalized_on_ordinary_turn(
         "will": 5,
     }
     # …and the persisted payload agrees (already enforced pre-Item-5).
-    op = _pc_op(fake_dispatch_log[0]["payload"])
+    op = _pc_op_any(fake_dispatch_log)
     assert op["data"]["level"] == 2
 
 
@@ -486,7 +497,7 @@ def test_unprompted_enactment_is_stripped_end_to_end(
     # Player notice, and the persisted PC keeps its stored level + stats.
     notices = [e["content"] for e in events if e.get("type") == "error"]
     assert any("No level-up has been proposed" in n for n in notices)
-    op = _pc_op(fake_dispatch_log[0]["payload"])
+    op = _pc_op_any(fake_dispatch_log)
     assert op["data"]["level"] == 2
     assert op["data"]["module_data"]["character_sheet"]["stats"]["body"] == 6
 
@@ -553,18 +564,25 @@ def test_enactment_consumes_the_pending_proposal(
     assert resp.status_code == 200
 
     # Enacted: level 3, body 7, grown max (7×8=56) persisted…
-    op = _pc_op(fake_dispatch_log[0]["payload"])
+    op = _pc_op_any(fake_dispatch_log)
     assert op["data"]["level"] == 3
     sheet = op["data"]["module_data"]["character_sheet"]
     assert sheet["stats"]["body"] == 7
     assert sheet["hp"]["max"] == 56
-    # …and the proposal is CONSUMED in the same turn's session write.
-    session_payload = next(
+    # …and the proposal is CONSUMED durably FIRST (codex P1/coderabbit Major
+    # on #201): the very first dispatch is a session write with the pending
+    # cleared, BEFORE the progression dispatch — a session-write failure
+    # later can no longer leave a pending proposal beside an applied level.
+    first = fake_dispatch_log[0]["payload"]
+    assert "sessions" in first["updates"][0]["target_file"]
+    assert first["updates"][0]["data"]["pending_level_up"] is None
+    # The final (turn-carrying) session write agrees.
+    last_session = [
         entry["payload"]
         for entry in fake_dispatch_log
         if "sessions" in entry["payload"]["updates"][0]["target_file"]
-    )
-    assert session_payload["updates"][0]["data"]["pending_level_up"] is None
+    ][-1]
+    assert last_session["updates"][0]["data"]["pending_level_up"] is None
 
 
 def test_proposal_at_cap_is_not_recorded(
@@ -659,10 +677,184 @@ def test_primed_pending_at_cap_bumps_nothing(
     )
     assert resp.status_code == 200
     events = _events_of(resp)
-    op = _pc_op(fake_dispatch_log[0]["payload"])
+    op = _pc_op_any(fake_dispatch_log)
     assert op["data"]["level"] == 5
     sheet = op["data"]["module_data"]["character_sheet"]
     assert sheet["stats"]["body"] == 6
     assert sheet["hp"] == {"current": 48, "max": 48}
     notices = [e["content"] for e in events if e.get("type") == "error"]
     assert any("level cap" in n for n in notices)
+
+
+SESSION_R2 = "d1d1d1d1-aaaa-4aaa-8aaa-d1d1d1d1d1d1"
+
+
+def test_consume_write_failure_degrades_to_ordinary_turn(
+    app, fake_openai, monkeypatch, tmp_data_dir
+):
+    """If the durable consume write fails, the enactment degrades — the
+    proposal stays on disk (retryable), nothing levels, and the player is
+    told. Fail-closed toward the double-apply exploit."""
+    import engine
+    import engine.dispatch.fs_manager as dispatcher_module
+    from fastapi.testclient import TestClient
+
+    _prime_session(
+        tmp_data_dir, SESSION_R2, pending_level_up={"to_level": 3, "turn": 1}
+    )
+    _prime_pc(tmp_data_dir, pc_class="Warrior", body=6, hp={"current": 48, "max": 48})
+
+    calls = {"n": 0}
+
+    def failing_first_session_write(
+        config, payload, *, world_id=None, client=None, timeout=30.0
+    ):
+        calls["n"] += 1
+        if calls["n"] == 1:  # the consume write is the FIRST dispatch
+            return engine.DispatchResult(
+                ok=False, status_code=503, body={}, error="fs-manager offline"
+            )
+        return engine.DispatchResult(ok=True, status_code=200, body={"success": True})
+
+    monkeypatch.setattr(
+        dispatcher_module, "apply_world_update", failing_first_session_write
+    )
+    monkeypatch.setattr(engine, "apply_world_update", failing_first_session_write)
+
+    world_update = json.dumps(
+        {"characters": [{"name": "Bran", "action": "upsert", "status": "alive"}]}
+    )
+    fake_openai.chat.completions.set_stream_tokens(
+        ["The moment slips. ", f"<world_update>{world_update}</world_update>"]
+    )
+    client = TestClient(app)
+    resp = client.post(
+        "/api/stream",
+        json={
+            "action": "take the level",
+            "sessionId": SESSION_R2,
+            "levelUp": {"stat": "body"},
+        },
+    )
+    assert resp.status_code == 200
+    events = _events_of(resp)
+    notices = [e["content"] for e in events if e.get("type") == "error"]
+    assert any("could not be recorded" in n for n in notices)
+    # No LEVEL-UP CHOICE block reached the DM; nothing leveled.
+    sent = json.dumps(fake_openai.chat.completions.calls[-1]["messages"])
+    assert "LEVEL-UP CHOICE: the player advances" not in sent
+
+
+def test_malformed_proposal_normalized_in_hint_and_recorded(
+    client, fake_openai, fake_dispatch_log, tmp_data_dir
+):
+    """coderabbit P2 on #201: a malformed DM proposal ({}) used to record an
+    INVISIBLE pending (the SPA rejects the shape → no card) that a crafted
+    request could enact. The hint's level_up is now REPLACED with the
+    engine-derived target — displayed == gated (#189)."""
+    _prime_session(tmp_data_dir, SESSION_R2)
+    _prime_pc(tmp_data_dir, pc_class="Warrior", body=6, hp={"current": 48, "max": 48})
+    world_update = json.dumps(
+        {
+            "characters": [{"name": "Bran", "action": "upsert", "status": "alive"}],
+            "level_up": {},
+        }
+    )
+    fake_openai.chat.completions.set_stream_tokens(
+        ["Growth beckons. ", f"<world_update>{world_update}</world_update>"]
+    )
+    resp = client.post(
+        "/api/stream", json={"action": "endure", "sessionId": SESSION_R2}
+    )
+    assert resp.status_code == 200
+    events = _events_of(resp)
+    hint = next(e for e in events if e.get("type") == "world_update")["data"]
+    assert hint["level_up"] == {"to_level": 3}  # engine-derived, SPA-renderable
+    session_payload = next(
+        entry["payload"]
+        for entry in fake_dispatch_log
+        if "sessions" in entry["payload"]["updates"][0]["target_file"]
+    )
+    assert session_payload["updates"][0]["data"]["pending_level_up"] == {
+        "to_level": 3,
+        "turn": 1,
+    }
+
+
+def test_same_turn_reproposal_after_enacting_to_cap_is_ignored(
+    client, fake_openai, fake_dispatch_log, tmp_data_dir
+):
+    """coderabbit Minor on #201: the replacement proposal must use the
+    POST-enactment level — a level-4 PC enacting to 5 (the cap) this turn
+    must not get a fresh proposal recorded, and the hint card is stripped."""
+    _prime_session(
+        tmp_data_dir, SESSION_R2, pending_level_up={"to_level": 5, "turn": 7}
+    )
+    d = tmp_data_dir / "state" / "core" / "entities"
+    d.mkdir(parents=True, exist_ok=True)
+    d.joinpath("bran.json").write_text(
+        json.dumps(
+            {
+                "name": PC,
+                "role": "player",
+                "status": "alive",
+                "class": "Warrior",
+                "level": 4,
+                "module_data": {
+                    "character_sheet": {
+                        "stats": {"body": 6, "mind": 5, "heart": 5, "will": 5},
+                        "hp": {"current": 48, "max": 48},
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    world_update = json.dumps(
+        {
+            "characters": [{"name": "Bran", "action": "upsert", "status": "alive"}],
+            "level_up": {"to_level": 6},  # DM same-turn re-proposal
+        }
+    )
+    fake_openai.chat.completions.set_stream_tokens(
+        ["The peak at last. ", f"<world_update>{world_update}</world_update>"]
+    )
+    resp = client.post(
+        "/api/stream",
+        json={
+            "action": "take the final level",
+            "sessionId": SESSION_R2,
+            "levelUp": {"stat": "body"},
+        },
+    )
+    assert resp.status_code == 200
+    events = _events_of(resp)
+    op = _pc_op_any(fake_dispatch_log)
+    assert op["data"]["level"] == 5  # enacted to cap
+    hint = next(e for e in events if e.get("type") == "world_update")["data"]
+    assert "level_up" not in hint  # no card for a proposal the gate won't honor
+    last_session = [
+        entry["payload"]
+        for entry in fake_dispatch_log
+        if "sessions" in entry["payload"]["updates"][0]["target_file"]
+    ][-1]
+    assert last_session["updates"][0]["data"]["pending_level_up"] is None
+
+
+def test_short_nonempty_narrative_session_write_is_schema_safe(
+    client, fake_openai, fake_dispatch_log, tmp_data_dir
+):
+    """codex on #201 (pre-existing): `narrative[:200] or fallback` only caught
+    EMPTY — a short nonempty narrative ("Done.") sent a <10-char log_entry
+    and 422'd the whole session write."""
+    _prime_session(tmp_data_dir, SESSION_R2)
+    _prime_pc(tmp_data_dir, pc_class="Warrior", body=6, hp={"current": 48, "max": 48})
+    fake_openai.chat.completions.set_stream_tokens(["Done."])
+    resp = client.post("/api/stream", json={"action": "nod", "sessionId": SESSION_R2})
+    assert resp.status_code == 200
+    session_payload = next(
+        entry["payload"]
+        for entry in fake_dispatch_log
+        if "sessions" in entry["payload"]["updates"][0]["target_file"]
+    )
+    assert len(session_payload["log_entry"]) >= 10
