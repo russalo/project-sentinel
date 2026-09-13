@@ -201,13 +201,16 @@ class _FakeMessage:
 
 
 class _FakeChoice:
-    def __init__(self, content: str):
+    def __init__(self, content: str, finish_reason: str | None = None):
         self.message = _FakeMessage(content)
+        # None mirrors clients/proxies that omit it — production code reads it
+        # getattr-defensively (Item 3).
+        self.finish_reason = finish_reason
 
 
 class _FakeResponse:
-    def __init__(self, content: str):
-        self.choices = [_FakeChoice(content)]
+    def __init__(self, content: str, finish_reason: str | None = None):
+        self.choices = [_FakeChoice(content, finish_reason)]
 
 
 class _FakeDelta:
@@ -216,32 +219,56 @@ class _FakeDelta:
 
 
 class _FakeStreamChoice:
-    def __init__(self, content: str | None):
+    def __init__(self, content: str | None, finish_reason: str | None = None):
         self.delta = _FakeDelta(content)
+        self.finish_reason = finish_reason
 
 
 class _FakeStreamChunk:
-    def __init__(self, content: str | None):
-        self.choices = [_FakeStreamChoice(content)]
+    def __init__(self, content: str | None, finish_reason: str | None = None):
+        self.choices = [_FakeStreamChoice(content, finish_reason)]
 
 
 class _FakeCompletions:
     def __init__(self) -> None:
         self.calls: list[dict] = []
-        self._blocking_response: str = ""
+        # A QUEUE of (content, finish_reason) so retry paths can serve a
+        # truncated first response and a complete second one; the last entry
+        # repeats once the queue is exhausted.
+        self._blocking_responses: list[tuple[str, str | None]] = [("", None)]
+        self._blocking_idx = 0
         self._stream_tokens: list[str | None] = []
+        self._stream_finish_reason: str | None = None
 
-    def set_blocking_response(self, content: str) -> None:
-        self._blocking_response = content
+    def set_blocking_response(
+        self, content: str, finish_reason: str | None = None
+    ) -> None:
+        self._blocking_responses = [(content, finish_reason)]
+        self._blocking_idx = 0
 
-    def set_stream_tokens(self, tokens: list[str | None]) -> None:
+    def queue_blocking_responses(self, *responses: tuple[str, str | None]) -> None:
+        assert responses
+        self._blocking_responses = list(responses)
+        self._blocking_idx = 0
+
+    def set_stream_tokens(
+        self, tokens: list[str | None], finish_reason: str | None = None
+    ) -> None:
         self._stream_tokens = tokens
+        self._stream_finish_reason = finish_reason
 
     def create(self, **kwargs: Any):
         self.calls.append(kwargs)
         if kwargs.get("stream"):
-            return iter(_FakeStreamChunk(tok) for tok in self._stream_tokens)
-        return _FakeResponse(self._blocking_response)
+            chunks = [_FakeStreamChunk(tok) for tok in self._stream_tokens]
+            if self._stream_finish_reason is not None:
+                # Providers carry finish_reason on a trailing empty-delta chunk.
+                chunks.append(_FakeStreamChunk(None, self._stream_finish_reason))
+            return iter(chunks)
+        idx = min(self._blocking_idx, len(self._blocking_responses) - 1)
+        self._blocking_idx += 1
+        content, finish_reason = self._blocking_responses[idx]
+        return _FakeResponse(content, finish_reason)
 
 
 class _FakeChat:

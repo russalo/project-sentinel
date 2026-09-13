@@ -121,10 +121,14 @@ def test_stream_happy_path_emits_token_world_update_and_done(
     assert hint["world"]["tension"] == 4
     assert hint["characters"][0]["name"] == "Kael"
 
-    # The full token stream, concatenated, reconstructs the raw
-    # response the Fact-Extractor saw.
+    # Item 3: the token stream carries the NARRATIVE only — <world_update>
+    # markup never reaches the wire (the SPA's strippers require the closing
+    # tag, so a truncated block used to render as a raw JSON wall; state
+    # travels exclusively in the world_update event above). The Fact-Extractor
+    # still sees the full raw response server-side.
     full = "".join(e["content"] for e in token_events)
-    assert "<world_update>" in full
+    assert "<world_update>" not in full
+    assert "tension" not in full  # block content stays off the wire
     assert "crackles" in full
 
 
@@ -411,3 +415,130 @@ def test_stream_emits_error_when_session_write_fails(
     assert len(fake_commit_log) == 1
     assert fake_commit_log[0]["session_id"] == session_id
     assert fake_commit_log[0]["turn_number"] == 1
+
+
+# ── truncated-stream guard (Item 3 / playtest F3b) ───────────────────
+
+
+def test_truncated_stream_block_never_reaches_the_wire(
+    client, fake_openai, fake_dispatch_log, tmp_data_dir
+):
+    """A response cut mid-block: the gate keeps the partial JSON out of the
+    token events, the player gets a cut-off notice, and the persisted turn
+    narrative is clean (playtest F3b kept the JSON wall in the record)."""
+    session_id = VALID_SESSION_ID_4
+    _prime_session(tmp_data_dir, session_id)
+    full = 'The ledger opens before you. <world_update>\n{"world": {"tens'
+    fake_openai.chat.completions.set_stream_tokens(
+        [full[i : i + 11] for i in range(0, len(full), 11)],
+        finish_reason="length",
+    )
+
+    response = client.post(
+        "/api/stream", json={"action": "read the ledger", "sessionId": session_id}
+    )
+    assert response.status_code == 200
+    events = _parse_sse_events(response.text)
+
+    tokens = "".join(
+        e["content"] for e in events if isinstance(e, dict) and e.get("type") == "token"
+    )
+    assert "The ledger opens before you." in tokens
+    assert "world_update" not in tokens
+    assert "tens" not in tokens  # not a byte of the partial JSON streamed
+
+    notices = [
+        e["content"] for e in events if isinstance(e, dict) and e.get("type") == "error"
+    ]
+    assert any("cut off" in n for n in notices)
+
+    # The persisted turn narrative is clean too: find the session write.
+    session_payloads = [
+        entry["payload"]
+        for entry in fake_dispatch_log
+        if "sessions" in entry["payload"]["updates"][0]["target_file"]
+    ]
+    assert session_payloads, "session write missing"
+    persisted_turn = session_payloads[-1]["updates"][0]["data"]["turns"][-1]
+    assert "world_update" not in persisted_turn["narrative"]
+    assert "tens" not in persisted_turn["narrative"]
+
+
+def test_stream_cut_midword_without_block_still_notifies(
+    client, fake_openai, tmp_data_dir
+):
+    """Playtest F3a's shape on the stream route: no block at all, narrative
+    clipped mid-word — finish_reason=="length" (the PRIMARY detector) is the
+    only signal, and it must be enough."""
+    session_id = VALID_SESSION_ID_5
+    _prime_session(tmp_data_dir, session_id)
+    fake_openai.chat.completions.set_stream_tokens(
+        ["Dust settles over ", "the mournful cre"],
+        finish_reason="length",
+    )
+
+    response = client.post(
+        "/api/stream", json={"action": "look", "sessionId": session_id}
+    )
+    assert response.status_code == 200
+    events = _parse_sse_events(response.text)
+    notices = [
+        e["content"] for e in events if isinstance(e, dict) and e.get("type") == "error"
+    ]
+    assert any("cut off" in n for n in notices)
+    assert events[-1] == "[DONE]"
+
+
+def test_pure_length_clip_turn_is_not_persisted(
+    client, fake_openai, fake_dispatch_log, fake_commit_log, tmp_data_dir
+):
+    """coderabbit (PR #196): a clipped plain narrative — truncated, no block
+    markup, nothing dispatched — must not be recorded as a completed turn:
+    the notice told the player it was discarded, and persisting it would have
+    the DM build on the half-sentence. The resend regenerates the same turn."""
+    session_id = VALID_SESSION_ID_5
+    _prime_session(tmp_data_dir, session_id)
+    fake_openai.chat.completions.set_stream_tokens(
+        ["Dust settles over ", "the mournful cre"],
+        finish_reason="length",
+    )
+
+    response = client.post(
+        "/api/stream", json={"action": "look", "sessionId": session_id}
+    )
+    assert response.status_code == 200
+    # No dispatch of any kind: no world write, no session write, no commit.
+    # (write_session routes through the faked engine.apply_world_update, so
+    # fake_dispatch_log observes it too.)
+    assert fake_dispatch_log == []
+    assert fake_commit_log == []
+    # Belt-and-suspenders on the durable artifact itself (coderabbit): the
+    # primed session file is byte-for-byte unaffected — proof that holds even
+    # if session persistence ever grows a path that bypasses the dispatcher.
+    stored = json.loads(
+        (tmp_data_dir / "state" / "core" / "sessions" / f"{session_id}.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert stored["turns"] == []
+    # The unclosed-block sibling (test_truncated_stream_block_never_reaches_
+    # the_wire) DOES keep its clean prose prefix — that narrative was complete
+    # before the block began.
+
+
+def test_healthy_stream_emits_no_truncation_notice(client, fake_openai, tmp_data_dir):
+    session_id = VALID_SESSION_ID_3
+    _prime_session(tmp_data_dir, session_id)
+    fake_openai.chat.completions.set_stream_tokens(
+        _dm_stream_tokens(), finish_reason="stop"
+    )
+
+    response = client.post(
+        "/api/stream", json={"action": "approach", "sessionId": session_id}
+    )
+    assert response.status_code == 200
+    events = _parse_sse_events(response.text)
+    notices = [
+        e["content"] for e in events if isinstance(e, dict) and e.get("type") == "error"
+    ]
+    assert not any("cut off" in n for n in notices)

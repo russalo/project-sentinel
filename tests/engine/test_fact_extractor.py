@@ -428,3 +428,50 @@ def test_invalid_uuid_session_id_self_validation_fails():
 
 if __name__ == "__main__":  # pragma: no cover
     pytest.main([__file__, "-v"])
+
+
+# ── truncation detection (Item 3 / playtest F3) ──────────────────────
+
+
+def test_has_unclosed_block_shapes():
+    from engine.agents.fact_extractor import has_unclosed_block
+
+    assert not has_unclosed_block("Plain narrative, no block.")
+    assert not has_unclosed_block('Tale. <world_update>{"a": 1}</world_update> After.')
+    # F3b: open tag, JSON, no close.
+    assert has_unclosed_block('Tale. <world_update>{"world": {"tens')
+    # Cut mid-CLOSE-tag.
+    assert has_unclosed_block('Tale. <world_update>{"a": 1}</world_upd')
+    # Cut mid-OPEN-tag (>= 2 chars of the tag).
+    assert has_unclosed_block("Tale ends with <world_upd")
+    # A lone "<" is prose, not a partial tag.
+    assert not has_unclosed_block("The sign reads 3 <")
+    assert not has_unclosed_block(None)
+    assert not has_unclosed_block(12)
+
+
+def test_strip_unclosed_block_cleans_for_persistence():
+    from engine.agents.fact_extractor import strip_unclosed_block
+
+    # Unclosed block → dropped from the open tag on (no JSON in the record).
+    raw = 'The ledger opens. <world_update>{"world": {"tens'
+    assert strip_unclosed_block(raw) == "The ledger opens."
+    # Trailing partial tag → dropped.
+    assert strip_unclosed_block("A road forks. <world_upd") == "A road forks."
+    # Healthy text (complete block) → untouched.
+    healthy = 'Tale. <world_update>{"a": 1}</world_update>'
+    assert strip_unclosed_block(healthy) == healthy
+    assert strip_unclosed_block(None) == ""
+
+
+def test_looks_truncated_length_is_primary_shape_is_backstop():
+    from engine.agents.fact_extractor import looks_truncated
+
+    # PRIMARY: finish_reason=="length" flags even a cut that still parses
+    # (narrative clipped mid-word before any block — playtest F3a).
+    assert looks_truncated("…broken only by the mournful cre", "length")
+    # Backstop: malformed shape with no finish_reason available.
+    assert looks_truncated('Tale. <world_update>{"tens', None)
+    # Healthy: complete block, normal stop.
+    assert not looks_truncated('T. <world_update>{"a":1}</world_update>', "stop")
+    assert not looks_truncated("Plain narrative.", None)

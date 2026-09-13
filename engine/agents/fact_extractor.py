@@ -216,6 +216,65 @@ def _strip_world_update_block(raw: str) -> str:
     return _BLOCK_PATTERN.sub("", raw).strip()
 
 
+# ── truncation detection (Item 3 / playtest F3) ─────────────────────
+
+_OPEN_TAG = "<world_update>"
+_CLOSE_TAG = "</world_update>"
+
+
+def _trailing_partial_tag_start(raw: str) -> int:
+    """Index where a trailing PARTIAL world_update tag (>= 2 chars of either
+    tag) begins, or -1. A response cut mid-tag ends exactly this way, and
+    neither the block regex nor the narrative stripper can see it."""
+    for tag in (_CLOSE_TAG, _OPEN_TAG):
+        for length in range(len(tag) - 1, 1, -1):
+            if raw.endswith(tag[:length]):
+                return len(raw) - length
+    return -1
+
+
+def has_unclosed_block(raw: Any) -> bool:
+    """True when the response carries world_update markup the block regex
+    cannot parse: an open tag with no matching close, or a trailing partial
+    tag. The SHAPE backstop of truncation detection — the provider's
+    ``finish_reason == "length"`` is the primary detector (``looks_truncated``)."""
+    if not isinstance(raw, str):
+        return False
+    if raw.count(_OPEN_TAG) > raw.count(_CLOSE_TAG):
+        return True
+    return _trailing_partial_tag_start(raw) != -1
+
+
+def strip_unclosed_block(raw: Any) -> str:
+    """Drop an unclosed trailing block (and any trailing partial tag), so a
+    truncated response's raw JSON never lands in the persisted narrative or the
+    session log (playtest F3b: the turn record kept the JSON wall). A no-op on
+    healthy text."""
+    if not isinstance(raw, str):
+        return ""
+    out = raw
+    last_open = out.rfind(_OPEN_TAG)
+    if last_open != -1 and _CLOSE_TAG not in out[last_open:]:
+        out = out[:last_open]
+    partial = _trailing_partial_tag_start(out)
+    if partial != -1:
+        out = out[:partial]
+    return out.rstrip()
+
+
+def looks_truncated(raw: Any, finish_reason: Any) -> bool:
+    """Whether a *finished* DM response was cut off (Item 3 UPDATE).
+
+    ``finish_reason == "length"`` is the PRIMARY detector — provider ground
+    truth, zero false negatives, catches cuts that still parse (a narrative
+    clipped mid-word before any block). The unclosed-block shape check is the
+    backstop for genuinely malformed output when finish_reason is unavailable
+    or lies. Root cause of the observed truncations was our own
+    DM_MAX_COMPLETION_TOKENS=2000 on a thinking model (reasoning bills against
+    the same budget) — raised to 8000 alongside this guard."""
+    return finish_reason == "length" or has_unclosed_block(raw)
+
+
 def _slugify(name: str) -> str | None:
     """Produce a filename-safe slug matching the schema's path regex.
 

@@ -174,7 +174,7 @@ class Settings:
             openai_api_key=_env("OPENAI_API_KEY", ""),
             openai_base_url=_env("OPENAI_BASE_URL"),
             dm_model=_env("DM_MODEL", "gpt-4o-mini"),
-            max_completion_tokens=_int_env("DM_MAX_COMPLETION_TOKENS", "2000"),
+            max_completion_tokens=_int_env("DM_MAX_COMPLETION_TOKENS", "8000"),
             dm_mode=(_env("SENTINEL_DM_MODE", "live") or "live"),
             dm_mock_fixture=_env("SENTINEL_DM_MOCK_FIXTURE"),
             fs_manager_url=_env("FS_MANAGER_URL", "http://127.0.0.1:8010"),
