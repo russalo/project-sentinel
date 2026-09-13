@@ -14,23 +14,25 @@ SESSION_LEVELUP = "a1a1a1a1-1111-4111-8111-a1a1a1a1a1a1"
 SESSION_FAILSAFE = "b2b2b2b2-2222-4222-8222-b2b2b2b2b2b2"
 
 
-def _prime_session(data_dir: Path, session_id: str) -> None:
+def _prime_session(
+    data_dir: Path, session_id: str, *, pending_level_up: dict | None = None
+) -> None:
     d = data_dir / "state" / "core" / "sessions"
     d.mkdir(parents=True, exist_ok=True)
-    (d / f"{session_id}.json").write_text(
-        json.dumps(
-            {
-                "session_id": session_id,
-                "world_name": "Test World",
-                "started_at": "2026-07-27T00:00:00Z",
-                "turns": [],
-                "active": True,
-                "world_id": "7c0ffee0-0000-4000-8000-000000000000",
-                "player_character_name": PC,
-            }
-        ),
-        encoding="utf-8",
-    )
+    record = {
+        "session_id": session_id,
+        "world_name": "Test World",
+        "started_at": "2026-07-27T00:00:00Z",
+        "turns": [],
+        "active": True,
+        "world_id": "7c0ffee0-0000-4000-8000-000000000000",
+        "player_character_name": PC,
+    }
+    if pending_level_up is not None:
+        # Item 6: enactment tests must carry a server-recorded proposal or the
+        # gate strips the levelUp body.
+        record["pending_level_up"] = pending_level_up
+    (d / f"{session_id}.json").write_text(json.dumps(record), encoding="utf-8")
 
 
 def _prime_pc(data_dir: Path, *, pc_class: str, body: int, hp: dict) -> None:
@@ -69,7 +71,9 @@ def test_body_level_up_forces_derived_hp_max_end_to_end(
     # A Warrior (Body 6, 48/48 HP) enacts a Body level-up. The engine commits
     # Body 7 → hp.max = 7×8 = 56, current bumped 48 → 56 — even though the DM
     # writes no <world_update> (the synth path appends the PC op).
-    _prime_session(tmp_data_dir, SESSION_LEVELUP)
+    _prime_session(
+        tmp_data_dir, SESSION_LEVELUP, pending_level_up={"to_level": 3, "turn": 1}
+    )
     _prime_pc(tmp_data_dir, pc_class="Warrior", body=6, hp={"current": 48, "max": 48})
     fake_openai.chat.completions.set_stream_tokens(
         ["The trial tempers you — you stand taller than before."]
@@ -435,3 +439,230 @@ def test_dm_level_99_hint_normalized_on_ordinary_turn(
     # …and the persisted payload agrees (already enforced pre-Item-5).
     op = _pc_op(fake_dispatch_log[0]["payload"])
     assert op["data"]["level"] == 2
+
+
+# ── Item 6a: the server-side proposal gate ────────────────────────────────────
+
+SESSION_UNPROMPTED = "a7a7a7a7-7777-4777-8777-a7a7a7a7a7a7"
+SESSION_PROPOSE = "b8b8b8b8-8888-4888-8888-b8b8b8b8b8b8"
+SESSION_CAPPED = "c9c9c9c9-9999-4999-8999-c9c9c9c9c9c9"
+
+
+def _events_of(resp):
+    return [
+        json.loads(line[len("data: ") :])
+        for line in resp.text.split("\n")
+        if line.startswith("data: ") and line[len("data: ") :].strip() != "[DONE]"
+    ]
+
+
+def test_unprompted_enactment_is_stripped_end_to_end(
+    client, fake_openai, fake_dispatch_log, tmp_data_dir
+):
+    """THE EXPLOIT REGRESSION (playtest 2026-09-13): with no server-recorded
+    proposal, {levelUp} used to grant +1 level per turn (1→5 in 4 turns). Now
+    the enactment is stripped before the DM prompt, enforcement, and mirrors —
+    with a player notice."""
+    _prime_session(tmp_data_dir, SESSION_UNPROMPTED)  # NO pending proposal
+    _prime_pc(tmp_data_dir, pc_class="Warrior", body=6, hp={"current": 48, "max": 48})
+    world_update = json.dumps(
+        {"characters": [{"name": "Bran", "action": "upsert", "status": "alive"}]}
+    )
+    fake_openai.chat.completions.set_stream_tokens(
+        ["Nothing is earned. ", f"<world_update>{world_update}</world_update>"]
+    )
+
+    resp = client.post(
+        "/api/stream",
+        json={
+            "action": "I level up",
+            "sessionId": SESSION_UNPROMPTED,
+            "levelUp": {"stat": "body", "toLevel": 3},
+        },
+    )
+    assert resp.status_code == 200
+    events = _events_of(resp)
+
+    # Player notice, and the persisted PC keeps its stored level + stats.
+    notices = [e["content"] for e in events if e.get("type") == "error"]
+    assert any("No level-up has been proposed" in n for n in notices)
+    op = _pc_op(fake_dispatch_log[0]["payload"])
+    assert op["data"]["level"] == 2
+    assert op["data"]["module_data"]["character_sheet"]["stats"]["body"] == 6
+
+    # The DM prompt never saw a rendered LEVEL-UP CHOICE block. (The phrase
+    # "LEVEL-UP CHOICE:" also appears in the milestone module's standing
+    # prompt text, so the assertion targets dm.py's rendered block shape.)
+    sent = json.dumps(fake_openai.chat.completions.calls[-1]["messages"])
+    assert "LEVEL-UP CHOICE: the player advances" not in sent
+
+
+def test_dm_proposal_is_recorded_with_the_engines_number(
+    client, fake_openai, fake_dispatch_log, tmp_data_dir
+):
+    """A DM level_up proposal records pending_level_up in the session write —
+    with the ENGINE's stored+1, not the DM's hallucinated to_level."""
+    _prime_session(tmp_data_dir, SESSION_PROPOSE)
+    _prime_pc(tmp_data_dir, pc_class="Warrior", body=6, hp={"current": 48, "max": 48})
+    world_update = json.dumps(
+        {
+            "characters": [{"name": "Bran", "action": "upsert", "status": "alive"}],
+            "level_up": {"to_level": 9},  # advisory, hallucinated
+        }
+    )
+    fake_openai.chat.completions.set_stream_tokens(
+        ["The trial tempers you. ", f"<world_update>{world_update}</world_update>"]
+    )
+
+    resp = client.post(
+        "/api/stream", json={"action": "survive", "sessionId": SESSION_PROPOSE}
+    )
+    assert resp.status_code == 200
+
+    session_payload = next(
+        entry["payload"]
+        for entry in fake_dispatch_log
+        if "sessions" in entry["payload"]["updates"][0]["target_file"]
+    )
+    recorded = session_payload["updates"][0]["data"]["pending_level_up"]
+    assert recorded == {"to_level": 3, "turn": 1}  # stored 2 + 1, NOT 9
+
+
+def test_enactment_consumes_the_pending_proposal(
+    client, fake_openai, fake_dispatch_log, tmp_data_dir
+):
+    _prime_session(
+        tmp_data_dir, SESSION_PROPOSE, pending_level_up={"to_level": 3, "turn": 1}
+    )
+    _prime_pc(tmp_data_dir, pc_class="Warrior", body=6, hp={"current": 48, "max": 48})
+    world_update = json.dumps(
+        {"characters": [{"name": "Bran", "action": "upsert", "status": "alive"}]}
+    )
+    fake_openai.chat.completions.set_stream_tokens(
+        ["Strength settles in. ", f"<world_update>{world_update}</world_update>"]
+    )
+
+    resp = client.post(
+        "/api/stream",
+        json={
+            "action": "take the level",
+            "sessionId": SESSION_PROPOSE,
+            "levelUp": {"stat": "body", "toLevel": 3},
+        },
+    )
+    assert resp.status_code == 200
+
+    # Enacted: level 3, body 7, grown max (7×8=56) persisted…
+    op = _pc_op(fake_dispatch_log[0]["payload"])
+    assert op["data"]["level"] == 3
+    sheet = op["data"]["module_data"]["character_sheet"]
+    assert sheet["stats"]["body"] == 7
+    assert sheet["hp"]["max"] == 56
+    # …and the proposal is CONSUMED in the same turn's session write.
+    session_payload = next(
+        entry["payload"]
+        for entry in fake_dispatch_log
+        if "sessions" in entry["payload"]["updates"][0]["target_file"]
+    )
+    assert session_payload["updates"][0]["data"]["pending_level_up"] is None
+
+
+def test_proposal_at_cap_is_not_recorded(
+    client, fake_openai, fake_dispatch_log, tmp_data_dir
+):
+    _prime_session(tmp_data_dir, SESSION_CAPPED)
+    d = tmp_data_dir / "state" / "core" / "entities"
+    d.mkdir(parents=True, exist_ok=True)
+    d.joinpath("bran.json").write_text(
+        json.dumps(
+            {
+                "name": PC,
+                "role": "player",
+                "status": "alive",
+                "class": "Warrior",
+                "level": 5,
+                "module_data": {
+                    "character_sheet": {
+                        "stats": {"body": 6, "mind": 5, "heart": 5, "will": 5},
+                        "hp": {"current": 48, "max": 48},
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    world_update = json.dumps(
+        {
+            "characters": [{"name": "Bran", "action": "upsert", "status": "alive"}],
+            "level_up": {"to_level": 6},
+        }
+    )
+    fake_openai.chat.completions.set_stream_tokens(
+        ["Even legends rest. ", f"<world_update>{world_update}</world_update>"]
+    )
+
+    resp = client.post(
+        "/api/stream", json={"action": "triumph", "sessionId": SESSION_CAPPED}
+    )
+    assert resp.status_code == 200
+    session_payload = next(
+        entry["payload"]
+        for entry in fake_dispatch_log
+        if "sessions" in entry["payload"]["updates"][0]["target_file"]
+    )
+    assert session_payload["updates"][0]["data"]["pending_level_up"] is None
+
+
+def test_primed_pending_at_cap_bumps_nothing(
+    client, fake_openai, fake_dispatch_log, tmp_data_dir
+):
+    """Defense-in-depth (6b through the route): even with a crafted pending
+    proposal, an at-cap enactment changes neither level nor stats — with the
+    cap notice."""
+    _prime_session(
+        tmp_data_dir, SESSION_CAPPED, pending_level_up={"to_level": 6, "turn": 3}
+    )
+    d = tmp_data_dir / "state" / "core" / "entities"
+    d.mkdir(parents=True, exist_ok=True)
+    d.joinpath("bran.json").write_text(
+        json.dumps(
+            {
+                "name": PC,
+                "role": "player",
+                "status": "alive",
+                "class": "Warrior",
+                "level": 5,
+                "module_data": {
+                    "character_sheet": {
+                        "stats": {"body": 6, "mind": 5, "heart": 5, "will": 5},
+                        "hp": {"current": 48, "max": 48},
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    world_update = json.dumps(
+        {"characters": [{"name": "Bran", "action": "upsert", "status": "alive"}]}
+    )
+    fake_openai.chat.completions.set_stream_tokens(
+        ["The summit holds. ", f"<world_update>{world_update}</world_update>"]
+    )
+
+    resp = client.post(
+        "/api/stream",
+        json={
+            "action": "ascend further",
+            "sessionId": SESSION_CAPPED,
+            "levelUp": {"stat": "body"},
+        },
+    )
+    assert resp.status_code == 200
+    events = _events_of(resp)
+    op = _pc_op(fake_dispatch_log[0]["payload"])
+    assert op["data"]["level"] == 5
+    sheet = op["data"]["module_data"]["character_sheet"]
+    assert sheet["stats"]["body"] == 6
+    assert sheet["hp"] == {"current": 48, "max": 48}
+    notices = [e["content"] for e in events if e.get("type") == "error"]
+    assert any("level cap" in n for n in notices)

@@ -88,6 +88,14 @@ class Session:
     # label-only intro flag that was dropped after session creation. Defaults
     # False on legacy sessions written before this field existed.
     permadeath: bool = False
+    # Item 6: the server-side record of a DM level-up proposal —
+    # ``{"to_level": <engine's stored level + 1>, "turn": <proposing turn>}``,
+    # or None when nothing is pending. The GATE for an enactment: a
+    # ``level_up`` in a /api/stream body with no pending proposal is stripped
+    # (previously the proposal was display-only and an unprompted enactment
+    # granted +1 level per turn). One-shot: consumed on enactment; overwritten
+    # by a newer proposal. None/absent on legacy sessions.
+    pending_level_up: dict | None = None
 
 
 def session_file_path(data_dir: Path, session_id: str) -> Path:
@@ -141,6 +149,12 @@ def read_session(data_dir: Path, session_id: str) -> Session | None:
         world_id=raw.get("world_id", ""),
         creator_username=raw.get("creator_username", ""),
         permadeath=bool(raw.get("permadeath", False)),
+        # Legacy-tolerant: absent/malformed → no pending proposal.
+        pending_level_up=(
+            raw.get("pending_level_up")
+            if isinstance(raw.get("pending_level_up"), dict)
+            else None
+        ),
     )
 
 
@@ -179,6 +193,7 @@ def _build_session_payload(session: Session, log_entry: str, turn_number: int) -
                     "world_id": session.world_id,
                     "creator_username": session.creator_username,
                     "permadeath": session.permadeath,
+                    "pending_level_up": session.pending_level_up,
                 },
             }
         ],

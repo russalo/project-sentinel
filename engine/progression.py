@@ -182,11 +182,17 @@ def authoritative_progression(
     stats = dict(cur_stats)
     choice = _as_dict(choice)
     if choice:
+        # At the module cap an enactment is a FULL no-op — level AND stats
+        # (Item 6b, exploit-proven): `min(cur+1, MAX_LEVEL)` froze the level
+        # but the stat still bumped (+1 → +hp_factor hp.max for Body) on every
+        # re-enactment until STAT_CAP. Defense-in-depth under the 6a proposal
+        # gate, which never records a proposal at cap.
+        if cur_level >= MAX_LEVEL:
+            return level, stats
         # The engine advances by EXACTLY one level. The client-supplied `to_level`
         # is advisory (display/prompt) and NOT trusted for the commit — otherwise a
-        # crafted client could jump straight to level 5 (gemini security-high). Capped
-        # at the module max so re-enacting at the cap is a no-op.
-        level = min(cur_level + 1, MAX_LEVEL)
+        # crafted client could jump straight to level 5 (gemini security-high).
+        level = cur_level + 1
         stat = choice.get("stat")
         if stat in STATS:
             stats[stat] = min(cur_stats.get(stat, 0) + 1, STAT_CAP)
@@ -582,6 +588,8 @@ def enforce_progression(
         base_md = merged
 
     notices: list[str] = []
+    if choice and cur_level >= MAX_LEVEL:
+        notices.append("You are already at the level cap — the level-up had no effect.")
     if dm_attempted:
         if choice:
             notices.append(

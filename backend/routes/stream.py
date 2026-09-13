@@ -658,6 +658,24 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
     # crafted client `margin` can't dodge death; only `rolled` is server-
     # validated), rides it into the prompt as a narrate-not-decide block, and
     # injects it authoritatively into the write payload below (Q1 = 2a).
+    # Item 6a — the level-up PROPOSAL GATE. An enactment is only honored when
+    # the session carries a server-recorded pending proposal (written below,
+    # on the turn whose DM response proposed it). Without this the proposal
+    # was DISPLAY-ONLY and an unprompted {levelUp} body granted +1 level per
+    # turn (exploit-proven, playtest 2026-09-13). A gated-off enactment is
+    # stripped BEFORE it can reach the DM prompt's LEVEL-UP CHOICE block,
+    # enforce_progression's choice, or the hint mirrors — the turn proceeds as
+    # an ordinary one, with a player notice.
+    enacted_level_up = body.level_up
+    level_up_gated = False
+    if body.level_up is not None and not isinstance(session.pending_level_up, dict):
+        enacted_level_up = None
+        level_up_gated = True
+        logger.info(
+            "level-up enactment with no pending proposal stripped (session %s)",
+            body.session_id,
+        )
+
     death_outcome_obj = None
     death_outcome_hint: dict | None = None
     death_pc_module_data: dict | None = None
@@ -694,12 +712,24 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
         # ADR-0005 progression module (RFC-0009): on a level-up turn the body
         # carries the player's chosen stat; the engine renders it as a
         # LEVEL-UP CHOICE block. None otherwise.
-        level_up=body.level_up.model_dump() if body.level_up is not None else None,
+        level_up=(
+            enacted_level_up.model_dump() if enacted_level_up is not None else None
+        ),
     )
 
     next_turn_number = (session.turns[-1]["turn_number"] + 1) if session.turns else 1
 
     def generator() -> Iterator[str]:
+        if level_up_gated:
+            yield _sse_event(
+                {
+                    "type": "error",
+                    "content": (
+                        "No level-up has been proposed — nothing was enacted. "
+                        "Growth is offered by the story at earned milestones."
+                    ),
+                }
+            )
         buffer: list[str] = []
         # Item 3: the gate keeps <world_update> markup out of the player-visible
         # token events — the SPA's strippers require the CLOSING tag, so a
@@ -836,7 +866,9 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
         # The engine's vitality verdict for this turn — the SAME value
         # enforce_progression consumes at the dispatch seam below, so the hint the
         # player sees and the state we persist can't disagree (RFC-0018 fast-follow).
-        _choice = body.level_up.model_dump() if body.level_up is not None else None
+        _choice = (
+            enacted_level_up.model_dump() if enacted_level_up is not None else None
+        )
         _vitality = progression.authoritative_vitality_for_pc(
             world_context.characters,
             session.player_character_name,
@@ -852,7 +884,7 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
             session.player_character_name,
             _choice,
         )
-        if body.level_up is not None:
+        if enacted_level_up is not None:
             if _prog is not None:
                 _mirror_progression_to_hint(
                     frontend_hint,
@@ -901,7 +933,7 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
         # death-save resolution, or an enacted level-up) MUST write that outcome
         # even if the DM emitted no <world_update> — synthesize a minimal payload so
         # the status/clock or the level/stats still land authoritatively.
-        if (death_outcome_obj is not None or body.level_up is not None) and (
+        if (death_outcome_obj is not None or enacted_level_up is not None) and (
             payload is None
         ):
             # log_entry has a schema minLength of 10 — a short DM narrative would
@@ -957,7 +989,9 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
                 stored_characters=world_context.characters,
                 player_name=session.player_character_name,
                 choice=(
-                    body.level_up.model_dump() if body.level_up is not None else None
+                    enacted_level_up.model_dump()
+                    if enacted_level_up is not None
+                    else None
                 ),
                 class_rules=_class_rules,
                 archetypes=_archetypes,
@@ -989,6 +1023,28 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
                         "content": f"fs-manager rejected update: {dispatch.error}",
                     }
                 )
+
+        # Item 6a — pending-proposal bookkeeping, BEFORE the session write so
+        # both sides persist with this turn. Consume first (an enactment is
+        # one-shot), then record a NEW proposal from this turn's response —
+        # the DM shouldn't same-turn re-propose, but a fresh proposal after an
+        # enactment is legitimate and overwrites cleanly.
+        if enacted_level_up is not None:
+            session.pending_level_up = None
+        _proposed = (
+            frontend_hint.get("level_up") if isinstance(frontend_hint, dict) else None
+        )
+        if isinstance(_proposed, dict):
+            _stored_level = progression.stored_level(_pc_for_class)
+            if _pc_for_class is not None and _stored_level < progression.MAX_LEVEL:
+                # The ENGINE's number is authoritative — the DM's to_level is
+                # advisory (a hallucinated to_level:9 records as stored+1).
+                session.pending_level_up = {
+                    "to_level": _stored_level + 1,
+                    "turn": next_turn_number,
+                }
+            else:
+                logger.info("DM level-up proposal ignored (PC unresolved or at cap)")
 
         # A pure length-clip — truncated, no world_update markup anywhere, and
         # nothing dispatched — is NOT a completed turn: persisting the
