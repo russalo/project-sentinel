@@ -159,11 +159,26 @@ def _parse_frontend_hint(raw: str) -> dict:
     return parsed if isinstance(parsed, dict) else {}
 
 
+def _pc_name_key(value) -> str | None:
+    """The identity key for a character name in the hint: the Fact-Extractor
+    slug when sluggable, else the casefolded name — the SAME predicate
+    enforcement (``_pc_entity_op``) and the identity guard use. An exact
+    lowercased comparison missed punctuation variants (stored ``O Neil`` vs
+    session ``O'Neil``, both ``o_neil.json``): enforcement corrected the
+    write, but the hint kept the rejected value (codex + coderabbit on
+    PR #200, convergent)."""
+    name = str(value or "").strip()
+    if not name:
+        return None
+    return _slugify_entity(name) or name.casefold()
+
+
 def _locate_pc_in_hint(hint: dict, player_name: str, *, create: bool) -> dict | None:
     """Find the PC's entry in the SSE ``world_update`` hint (prefer ``role ==
-    "player"``, else name). With ``create``, add a minimal entry when absent so a
-    committed change reaches the UI even if the DM emitted no PC entry. Tolerant of
-    a malformed hint (returns None)."""
+    "player"``, else slug/casefold name identity — see ``_pc_name_key``). With
+    ``create``, add a minimal entry when absent so a committed change reaches
+    the UI even if the DM emitted no PC entry. Tolerant of a malformed hint
+    (returns None)."""
     if not isinstance(hint, dict) or not isinstance(player_name, str):
         return None
     chars = hint.get("characters")
@@ -172,14 +187,15 @@ def _locate_pc_in_hint(hint: dict, player_name: str, *, create: bool) -> dict | 
             return None
         chars = []
         hint["characters"] = chars
-    lowered = player_name.strip().lower()
+    player_key = _pc_name_key(player_name)
     for char in chars:
         if isinstance(char, dict) and str(char.get("role", "")).lower() == "player":
             return char
     for char in chars:
         if (
             isinstance(char, dict)
-            and str(char.get("name", "")).strip().lower() == lowered
+            and player_key is not None
+            and _pc_name_key(char.get("name")) == player_key
         ):
             return char
     if not create:
@@ -205,6 +221,33 @@ def _normalize_archetype_hint(hint: dict, player_name: str, pin: str | None) -> 
             pc["archetype"] = pin
         else:
             pc.pop("archetype", None)
+
+
+def _normalize_progression_hint(
+    hint: dict, player_name: str, level: int, stats: dict
+) -> None:
+    """Make the hint's ``level`` + ``stats`` agree with what
+    ``enforce_progression`` persists — on EVERY turn, not only a level-up
+    (Item 5b; playtest 2026-09-13: a DM hint carrying ``level: 99`` displayed
+    until reload while the persisted state was already forced — the mirror ran
+    only on levelUp turns).
+
+    Patches every existing PC fragment (the client applies fragments in order,
+    so a later unnormalized one would restore the rejected value); never
+    creates one — an untouched PC needs no correction. ``level`` is forced
+    outright; ``stats`` only corrected where the fragment emitted them — a
+    fragment without stats already displays the stored (authoritative) values
+    via the client store."""
+    for pc in _locate_all_pc_in_hint(hint, player_name):
+        pc["level"] = level
+        module_data = pc.get("module_data")
+        if not isinstance(module_data, dict):
+            continue
+        sheet = module_data.get("character_sheet")
+        if not isinstance(sheet, dict):
+            continue
+        if "stats" in sheet:
+            sheet["stats"] = dict(stats)
 
 
 def _normalize_pool(
@@ -246,6 +289,13 @@ def _normalize_pool(
     if isinstance(existing, dict):
         if engine_max is not None:
             existing["max"] = engine_max
+            # Item 5b: the displayed current is bounded by the SAME rule the
+            # persisted one is (progression.clamp_current) — a DM hint pool of
+            # {current: 9999} would otherwise render 9999/<max> until reload.
+            if "current" in existing:
+                existing["current"] = progression.clamp_current(
+                    existing["current"], engine_max
+                )
     elif key in sheet:
         if engine_max is not None:
             sheet[key] = {"current": engine_max, "max": engine_max}
@@ -309,21 +359,22 @@ def _locate_all_pc_in_hint(hint: dict, player_name: str) -> list[dict]:
     can emit the PC more than once in ``characters``, ``enforce_progression``
     corrects every matching op, and the client applies fragments in order — so an
     unnormalized later fragment would restore a rejected value. Matches the same
-    way as the single locator (``role == "player"`` or a name match), as a union.
-    Tolerant of a malformed hint (returns [])."""
+    way as the single locator (``role == "player"`` or the slug/casefold name
+    identity — ``_pc_name_key``), as a union. Tolerant of a malformed hint
+    (returns [])."""
     if not isinstance(hint, dict) or not isinstance(player_name, str):
         return []
     chars = hint.get("characters")
     if not isinstance(chars, list):
         return []
-    lowered = player_name.strip().lower()
+    player_key = _pc_name_key(player_name)
     return [
         c
         for c in chars
         if isinstance(c, dict)
         and (
             str(c.get("role", "")).lower() == "player"
-            or str(c.get("name", "")).strip().lower() == lowered
+            or (player_key is not None and _pc_name_key(c.get("name")) == player_key)
         )
     ]
 
@@ -793,12 +844,15 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
             _class_rules,
         )
 
+        # The authoritative (level, stats) for this turn — stored values on an
+        # ordinary turn, stored+delta on an enacted level-up. Computed once and
+        # shared by the levelUp mirror below and the every-turn normalizer.
+        _prog = progression.authoritative_for_pc(
+            world_context.characters,
+            session.player_character_name,
+            _choice,
+        )
         if body.level_up is not None:
-            _prog = progression.authoritative_for_pc(
-                world_context.characters,
-                session.player_character_name,
-                _choice,
-            )
             if _prog is not None:
                 _mirror_progression_to_hint(
                     frontend_hint,
@@ -819,6 +873,13 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
         if _archetypes:
             _normalize_archetype_hint(
                 frontend_hint, session.player_character_name, _pin_archetype
+            )
+        # RFC-0017 display truthfulness on EVERY turn (Item 5b): level + stats
+        # are engine-owned and already forced on the persisted write — the hint
+        # must never show a DM claim enforcement rejects.
+        if _prog is not None:
+            _normalize_progression_hint(
+                frontend_hint, session.player_character_name, _prog[0], _prog[1]
             )
 
         # Emit the world_update event in the shape the frontend

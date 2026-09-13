@@ -56,7 +56,15 @@ class WorldUpdateGate:
                     self._pending = self._pending[idx + len(_OPEN) :]
                     self._inside = True
                     continue
-                hold = _partial_suffix_len(self._pending, _OPEN)
+                # Prefixes of EITHER tag: truncation detection treats a
+                # trailing ">= 4 chars of </world_update>" as a cut too, so a
+                # close-tag prefix must not leak to the wire before the guard
+                # runs (coderabbit on PR #200). A disambiguated tail (next
+                # token makes it non-prefix) is emitted as normal prose.
+                hold = max(
+                    _partial_suffix_len(self._pending, _OPEN),
+                    _partial_suffix_len(self._pending, _CLOSE),
+                )
                 cut = len(self._pending) - hold
                 emitted.append(self._pending[:cut])
                 self._pending = self._pending[cut:]
@@ -67,14 +75,17 @@ class WorldUpdateGate:
         """End-of-stream: the held tail, unless it is block remainder.
 
         Inside an unclosed block → nothing (the truncated JSON must never
-        display). A held tail of >= 2 chars is a plausible cut-off open tag →
-        dropped, matching ``fact_extractor.strip_unclosed_block``; a lone
-        ``<`` is legitimate prose and is returned.
+        display). A held tail of >= 4 chars ("<wor") is a plausible cut-off
+        open tag → dropped, matching ``fact_extractor.strip_unclosed_block``
+        (threshold raised from 2 with it — prose legitimately ends "…</" or
+        "…<w", the #196 swarm nit); anything shorter is returned as prose.
         """
         pending, self._pending = self._pending, ""
         if self._inside:
             return ""
-        if len(pending) >= 2 and _OPEN.startswith(pending):
+        if len(pending) >= 4 and (
+            _OPEN.startswith(pending) or _CLOSE.startswith(pending)
+        ):
             return ""
         return pending
 

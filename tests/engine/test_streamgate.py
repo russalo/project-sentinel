@@ -55,6 +55,15 @@ def test_lone_angle_bracket_at_end_is_legitimate_prose():
     assert _run(["The sign reads 3 <"]) == "The sign reads 3 <"
 
 
+def test_short_bracket_runs_at_end_are_prose_not_tags():
+    # Threshold aligned with fact_extractor at >= 4 chars (#196 swarm nit):
+    # "…</" and "…<w" are prose and must flush, not vanish.
+    assert _run(["He trails off …</"]) == "He trails off …</"
+    assert _run(["an aside <w"]) == "an aside <w"
+    # A 4-char prefix IS a plausible cut-off tag → still dropped.
+    assert _run(["A road forks. <wor"]) == "A road forks. "
+
+
 def test_text_resumes_after_a_block_and_multiple_blocks_gate():
     tokens = ["A. ", OPEN, "{}", CLOSE, "B. ", OPEN, "{}", CLOSE, "C."]
     assert _run(tokens) == "A. B. C."
@@ -77,3 +86,15 @@ def test_junk_tokens_are_tolerated():
     assert gate.feed("") == ""
     assert gate.feed(None) == ""  # type: ignore[arg-type]
     assert gate.flush() == ""
+
+
+def test_close_tag_prefix_at_end_is_held_and_dropped():
+    """Truncation detection counts a trailing >= 4-char CLOSE-tag prefix as a
+    cut, so the gate must not leak it to the wire either (coderabbit on
+    PR #200) — while a disambiguated tail streams as normal prose."""
+    assert _run(["Story ends ", "</wor"]) == "Story ends "
+    assert (
+        _run(["He mutters ", "</worry, not a tag"]) == "He mutters </worry, not a tag"
+    )
+    # Short close-prefix runs stay prose at flush (threshold 4, aligned).
+    assert _run(["He trails off …</"]) == "He trails off …</"

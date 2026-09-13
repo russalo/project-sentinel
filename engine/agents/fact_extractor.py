@@ -223,11 +223,17 @@ _CLOSE_TAG = "</world_update>"
 
 
 def _trailing_partial_tag_start(raw: str) -> int:
-    """Index where a trailing PARTIAL world_update tag (>= 2 chars of either
+    """Index where a trailing PARTIAL world_update tag (>= 4 chars of either
     tag) begins, or -1. A response cut mid-tag ends exactly this way, and
-    neither the block regex nor the narrative stripper can see it."""
+    neither the block regex nor the narrative stripper can see it.
+
+    The threshold is 4 ("<wor" / "</wo"), not 2: prose legitimately ends in
+    short bracket runs ("…</", "…<w"), and a 2-char match spuriously tripped
+    the truncation notice on a healthy response (#196 swarm nit). A real
+    mid-tag cut shorter than 4 chars still gets caught by the PRIMARY
+    detector, the provider's finish_reason=="length"."""
     for tag in (_CLOSE_TAG, _OPEN_TAG):
-        for length in range(len(tag) - 1, 1, -1):
+        for length in range(len(tag) - 1, 3, -1):
             if raw.endswith(tag[:length]):
                 return len(raw) - length
     return -1
