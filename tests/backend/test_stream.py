@@ -508,8 +508,19 @@ def test_pure_length_clip_turn_is_not_persisted(
     )
     assert response.status_code == 200
     # No dispatch of any kind: no world write, no session write, no commit.
+    # (write_session routes through the faked engine.apply_world_update, so
+    # fake_dispatch_log observes it too.)
     assert fake_dispatch_log == []
     assert fake_commit_log == []
+    # Belt-and-suspenders on the durable artifact itself (coderabbit): the
+    # primed session file is byte-for-byte unaffected — proof that holds even
+    # if session persistence ever grows a path that bypasses the dispatcher.
+    stored = json.loads(
+        (tmp_data_dir / "state" / "core" / "sessions" / f"{session_id}.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert stored["turns"] == []
     # The unclosed-block sibling (test_truncated_stream_block_never_reaches_
     # the_wire) DOES keep its clean prose prefix — that narrative was complete
     # before the block began.
