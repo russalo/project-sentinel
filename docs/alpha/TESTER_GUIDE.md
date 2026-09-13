@@ -139,8 +139,6 @@ narrative-only reading).
 >   character. The DM does mark pills with a tone (aggressive,
 >   defensive, etc.), but tone-colors are deferred until we can give
 >   you a clear legend.
-> - **Race in the silhouette** — every fantasy race currently draws
->   the same human shape. Per-race art is on the way.
 
 ## The settings drawer
 

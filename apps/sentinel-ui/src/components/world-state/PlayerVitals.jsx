@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import { usePlayerStore } from '../../stores/playerStore';
 import { useWorldStore } from '../../stores/worldStore';
 
@@ -23,9 +24,19 @@ import { useWorldStore } from '../../stores/worldStore';
 //    WorldMetrics uses.
 
 // Body geometry per race (Fantasy flagship; other genres' equivalents slot
-// in once authored). Every entry currently points at HUMAN_BODY_PATH; per-
-// race art is BACKLOG. The dispatch is real so per-race geometries land
-// race-by-race without re-architecting.
+// in once authored). Each race is ONE entry of two path constants —
+// { body, head } — and each constant is reused verbatim for BOTH the
+// clip-path (vitality fill region) and the stroke outline, so fill and
+// outline can never drift apart. All silhouettes span the same 180-unit
+// canvas: short races (dwarf / halfling / gnome) read "short" through
+// proportion — stocky torso, larger head ratio, short legs — not through
+// absolute height, which keeps the bottom-anchored vitality-fill math
+// identical across races.
+//
+// Heads are paths (not <ellipse>) so non-elliptical skulls — dwarf beard,
+// gnome hat, orc tusks, tiefling horns, dragonborn snout — fit the same
+// model. The human head path is the bezier equivalent of the original
+// ellipse (cx 50, cy 22, rx 11, ry 12; kappa ≈ 0.5523).
 const HUMAN_BODY_PATH = `
   M 36 36
   C 30 38, 26 42, 24 50
@@ -53,21 +64,412 @@ const HUMAN_BODY_PATH = `
   Z
 `.trim();
 
+const HUMAN_HEAD_PATH = `
+  M 39 22
+  C 39 15.4, 43.9 10, 50 10
+  C 56.1 10, 61 15.4, 61 22
+  C 61 28.6, 56.1 34, 50 34
+  C 43.9 34, 39 28.6, 39 22
+  Z
+`.trim();
+
+// Elf — slender: narrow shoulders, thin limbs, long legs (high crotch).
+// Head sweeps to upward ear points.
+const ELF_BODY_PATH = `
+  M 38 36
+  C 33 38, 30 42, 28 50
+  L 23 88
+  L 28 97
+  L 35 76
+  L 39 78
+  L 39 100
+  L 36 174
+  L 44 176
+  L 48 174
+  L 48 110
+  L 52 110
+  L 52 174
+  L 56 176
+  L 64 174
+  L 61 100
+  L 61 78
+  L 65 76
+  L 72 97
+  L 77 88
+  L 72 50
+  C 70 42, 67 38, 62 36
+  L 50 34
+  Z
+`.trim();
+
+const ELF_HEAD_PATH = `
+  M 50 10
+  C 55.5 10, 59 14, 59.5 19
+  L 66 15
+  L 60.5 25
+  C 59.8 30.6, 55.5 34, 50 34
+  C 44.5 34, 40.2 30.6, 39.5 25
+  L 34 15
+  L 40.5 19
+  C 41 14, 44.5 10, 50 10
+  Z
+`.trim();
+
+// Half-elf — human build, slightly slimmer; subtle ear points (own
+// constants, not aliases, so each can drift in visual iteration).
+const HALF_ELF_BODY_PATH = `
+  M 37 36
+  C 31 38, 27 42, 25 50
+  L 20 89
+  L 26 99
+  L 33 77
+  L 37 79
+  L 37 101
+  L 34 174
+  L 43 176
+  L 48 174
+  L 48 111
+  L 52 111
+  L 52 174
+  L 57 176
+  L 66 174
+  L 63 101
+  L 63 79
+  L 67 77
+  L 74 99
+  L 80 89
+  L 75 50
+  C 73 42, 69 38, 63 36
+  L 50 34
+  Z
+`.trim();
+
+const HALF_ELF_HEAD_PATH = `
+  M 50 10
+  C 56 10, 60.5 14.5, 61 21
+  L 65 19
+  L 61 26
+  C 60 30.8, 55.5 34, 50 34
+  C 44.5 34, 40 30.8, 39 26
+  L 35 19
+  L 39 21
+  C 39.5 14.5, 44 10, 50 10
+  Z
+`.trim();
+
+// Dwarf — stocky: broad shoulders, thick arms, short wide-stance legs.
+// The head sits low with a beard wedge that overlaps the chest.
+const DWARF_BODY_PATH = `
+  M 32 54
+  C 24 56, 19 61, 17 70
+  L 13 102
+  L 21 112
+  L 28 90
+  L 32 93
+  L 32 118
+  L 30 172
+  L 42 176
+  L 47 172
+  L 47 128
+  L 53 128
+  L 53 172
+  L 58 176
+  L 70 172
+  L 68 118
+  L 68 93
+  L 72 90
+  L 79 112
+  L 87 102
+  L 83 70
+  C 81 61, 76 56, 68 54
+  L 50 52
+  Z
+`.trim();
+
+const DWARF_HEAD_PATH = `
+  M 50 22
+  C 56 22, 61 26, 61 32
+  L 61 40
+  L 64 46
+  L 58 60
+  L 50 66
+  L 42 60
+  L 36 46
+  L 39 40
+  L 39 32
+  C 39 26, 44 22, 50 22
+  Z
+`.trim();
+
+// Halfling — small and round: big head ratio, round belly, short limbs.
+const HALFLING_BODY_PATH = `
+  M 39 58
+  C 33 60, 29 64, 27 71
+  L 24 100
+  L 30 108
+  L 35 92
+  L 38 94
+  C 34 104, 33 116, 35 126
+  L 33 170
+  L 46 176
+  L 48 170
+  L 48 138
+  L 52 138
+  L 52 170
+  L 54 176
+  L 67 170
+  L 65 126
+  C 67 116, 66 104, 62 94
+  L 65 92
+  L 70 108
+  L 76 100
+  L 73 71
+  C 71 64, 67 60, 61 58
+  L 50 56
+  Z
+`.trim();
+
+const HALFLING_HEAD_PATH = `
+  M 40 44
+  C 40 38.5, 44.5 34, 50 34
+  C 55.5 34, 60 38.5, 60 44
+  C 60 49.5, 55.5 54, 50 54
+  C 44.5 54, 40 49.5, 40 44
+  Z
+`.trim();
+
+// Gnome — smallest build, largest head ratio, spindly limbs, and the
+// pointed hat that carries the silhouette.
+const GNOME_BODY_PATH = `
+  M 40 52
+  C 35 54, 32 58, 31 64
+  L 27 96
+  L 31 103
+  L 36 84
+  L 39 86
+  L 39 104
+  L 37 172
+  L 44 176
+  L 47 172
+  L 47 120
+  L 53 120
+  L 53 172
+  L 56 176
+  L 63 172
+  L 61 104
+  L 61 86
+  L 64 84
+  L 69 103
+  L 73 96
+  L 69 64
+  C 68 58, 65 54, 60 52
+  L 50 50
+  Z
+`.trim();
+
+const GNOME_HEAD_PATH = `
+  M 50 6
+  L 62 34
+  L 60 34
+  C 60 42, 55 46, 50 46
+  C 45 46, 40 42, 40 34
+  L 38 34
+  Z
+`.trim();
+
+// Orc — hulking: massive hunched shoulders the head sinks between, long
+// thick arms, short legs. Jaw carries two upward tusks.
+const ORC_BODY_PATH = `
+  M 34 34
+  C 22 36, 15 42, 13 52
+  L 10 96
+  L 18 108
+  L 26 84
+  L 31 88
+  L 33 112
+  L 31 172
+  L 43 176
+  L 48 172
+  L 48 124
+  L 52 124
+  L 52 172
+  L 57 176
+  L 69 172
+  L 67 112
+  L 69 88
+  L 74 84
+  L 82 108
+  L 90 96
+  L 87 52
+  C 85 42, 78 36, 66 34
+  L 50 30
+  Z
+`.trim();
+
+const ORC_HEAD_PATH = `
+  M 50 10
+  C 57 10, 62 14, 62 20
+  L 61 28
+  L 59 26
+  L 58 34
+  L 54 31
+  L 46 31
+  L 42 34
+  L 41 26
+  L 39 28
+  L 38 20
+  C 38 14, 43 10, 50 10
+  Z
+`.trim();
+
+// Half-orc — between human and orc: heavier arms, slight hunch, small
+// tusk notches on a human-proportioned head.
+const HALF_ORC_BODY_PATH = `
+  M 35 36
+  C 27 38, 22 43, 20 52
+  L 16 92
+  L 23 103
+  L 30 80
+  L 34 83
+  L 34 106
+  L 31 173
+  L 42 176
+  L 48 173
+  L 48 116
+  L 52 116
+  L 52 173
+  L 58 176
+  L 69 173
+  L 66 106
+  L 66 83
+  L 70 80
+  L 77 103
+  L 84 92
+  L 80 52
+  C 78 43, 73 38, 65 36
+  L 50 32
+  Z
+`.trim();
+
+const HALF_ORC_HEAD_PATH = `
+  M 50 10
+  C 56 10, 61 15, 61 22
+  C 61 26, 60 29, 58 31
+  L 57 26
+  L 55 32
+  C 52 34, 48 34, 45 32
+  L 43 26
+  L 42 31
+  C 40 29, 39 26, 39 22
+  C 39 15, 44 10, 50 10
+  Z
+`.trim();
+
+// Tiefling — slim human build; horns curve up and back from the brow.
+const TIEFLING_BODY_PATH = `
+  M 38 36
+  C 32 38, 28 42, 26 50
+  L 21 88
+  L 27 98
+  L 34 77
+  L 38 79
+  L 38 101
+  L 35 174
+  L 44 176
+  L 48 174
+  L 48 111
+  L 52 111
+  L 52 174
+  L 56 176
+  L 65 174
+  L 62 101
+  L 62 79
+  L 66 77
+  L 73 98
+  L 79 88
+  L 74 50
+  C 72 42, 68 38, 62 36
+  L 50 34
+  Z
+`.trim();
+
+const TIEFLING_HEAD_PATH = `
+  M 37 3
+  C 41 7, 43 11, 43 15
+  C 45 12, 47 10, 50 10
+  C 53 10, 55 12, 57 15
+  C 57 11, 59 7, 63 3
+  C 64 9, 63 14, 60 18
+  C 60.7 19.3, 61 20.6, 61 22
+  C 61 28.6, 56.1 34, 50 34
+  C 43.9 34, 39 28.6, 39 22
+  C 39 20.6, 39.3 19.3, 40 18
+  C 37 14, 36 9, 37 3
+  Z
+`.trim();
+
+// Dragonborn — bulky trunk and limbs, a tail sweeping from the left hip
+// to the ground, and a wedge head tapering to a blunt snout.
+const DRAGONBORN_BODY_PATH = `
+  M 34 40
+  C 25 42, 19 47, 17 56
+  L 13 96
+  L 20 107
+  L 27 85
+  L 32 88
+  L 32 112
+  L 30 172
+  L 42 176
+  L 47 172
+  L 47 122
+  L 53 122
+  L 53 172
+  L 60 176
+  L 70 172
+  L 68 130
+  C 76 146, 81 158, 84 168
+  L 91 164
+  C 86 144, 78 128, 69 116
+  L 68 112
+  L 68 88
+  L 73 85
+  L 80 107
+  L 87 96
+  L 83 56
+  C 81 47, 75 42, 66 40
+  L 50 36
+  Z
+`.trim();
+
+const DRAGONBORN_HEAD_PATH = `
+  M 50 8
+  C 58 8, 63 12, 63 18
+  L 62 24
+  L 57 36
+  L 53 40
+  L 47 40
+  L 43 36
+  L 38 24
+  L 37 18
+  C 37 12, 42 8, 50 8
+  Z
+`.trim();
+
 const RACE_BODIES = {
-  human: HUMAN_BODY_PATH,
-  elf: HUMAN_BODY_PATH,
-  'half-elf': HUMAN_BODY_PATH,
-  dwarf: HUMAN_BODY_PATH,
-  halfling: HUMAN_BODY_PATH,
-  gnome: HUMAN_BODY_PATH,
-  orc: HUMAN_BODY_PATH,
-  'half-orc': HUMAN_BODY_PATH,
-  tiefling: HUMAN_BODY_PATH,
-  dragonborn: HUMAN_BODY_PATH,
+  human: { body: HUMAN_BODY_PATH, head: HUMAN_HEAD_PATH },
+  elf: { body: ELF_BODY_PATH, head: ELF_HEAD_PATH },
+  'half-elf': { body: HALF_ELF_BODY_PATH, head: HALF_ELF_HEAD_PATH },
+  dwarf: { body: DWARF_BODY_PATH, head: DWARF_HEAD_PATH },
+  halfling: { body: HALFLING_BODY_PATH, head: HALFLING_HEAD_PATH },
+  gnome: { body: GNOME_BODY_PATH, head: GNOME_HEAD_PATH },
+  orc: { body: ORC_BODY_PATH, head: ORC_HEAD_PATH },
+  'half-orc': { body: HALF_ORC_BODY_PATH, head: HALF_ORC_HEAD_PATH },
+  tiefling: { body: TIEFLING_BODY_PATH, head: TIEFLING_HEAD_PATH },
+  dragonborn: { body: DRAGONBORN_BODY_PATH, head: DRAGONBORN_HEAD_PATH },
 };
 
-function bodyPathFor(race) {
-  if (typeof race !== 'string') return HUMAN_BODY_PATH;
+function raceGeometryFor(race) {
+  if (typeof race !== 'string') return RACE_BODIES.human;
   const key = race.trim().toLowerCase();
   // `hasOwnProperty.call` guard so a race string that matches an
   // Object.prototype member (`'constructor'`, `'toString'`, `'__proto__'`)
@@ -75,8 +477,16 @@ function bodyPathFor(race) {
   // (which would land as a non-string `d` attribute on <path>).
   return Object.prototype.hasOwnProperty.call(RACE_BODIES, key)
     ? RACE_BODIES[key]
-    : HUMAN_BODY_PATH;
+    : RACE_BODIES.human;
 }
+
+// The registered Fantasy roster, for the DEV-only gallery (DevVitalsGallery)
+// and for tests that want to iterate every race without hand-copying keys.
+// The react-refresh rule is disabled for this one export: hand-copying the
+// roster into the gallery + tests is a drift hazard, and the only cost is
+// slightly coarser HMR for this file during dev.
+// eslint-disable-next-line react-refresh/only-export-components
+export const FANTASY_RACES = Object.keys(RACE_BODIES);
 
 // Band labels: derived at render time from (hp, statusStr) so the visible
 // categorical reads consistently with the rendered pose. `status` overrides
@@ -197,6 +607,99 @@ function playerHp(player) {
   return { hp: flat, hpCurrent: flat, hpMax: 100 };
 }
 
+// The silhouette SVG alone, props-driven and store-free, so the DEV-only
+// gallery (/dev/vitals) can render every race × state combination on one
+// page without touching the world store. PlayerVitals below is the only
+// production consumer. The clip-path id comes from useId() (colons
+// stripped — they're legal in a fragment but confuse devtools/CSS) so
+// multiple instances on one page can't capture each other's clip.
+export function VitalsSilhouette({
+  race,
+  hp,
+  statusStr = '',
+  placeholder = false,
+  ariaValueText,
+  className = 'h-20 sm:h-24 w-auto shrink-0 text-ink',
+}) {
+  const clipId = `vitals-body-clip-${useId().replace(/:/g, '')}`;
+  const isDead = !placeholder && statusStr === 'dead';
+  const isUnconscious = !placeholder && statusStr === 'unconscious';
+  const vitalityHeight = vitalityHeightFor(hp, statusStr, placeholder);
+  const vitalityY = SVG_HEIGHT - vitalityHeight; // anchor at the bottom
+  const { body: bodyPath, head: headPath } = raceGeometryFor(race);
+
+  // Silhouette dims slightly when dead (the body itself is replaced by the
+  // skull pictogram — the dim applies to the whole pictogram for a "spent"
+  // read). Unconscious keeps full opacity; the Zzz caption + empty body
+  // do the work.
+  const silhouetteOpacity = isDead ? 0.65 : 1;
+
+  return (
+    <svg
+      viewBox="0 0 100 180"
+      className={className}
+      style={{ opacity: silhouetteOpacity, transition: 'opacity 300ms' }}
+      role="meter"
+      aria-label="Player vitals"
+      aria-valuenow={placeholder ? undefined : hp}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuetext={ariaValueText}
+    >
+      {isDead ? (
+        <SkullAndCrossbones />
+      ) : (
+        <>
+          <defs>
+            {/* Body first, head second — in BOTH the clip and the
+                outline — so tests (and readers) can rely on path order:
+                the first <path> in the SVG is always the body. */}
+            <clipPath id={clipId}>
+              <path d={bodyPath} />
+              <path d={headPath} />
+            </clipPath>
+          </defs>
+
+          {/* Vitality fill — solid blood, anchored at the bottom,
+              height + y move together as HP changes. `y` and `height`
+              live in the inline style object (not as XML attrs) so the
+              CSS transition actually fires — SVG presentation attributes
+              don't animate via CSS in Safari iOS. */}
+          <rect
+            data-testid="vitals-vitality-fill"
+            x="0"
+            width="100"
+            fill={BLOOD}
+            clipPath={`url(#${clipId})`}
+            style={{
+              y: vitalityY,
+              height: vitalityHeight,
+              transition: 'y 400ms, height 400ms',
+            }}
+          />
+
+          {/* Visible outline — stroke only, same geometry as the clip. */}
+          <g
+            stroke="currentColor"
+            strokeWidth="1.2"
+            fill="none"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          >
+            <path d={bodyPath} />
+            <path d={headPath} />
+          </g>
+
+          {/* Sleep marker — three Z glyphs above the head when
+              status=unconscious. The silhouette is full-outline (no
+              vitality fill); the Zzz is what signals the state. */}
+          {isUnconscious && <ZzzCaption />}
+        </>
+      )}
+    </svg>
+  );
+}
+
 export function PlayerVitals() {
   const characters = useWorldStore((s) => s.characters);
   const playerName = usePlayerStore((s) => s.characterName);
@@ -232,22 +735,10 @@ export function PlayerVitals() {
   // means "no status emitted yet."
   const statusStr =
     typeof player?.status === 'string' ? player.status.trim().toLowerCase() : '';
-  const isDead = !placeholder && statusStr === 'dead';
-  const isUnconscious = !placeholder && statusStr === 'unconscious';
 
   const band = placeholder
     ? { label: 'Unknown', text: 'text-dust' }
     : bandFor(hp, statusStr);
-
-  const vitalityHeight = vitalityHeightFor(hp, statusStr, placeholder);
-  const vitalityY = SVG_HEIGHT - vitalityHeight; // anchor at the bottom
-  const bodyPath = bodyPathFor(player?.race);
-
-  // Silhouette dims slightly when dead (the body itself is replaced by the
-  // skull pictogram — the dim applies to the whole pictogram for a "spent"
-  // read). Unconscious keeps full opacity; the Zzz caption + empty body
-  // do the work.
-  const silhouetteOpacity = isDead ? 0.65 : 1;
 
   const ariaValueText = placeholder
     ? 'Unknown'
@@ -258,65 +749,13 @@ export function PlayerVitals() {
       <h3 className="text-amber font-cinzel text-sm mb-2">VITALS</h3>
       {/* Stack vertically on narrow screens, side-by-side at sm+. */}
       <div className="flex flex-col sm:flex-row items-center gap-3">
-        <svg
-          viewBox="0 0 100 180"
-          className="h-20 sm:h-24 w-auto shrink-0 text-ink"
-          style={{ opacity: silhouetteOpacity, transition: 'opacity 300ms' }}
-          role="meter"
-          aria-label="Player vitals"
-          aria-valuenow={placeholder ? undefined : hp}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuetext={ariaValueText}
-        >
-          {isDead ? (
-            <SkullAndCrossbones />
-          ) : (
-            <>
-              <defs>
-                <clipPath id="vitals-body-clip">
-                  <ellipse cx="50" cy="22" rx="11" ry="12" />
-                  <path d={bodyPath} />
-                </clipPath>
-              </defs>
-
-              {/* Vitality fill — solid blood, anchored at the bottom,
-                  height + y move together as HP changes. `y` and `height`
-                  live in the inline style object (not as XML attrs) so the
-                  CSS transition actually fires — SVG presentation attributes
-                  don't animate via CSS in Safari iOS. */}
-              <rect
-                data-testid="vitals-vitality-fill"
-                x="0"
-                width="100"
-                fill={BLOOD}
-                clipPath="url(#vitals-body-clip)"
-                style={{
-                  y: vitalityY,
-                  height: vitalityHeight,
-                  transition: 'y 400ms, height 400ms',
-                }}
-              />
-
-              {/* Visible outline — stroke only, same geometry as the clip. */}
-              <g
-                stroke="currentColor"
-                strokeWidth="1.2"
-                fill="none"
-                strokeLinejoin="round"
-                strokeLinecap="round"
-              >
-                <ellipse cx="50" cy="22" rx="11" ry="12" />
-                <path d={bodyPath} />
-              </g>
-
-              {/* Sleep marker — three Z glyphs above the head when
-                  status=unconscious. The silhouette is full-outline (no
-                  vitality fill); the Zzz is what signals the state. */}
-              {isUnconscious && <ZzzCaption />}
-            </>
-          )}
-        </svg>
+        <VitalsSilhouette
+          race={player?.race}
+          hp={hp}
+          statusStr={statusStr}
+          placeholder={placeholder}
+          ariaValueText={ariaValueText}
+        />
 
         <div className="flex-1 min-w-0 text-center sm:text-left">
           <div className={band.text + ' font-medium text-sm font-cinzel whitespace-nowrap'}>
