@@ -658,6 +658,59 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
     # crafted client `margin` can't dodge death; only `rolled` is server-
     # validated), rides it into the prompt as a narrate-not-decide block, and
     # injects it authoritatively into the write payload below (Q1 = 2a).
+    # Item 6a — the level-up PROPOSAL GATE. An enactment is only honored when
+    # the session carries a server-recorded pending proposal (written below,
+    # on the turn whose DM response proposed it). Without this the proposal
+    # was DISPLAY-ONLY and an unprompted {levelUp} body granted +1 level per
+    # turn (exploit-proven, playtest 2026-09-13). A gated-off enactment is
+    # stripped BEFORE it can reach the DM prompt's LEVEL-UP CHOICE block,
+    # enforce_progression's choice, or the hint mirrors — the turn proceeds as
+    # an ordinary one, with a player notice.
+    enacted_level_up = body.level_up
+    level_up_gated = False
+    if body.level_up is not None and not isinstance(session.pending_level_up, dict):
+        enacted_level_up = None
+        level_up_gated = True
+        logger.info(
+            "level-up enactment with no pending proposal stripped (session %s)",
+            body.session_id,
+        )
+
+    next_turn_number = (session.turns[-1]["turn_number"] + 1) if session.turns else 1
+
+    # Item 6a hardening (codex P1 + coderabbit Major on PR #201, convergent):
+    # consume the proposal DURABLY BEFORE anything else — the LLM call, the
+    # progression dispatch, the turn's session write. The failure directions
+    # are asymmetric: progression-applied-but-proposal-still-pending lets a
+    # retry double-apply the level (the exploit class this PR closes), while
+    # proposal-consumed-but-progression-failed costs one proposal the DM can
+    # re-offer (surfaced via the existing dispatch-failure notice). Fail
+    # CLOSED toward the exploit. Costs one extra session write on enactment
+    # turns only. If the consume write itself fails, the enactment degrades
+    # to an ordinary turn (proposal still on disk — retryable) with a notice.
+    # Residual: two CONCURRENT streams on one session could both pass the
+    # gate before either consume lands — same-session request serialization
+    # is a broader pre-existing gap (turn numbering races identically),
+    # tracked in docs/BACKLOG.md.
+    level_up_consume_failed = False
+    if enacted_level_up is not None:
+        _pending_backup = session.pending_level_up
+        session.pending_level_up = None
+        _consume = session_state.write_session(
+            config,
+            session,
+            log_entry="Level-up enacted — pending proposal consumed.",
+            turn_number=next_turn_number,
+        )
+        if not _consume.ok:
+            logger.warning(
+                "level-up consume write failed (%s) — degrading to ordinary turn",
+                _consume.error,
+            )
+            session.pending_level_up = _pending_backup
+            enacted_level_up = None
+            level_up_consume_failed = True
+
     death_outcome_obj = None
     death_outcome_hint: dict | None = None
     death_pc_module_data: dict | None = None
@@ -694,12 +747,32 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
         # ADR-0005 progression module (RFC-0009): on a level-up turn the body
         # carries the player's chosen stat; the engine renders it as a
         # LEVEL-UP CHOICE block. None otherwise.
-        level_up=body.level_up.model_dump() if body.level_up is not None else None,
+        level_up=(
+            enacted_level_up.model_dump() if enacted_level_up is not None else None
+        ),
     )
 
-    next_turn_number = (session.turns[-1]["turn_number"] + 1) if session.turns else 1
-
     def generator() -> Iterator[str]:
+        if level_up_consume_failed:
+            yield _sse_event(
+                {
+                    "type": "error",
+                    "content": (
+                        "The level-up could not be recorded — nothing was "
+                        "enacted. Please try again."
+                    ),
+                }
+            )
+        if level_up_gated:
+            yield _sse_event(
+                {
+                    "type": "error",
+                    "content": (
+                        "No level-up has been proposed — nothing was enacted. "
+                        "Growth is offered by the story at earned milestones."
+                    ),
+                }
+            )
         buffer: list[str] = []
         # Item 3: the gate keeps <world_update> markup out of the player-visible
         # token events — the SPA's strippers require the CLOSING tag, so a
@@ -836,7 +909,9 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
         # The engine's vitality verdict for this turn — the SAME value
         # enforce_progression consumes at the dispatch seam below, so the hint the
         # player sees and the state we persist can't disagree (RFC-0018 fast-follow).
-        _choice = body.level_up.model_dump() if body.level_up is not None else None
+        _choice = (
+            enacted_level_up.model_dump() if enacted_level_up is not None else None
+        )
         _vitality = progression.authoritative_vitality_for_pc(
             world_context.characters,
             session.player_character_name,
@@ -852,7 +927,7 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
             session.player_character_name,
             _choice,
         )
-        if body.level_up is not None:
+        if enacted_level_up is not None:
             if _prog is not None:
                 _mirror_progression_to_hint(
                     frontend_hint,
@@ -882,6 +957,32 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
                 frontend_hint, session.player_character_name, _prog[0], _prog[1]
             )
 
+        # Item 6a — record a NEW proposal from this turn's response, BEFORE
+        # the hint is emitted so display and gate can never disagree (#189;
+        # coderabbit P2 on #201: a malformed DM proposal like {} used to
+        # record an INVISIBLE pending — the SPA rejects the shape and shows no
+        # card — that a crafted request could then enact). The hint's
+        # level_up is REPLACED with the engine-derived target when recorded,
+        # and stripped when the gate won't honor it (unresolved PC / at cap).
+        # POST-enactment level (coderabbit Minor): a level-4 PC enacting to 5
+        # this same turn must not get a fresh proposal recorded at the cap.
+        # Enactment consumption itself is handled durably at the route level.
+        if isinstance(frontend_hint, dict) and isinstance(
+            frontend_hint.get("level_up"), dict
+        ):
+            _post_level = _prog[0] if _prog is not None else None
+            if _post_level is not None and _post_level < progression.MAX_LEVEL:
+                session.pending_level_up = {
+                    "to_level": _post_level + 1,
+                    "turn": next_turn_number,
+                }
+                # The DM's to_level is advisory (a hallucinated 9 records —
+                # and now displays — as the engine's number).
+                frontend_hint["level_up"] = {"to_level": _post_level + 1}
+            else:
+                frontend_hint.pop("level_up", None)
+                logger.info("DM level-up proposal ignored (PC unresolved or at cap)")
+
         # Emit the world_update event in the shape the frontend
         # expects (DM hint shape, not the fs-manager schema shape).
         yield _sse_event({"type": "world_update", "data": frontend_hint})
@@ -901,7 +1002,7 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
         # death-save resolution, or an enacted level-up) MUST write that outcome
         # even if the DM emitted no <world_update> — synthesize a minimal payload so
         # the status/clock or the level/stats still land authoritatively.
-        if (death_outcome_obj is not None or body.level_up is not None) and (
+        if (death_outcome_obj is not None or enacted_level_up is not None) and (
             payload is None
         ):
             # log_entry has a schema minLength of 10 — a short DM narrative would
@@ -957,7 +1058,9 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
                 stored_characters=world_context.characters,
                 player_name=session.player_character_name,
                 choice=(
-                    body.level_up.model_dump() if body.level_up is not None else None
+                    enacted_level_up.model_dump()
+                    if enacted_level_up is not None
+                    else None
                 ),
                 class_rules=_class_rules,
                 archetypes=_archetypes,
@@ -1023,7 +1126,14 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
         session_write = session_state.write_session(
             config,
             session,
-            log_entry=narrative[:200] or f"Turn {next_turn_number} completed.",
+            # Schema minLength is 10 and `or` only catches EMPTY — a short
+            # nonempty narrative ("Done.") failed the whole session write
+            # (codex on PR #201; pre-existing).
+            log_entry=(
+                narrative[:200]
+                if len(narrative[:200].strip()) >= 10
+                else f"Turn {next_turn_number} completed."
+            ),
             turn_number=next_turn_number,
         )
 

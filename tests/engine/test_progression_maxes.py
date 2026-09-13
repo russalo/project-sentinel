@@ -630,3 +630,48 @@ def test_non_positive_governing_stats_derive_no_max():
         12,
         None,
     )
+
+
+# ── Item 6b: level-cap short-circuit ──────────────────────────────────────────
+
+
+def test_enactment_at_cap_is_a_full_noop():
+    """min(cur+1, MAX_LEVEL) froze the level but the stat still bumped —
+    +1 stat / +hp_factor hp.max per re-enactment until STAT_CAP (exploit-
+    proven). At cap an enactment changes NOTHING."""
+    stats = {"body": 6, "mind": 5, "heart": 5, "will": 5}
+    level, out = progression.authoritative_progression(
+        progression.MAX_LEVEL, stats, {"stat": "body"}
+    )
+    assert level == progression.MAX_LEVEL
+    assert out == stats
+
+
+def test_enactment_below_cap_still_advances():
+    level, out = progression.authoritative_progression(
+        progression.MAX_LEVEL - 1, {"body": 6}, {"stat": "body"}
+    )
+    assert level == progression.MAX_LEVEL
+    assert out["body"] == 7
+
+
+def test_cap_enactment_yields_notice_and_no_growth():
+    pc = _pc(
+        {"body": 6, "mind": 5, "heart": 5, "will": 5},
+        hp={"current": 48, "max": 48},
+        level=progression.MAX_LEVEL,
+    )
+    payload = _payload([_op(status="alive")])
+    notices = progression.enforce_progression(
+        payload,
+        stored_characters=[pc],
+        player_name="Kael",
+        choice={"stat": "body"},
+        class_rules=WARRIOR,
+    )
+    data = payload["updates"][0]["data"]
+    assert data["level"] == progression.MAX_LEVEL
+    sheet = data["module_data"]["character_sheet"]
+    assert sheet["stats"]["body"] == 6  # no bump
+    assert sheet["hp"] == {"current": 48, "max": 48}  # no growth
+    assert any("level cap" in n for n in notices)
