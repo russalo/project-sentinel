@@ -756,3 +756,83 @@ def test_provisioning_failure_commits_partial_state_before_502(
     assert response.status_code == 502
     assert len(fake_commit_log) == 1
     assert "provisioning failure capture" in fake_commit_log[0]["summary"]
+
+
+# ── truncated-intro guard (Item 3 / playtest F3a) ────────────────────
+
+
+def test_truncated_intro_retries_once_and_succeeds(
+    client, fake_openai, fake_dispatch_log
+):
+    """finish_reason=="length" on the intro (the thinking-model budget clip)
+    gets ONE clean retry on the blocking path — the player sees only the
+    complete second response, and exactly one world is minted."""
+    fake_openai.chat.completions.queue_blocking_responses(
+        ("You step into the wastes, broken only by the mournful cre", "length"),
+        (_opening_response(), "stop"),
+    )
+    response = client.post(
+        "/api/session/new",
+        json={
+            "worldName": "W",
+            "playerCharacterName": "Kael",
+            "playerCharacterClass": "Warrior",
+        },
+    )
+    assert response.status_code == 200
+    assert len(fake_openai.chat.completions.calls) == 2  # original + one retry
+    narrative = response.json()["turns"][0]["narrative"]
+    assert "Crossroads Tavern" in narrative  # the retry's narrative won
+    assert "mournful cre" not in narrative
+    # Normal creation flow after the retry: provisioning, fact payload, session.
+    assert len(fake_dispatch_log) == 3
+
+
+def test_intro_truncated_twice_fails_creation_cleanly(
+    client, fake_openai, fake_dispatch_log
+):
+    """Retry exhausted → 502 with the existing intro-failure UX, and NOTHING
+    written (no half-minted world whose opening is cut mid-word). The second
+    response exercises the unclosed-block BACKSTOP (no finish_reason)."""
+    fake_openai.chat.completions.queue_blocking_responses(
+        ("A world begins, broken only by the mournful cre", "length"),
+        ('Second try. <world_update>{"world": {"tens', None),
+    )
+    response = client.post(
+        "/api/session/new",
+        json={
+            "worldName": "W",
+            "playerCharacterName": "Kael",
+            "playerCharacterClass": "Warrior",
+        },
+    )
+    assert response.status_code == 502
+    assert "DM agent failed during intro" in response.json()["detail"]
+    assert len(fake_openai.chat.completions.calls) == 2
+    assert fake_dispatch_log == []  # nothing provisioned, nothing dispatched
+
+
+def test_intro_retry_charges_the_llm_ceiling(app, fake_openai, monkeypatch):
+    """The retry is a real second LLM call: with the daily ceiling at 1 the
+    retry itself is refused (429), not silently free."""
+    import dataclasses
+
+    from fastapi.testclient import TestClient
+
+    app.state.settings = dataclasses.replace(app.state.settings, llm_daily_ceiling=1)
+    fake_openai.chat.completions.queue_blocking_responses(
+        ("Clipped opening, mournful cre", "length"),
+        (_opening_response(), "stop"),
+    )
+    client = TestClient(app)
+    response = client.post(
+        "/api/session/new",
+        json={
+            "worldName": "W",
+            "playerCharacterName": "Kael",
+            "playerCharacterClass": "Warrior",
+        },
+    )
+    assert response.status_code == 429
+    # Only the first call happened — the ceiling stopped the retry.
+    assert len(fake_openai.chat.completions.calls) == 1

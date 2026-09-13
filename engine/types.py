@@ -25,7 +25,10 @@ class Config:
     openai_api_key: str
     openai_base_url: str | None = None
     dm_model: str = "gpt-4o-mini"
-    max_completion_tokens: int = 2000
+    # 8000, not 2000: thinking models (gemini-2.5-flash) bill reasoning
+    # tokens against the same budget, so a tight ceiling intermittently
+    # clips the visible output mid-narrative (playtest F3 / Item 3).
+    max_completion_tokens: int = 8000
 
     fs_manager_url: str = "http://127.0.0.1:8010"
     git_sync_url: str = "http://127.0.0.1:8012"
@@ -189,3 +192,8 @@ class DMTurnResult:
     narrative: str
     raw_response: str
     world_update_payload: dict[str, Any] | None
+    # The provider's finish_reason for the completion ("stop", "length", ...),
+    # None when the client doesn't expose one (fakes, some proxies). "length"
+    # is the PRIMARY truncation detector (Item 3): the response ran out of
+    # budget, whatever its shape.
+    finish_reason: str | None = None

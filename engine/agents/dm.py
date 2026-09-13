@@ -121,6 +121,12 @@ def run_turn(
         narrative=narrative,
         raw_response=raw,
         world_update_payload=None,
+        # getattr-defensive: fakes/mock fixtures and some proxies omit it.
+        finish_reason=(
+            getattr(response.choices[0], "finish_reason", None)
+            if response.choices
+            else None
+        ),
     )
 
 
@@ -129,6 +135,7 @@ def stream_turn(
     turn_input: DMTurnInput,
     *,
     client: Any | None = None,
+    meta: dict | None = None,
 ) -> Iterator[str]:
     """Stream a DM turn token-by-token.
 
@@ -159,6 +166,12 @@ def stream_turn(
         Session context plus the player's latest action.
     client
         Optional OpenAI-SDK-compatible client for test injection.
+    meta
+        Optional dict OUT-param: when supplied, the provider's
+        ``finish_reason`` from the final chunk lands in
+        ``meta["finish_reason"]`` after the generator is exhausted — a
+        generator of str tokens has no other channel for it, and the caller
+        needs it as the primary truncation detector (Item 3).
     """
     if client is None:
         client = build_client(config)
@@ -182,8 +195,14 @@ def stream_turn(
     for chunk in stream:
         if not chunk.choices:
             continue
-        delta = chunk.choices[0].delta
-        token = getattr(delta, "content", None) or ""
+        choice = chunk.choices[0]
+        # Capture finish_reason from whichever chunk carries it (providers put
+        # it on the last content chunk or a trailing empty-delta chunk).
+        if meta is not None:
+            reason = getattr(choice, "finish_reason", None)
+            if reason:
+                meta["finish_reason"] = reason
+        token = getattr(getattr(choice, "delta", None), "content", None) or ""
         if token:
             yield token
 
@@ -237,6 +256,12 @@ def generate_intro(
         narrative=narrative,
         raw_response=raw,
         world_update_payload=None,
+        # getattr-defensive: fakes/mock fixtures and some proxies omit it.
+        finish_reason=(
+            getattr(response.choices[0], "finish_reason", None)
+            if response.choices
+            else None
+        ),
     )
 
 

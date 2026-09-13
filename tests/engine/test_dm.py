@@ -42,6 +42,7 @@ class _FakeMessage:
 @dataclass
 class _FakeChoice:
     message: _FakeMessage
+    finish_reason: str | None = None
 
 
 @dataclass
@@ -57,6 +58,7 @@ class _FakeDelta:
 @dataclass
 class _FakeStreamChoice:
     delta: _FakeDelta
+    finish_reason: str | None = None
 
 
 @dataclass
@@ -68,25 +70,51 @@ class _FakeCompletions:
     def __init__(self) -> None:
         self.calls: list[dict] = []
         self._response_text: str = ""
+        self._finish_reason: str | None = None
         self._stream_tokens: list[str | None] = []
+        self._stream_finish_reason: str | None = None
 
-    def set_blocking_response(self, text: str) -> None:
+    def set_blocking_response(
+        self, text: str, finish_reason: str | None = None
+    ) -> None:
         self._response_text = text
+        self._finish_reason = finish_reason
 
-    def set_stream_tokens(self, tokens: list[str | None]) -> None:
+    def set_stream_tokens(
+        self, tokens: list[str | None], finish_reason: str | None = None
+    ) -> None:
         self._stream_tokens = tokens
+        self._stream_finish_reason = finish_reason
 
     def create(self, **kwargs: Any) -> Any:
         self.calls.append(kwargs)
         if kwargs.get("stream"):
-            return iter(
+            chunks = [
                 _FakeStreamChunk(
                     choices=[_FakeStreamChoice(delta=_FakeDelta(content=token))]
                 )
                 for token in self._stream_tokens
-            )
+            ]
+            if self._stream_finish_reason is not None:
+                # Providers carry finish_reason on a trailing empty-delta chunk.
+                chunks.append(
+                    _FakeStreamChunk(
+                        choices=[
+                            _FakeStreamChoice(
+                                delta=_FakeDelta(content=None),
+                                finish_reason=self._stream_finish_reason,
+                            )
+                        ]
+                    )
+                )
+            return iter(chunks)
         return _FakeResponse(
-            choices=[_FakeChoice(message=_FakeMessage(content=self._response_text))]
+            choices=[
+                _FakeChoice(
+                    message=_FakeMessage(content=self._response_text),
+                    finish_reason=self._finish_reason,
+                )
+            ]
         )
 
 
@@ -952,3 +980,39 @@ def test_creation_context_lines_keeps_tone_sandbox_permadeath_always():
 
 if __name__ == "__main__":  # pragma: no cover
     pytest.main([__file__, "-v"])
+
+
+# ── finish_reason plumbing (Item 3) ──────────────────────────────────
+
+
+def test_blocking_paths_capture_finish_reason():
+    from engine.agents import dm
+
+    client = _FakeOpenAI()
+    client.chat.completions.set_blocking_response("A tale. ", finish_reason="length")
+    result = dm.generate_intro(_make_config(), _make_intro_input(), client=client)
+    assert result.finish_reason == "length"
+
+    client.chat.completions.set_blocking_response("A tale. ")  # fake omits it
+    result = dm.generate_intro(_make_config(), _make_intro_input(), client=client)
+    assert result.finish_reason is None
+
+
+def test_stream_turn_reports_finish_reason_via_meta():
+    from engine.agents import dm
+
+    client = _FakeOpenAI()
+    client.chat.completions.set_stream_tokens(["a", "b"], finish_reason="length")
+    meta: dict = {}
+    tokens = list(
+        dm.stream_turn(_make_config(), _make_turn_input(), client=client, meta=meta)
+    )
+    assert tokens == ["a", "b"]
+    assert meta["finish_reason"] == "length"
+
+    # No finish_reason exposed → meta stays empty; omitting meta is fine too.
+    client.chat.completions.set_stream_tokens(["a"])
+    meta = {}
+    list(dm.stream_turn(_make_config(), _make_turn_input(), client=client, meta=meta))
+    assert "finish_reason" not in meta
+    list(dm.stream_turn(_make_config(), _make_turn_input(), client=client))

@@ -37,6 +37,7 @@ from engine import class_rules
 from engine import death_stakes
 from engine import identity
 from engine import progression
+from engine import streamgate
 from engine.agents import dm as dm_agent
 from engine.agents import fact_extractor
 from engine.agents.fact_extractor import _slugify as _slugify_entity
@@ -649,6 +650,14 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
 
     def generator() -> Iterator[str]:
         buffer: list[str] = []
+        # Item 3: the gate keeps <world_update> markup out of the player-visible
+        # token events — the SPA's strippers require the CLOSING tag, so a
+        # truncated block used to render as a raw JSON wall (playtest F3b).
+        # `buffer` still accumulates the full raw text for fact extraction.
+        gate = streamgate.WorldUpdateGate()
+        # OUT-param for the provider's finish_reason (a str-token generator has
+        # no other channel); primary truncation detector below.
+        stream_meta: dict = {}
 
         try:
             # RFC-0016: in mock-DM mode, inject the fixture client for this turn
@@ -659,9 +668,13 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
                 if settings.dm_mode == "mock"
                 else None
             )
-            for token in dm_agent.stream_turn(config, turn_input, client=dm_client):
+            for token in dm_agent.stream_turn(
+                config, turn_input, client=dm_client, meta=stream_meta
+            ):
                 buffer.append(token)
-                yield _sse_event({"type": "token", "content": token})
+                visible = gate.feed(token)
+                if visible:
+                    yield _sse_event({"type": "token", "content": visible})
         except Exception:  # pragma: no cover - network/OpenAI failure
             # Log the full traceback server-side (exc_info=True); send the client a
             # generic message — the upstream string can carry org id + quota
@@ -673,8 +686,39 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
             yield "data: [DONE]\n\n"
             return
 
+        tail = gate.flush()
+        if tail:
+            yield _sse_event({"type": "token", "content": tail})
+
         raw_response = "".join(buffer)
-        narrative = _BLOCK_RE.sub("", raw_response).strip()
+        # Truncation guard (Item 3 / playtest F3): finish_reason=="length"
+        # primary, unclosed-block shape backstop. The narrative has ALREADY
+        # streamed, so an intra-turn silent retry would append a second story —
+        # instead the partial remainder is discarded everywhere (the gate kept
+        # it off the wire; strip_unclosed_block keeps it out of persistence)
+        # and the player is told to resend: their retry IS the retry loop here.
+        # Any COMPLETE blocks in the response are valid data and still dispatch.
+        if fact_extractor.looks_truncated(
+            raw_response, stream_meta.get("finish_reason")
+        ):
+            logger.warning(
+                "DM stream truncated (finish_reason=%r, %d chars) — partial discarded",
+                stream_meta.get("finish_reason"),
+                len(raw_response),
+            )
+            yield _sse_event(
+                {
+                    "type": "error",
+                    "content": (
+                        "The DM's response was cut off before it finished — "
+                        "the incomplete part was discarded. Please try your "
+                        "action again."
+                    ),
+                }
+            )
+        narrative = _BLOCK_RE.sub(
+            "", fact_extractor.strip_unclosed_block(raw_response)
+        ).strip()
         frontend_hint = _parse_frontend_hint(raw_response)
 
         # RFC-0018: resolve the world's class rules for the PC once (fail-safe →

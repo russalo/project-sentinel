@@ -186,6 +186,53 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
             detail="DM agent failed during intro; please retry.",
         ) from exc
 
+    # 1b. Truncation guard (Item 3 / playtest F3a): finish_reason=="length" is
+    # the PRIMARY detector (thinking models bill reasoning against the output
+    # budget, so a clipped response may still parse); the unclosed-block shape
+    # check is the backstop. The intro is the BLOCKING path, so a real DM retry
+    # is clean here — nothing has streamed and nothing is persisted yet. One
+    # retry, then fail the creation with the existing intro-failure UX rather
+    # than mint a world whose opening is cut mid-word (or whose PC/world state
+    # never arrived).
+    if fact_extractor.looks_truncated(
+        intro_result.raw_response, intro_result.finish_reason
+    ):
+        logger.warning(
+            "DM intro truncated (finish_reason=%r, %d chars) — retrying once",
+            intro_result.finish_reason,
+            len(intro_result.raw_response),
+        )
+        # The retry is a real second LLM call: charge the daily ceiling like
+        # the first (mock mode makes no call and its fixtures are complete).
+        if settings.dm_mode != "mock":
+            try:
+                enforce_llm_ceiling(limiter, settings.llm_daily_ceiling)
+            except HTTPException as exc:
+                if exc.status_code == 429:
+                    admin_metrics.rate_limited()
+                raise
+        try:
+            intro_result = dm_agent.generate_intro(
+                config, intro_input, client=intro_client
+            )
+        except Exception as exc:  # pragma: no cover - network/OpenAI failure
+            logger.warning("DM intro retry failed", exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="DM agent failed during intro; please retry.",
+            ) from exc
+        if fact_extractor.looks_truncated(
+            intro_result.raw_response, intro_result.finish_reason
+        ):
+            logger.warning(
+                "DM intro truncated twice (finish_reason=%r) — failing creation",
+                intro_result.finish_reason,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="DM agent failed during intro; please retry.",
+            )
+
     # 2. Extract the initial world payload from the intro.
     extracted = fact_extractor.extract(
         intro_result.raw_response,
