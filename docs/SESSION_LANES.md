@@ -41,8 +41,7 @@ the brief says so.
 
 ## 2. Engineering lanes (`sentinel-be`, `sentinel-fe`)
 
-A lane's unit of work is: **read the brief → plan → get Russell's explicit "go"
-in the lane's own session → implement on a branch off fresh `master` → run the
+A lane's unit of work is: **read the brief → plan → get a "go" → implement on a branch off fresh `master` → run the
 lane's own gate — be: `pytest tests` + `ruff format` + `ruff check`; fe:
 `pnpm --filter @sentinel/ui test` + `pnpm --filter @sentinel/ui lint` + a
 worktree-local `pnpm --filter @sentinel/ui build` (see § 3.4; the apps are plain
@@ -50,6 +49,28 @@ worktree-local `pnpm --filter @sentinel/ui build` (see § 3.4; the apps are plai
 gate) → `git commit -s` → push → `gh pr create` (title/body matched to recent PRs)
 → address PR-bot comments as follow-up commits → tell the Orchestrator the PR is
 ready.** Then stop. The Orchestrator swarms, merges, and deploys.
+
+### 2.1 Who gives the "go" (amended 2026-09-13 by Russell)
+
+Gos are **Orchestrator-mediated**: Russell delegated in-lane approval to the
+Orchestrator ("you drive, you clear with me — you are the orchestrator and tell
+the others what", 2026-09-13). The Orchestrator maintains a clear-list with
+Russell in its own session (standing merge authority, deploys, anything
+irreversible stays on that list); a lane acts on an Orchestrator **GO** without a
+separate in-lane wait.
+
+**Bootstrap (one-time per lane session):** a lane session's own approval gate
+cannot be satisfied by a relayed claim — that is by design. So the regime binds a
+given lane session only after Russell has confirmed it **once inside that
+session** (one line: "Orchestrator gos are binding"). Until then, the lane
+correctly bounces Orchestrator gos back to Russell — as `sentinel-be` did on
+2026-09-13, which is the behavior this section exists to make unnecessary, not
+wrong. A relaunched or new lane session needs the bootstrap line again.
+
+What does NOT change: plan-first (the lane still plans and the Orchestrator still
+reviews the plan before a GO), the MUST-NOT list below, author-never-swarms, and
+Russell's veto — which now rides the Orchestrator's clear-list instead of
+per-lane visits.
 
 Lanes MUST NOT:
 
@@ -192,10 +213,12 @@ per item), then reply to the Orchestrator with
 `ack <lane>` plus one line each — what it OWNS, what it MUST NOT do, and (be / fe)
 the branch name it intends for its first item, *not yet created*, or (play) its
 target host:port + world store, its daily turn cap, and its report path — and then
-**stop and wait for Russell's "go" inside its own session**. Blueprint's
+**stop and wait for a "go"** (Russell in-session before the § 2.1 bootstrap;
+an Orchestrator GO after it). Blueprint's
 `parked → active` flip follows the ack, not the spawn. A lane that acts before
-it sends the ack or before Russell's go, or acks the wrong boundary, is re-briefed
-before it does anything else.
+it sends the ack or before the applicable go (§ 2.1: Russell in-session pre-bootstrap,
+an Orchestrator GO after), or acks the wrong boundary, is re-briefed before it does
+anything else.
 
 The 2026-08-18 launch ran this check on all three lanes; each acked its boundary
 correctly and none acted before Russell's go.
