@@ -67,14 +67,15 @@ class WorldUpdateGate:
         """End-of-stream: the held tail, unless it is block remainder.
 
         Inside an unclosed block → nothing (the truncated JSON must never
-        display). A held tail of >= 2 chars is a plausible cut-off open tag →
-        dropped, matching ``fact_extractor.strip_unclosed_block``; a lone
-        ``<`` is legitimate prose and is returned.
+        display). A held tail of >= 4 chars ("<wor") is a plausible cut-off
+        open tag → dropped, matching ``fact_extractor.strip_unclosed_block``
+        (threshold raised from 2 with it — prose legitimately ends "…</" or
+        "…<w", the #196 swarm nit); anything shorter is returned as prose.
         """
         pending, self._pending = self._pending, ""
         if self._inside:
             return ""
-        if len(pending) >= 2 and _OPEN.startswith(pending):
+        if len(pending) >= 4 and _OPEN.startswith(pending):
             return ""
         return pending
 

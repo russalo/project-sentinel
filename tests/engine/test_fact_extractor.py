@@ -442,10 +442,15 @@ def test_has_unclosed_block_shapes():
     assert has_unclosed_block('Tale. <world_update>{"world": {"tens')
     # Cut mid-CLOSE-tag.
     assert has_unclosed_block('Tale. <world_update>{"a": 1}</world_upd')
-    # Cut mid-OPEN-tag (>= 2 chars of the tag).
+    # Cut mid-OPEN-tag (>= 4 chars of the tag).
     assert has_unclosed_block("Tale ends with <world_upd")
-    # A lone "<" is prose, not a partial tag.
+    assert has_unclosed_block("Tale ends with <wor")
+    # Short bracket runs are PROSE, not partial tags (#196 swarm nit): a
+    # 2-char threshold spuriously flagged healthy responses ending "…</".
     assert not has_unclosed_block("The sign reads 3 <")
+    assert not has_unclosed_block("He trails off …</")
+    assert not has_unclosed_block("angle-bracket aside <w")
+    assert not has_unclosed_block("almost a tag </w")
     assert not has_unclosed_block(None)
     assert not has_unclosed_block(12)
 
