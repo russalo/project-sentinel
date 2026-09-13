@@ -88,6 +88,9 @@ scheduled. They stay here until they earn a spot on `docs/ROADMAP.md`.
 - [ ] **`engine/schema.py` schema-path coupling.** `_SCHEMA_PATH` is hard-coded to `Path(__file__).parent.parent / "schemas" / ...`, which only resolves correctly when `engine/` sits at the repo root alongside `schemas/`. The PR #9 boundary contract states `engine/` should be extractable into a standalone package; in that scenario this path breaks. Fix options: (a) bundle the schema as package data and load via `importlib.resources`, (b) copy `schemas/` into `engine/` as a sibling of `engine/schema.py`, or (c) have the caller inject the loaded schema or its path. Option (c) is the cleanest architecturally but changes `validate()`'s public API. Defer until extraction actually happens.
       _Discovered: 2026-04-13 | Context: flagged by Copilot on PR #9; documented in the module docstring of engine/schema.py and deferred to this item instead of reworked in the scaffold PR_
 
+- [ ] **Fact-Extractor: unbounded entity-name slugs build oversized target paths.** `_slugify` puts a DM-emitted name straight into `data/state/core/<category>/<slug>.json` with no length cap — a very long hallucinated name yields a filename over the common 255-byte filesystem limit, so fs-manager's write fails at the OS layer instead of a clean schema/validation rejection. PR #196 capped the PLAYER name at the request boundary (`player_character_name` max_length=200); this is the sibling path for DM-emitted entities. Fix shape: cap/truncate the slug in `_slugify` (shared by extractor, guards, and resolution — keep them agreeing) or reject the op with an extraction error.
+      _Discovered: 2026-09-13 | Context: coderabbit on PR #196 (deterministic PC provisioning); the player-name half was fixed there, the extractor half was out of scope_
+
 ---
 
 ## Smoke-Test Findings — 2026-04-15 Baseline Run

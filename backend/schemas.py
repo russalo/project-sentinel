@@ -43,8 +43,14 @@ class NewSessionRequest(_CamelModel):
     # `find_player_character` falls back to the legacy first-`role:"player"` scan,
     # which is exactly the shadowing bypass the entity-identity hardening closes
     # (codex). `strip_whitespace` also stops " " from passing the length check.
+    # max_length=200: the name becomes the PC's entity FILENAME via the shared
+    # slug contract (slug + ".json" must stay under the common 255-byte
+    # filesystem cap), and provisioning's log_entry embeds it (schema max 4000).
+    # 200 is generous for a character name and far below either ceiling
+    # (coderabbit on PR #196). The Fact-Extractor sibling (DM-emitted long
+    # entity names) is tracked in docs/BACKLOG.md.
     player_character_name: Annotated[
-        str, StringConstraints(strip_whitespace=True, min_length=1)
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)
     ] = "Traveler"
     player_character_class: str = Field(default="Adventurer")
     world_seed: str | None = None

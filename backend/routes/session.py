@@ -234,9 +234,26 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
         else:
             # Guaranteeing the entity is the point of provisioning; a silent
             # continue would recreate the no-PC-file world this feature closes.
-            # Nothing has been written to this world yet, so raising here
-            # leaves no uncommitted partial state behind.
             logger.error("PC provisioning failed: %s", prov_result.error)
+            # A non-409 failure does NOT prove nothing landed: fs-manager writes
+            # the entity file BEFORE appending the session log, so a failure in
+            # that append — or a connection loss after the write completed —
+            # errors here with the entity already on disk. Commit whatever
+            # exists before raising (fire-and-log, same rationale as the
+            # session-write failure path below) so a partial write never sits
+            # outside git history (codex on PR #196).
+            capture = engine.commit_snapshot(
+                config,
+                session_id=session_id,
+                turn_number=0,
+                summary=f"Session start (provisioning failure capture): {body.world_name}",
+                world_id=world_id,
+            )
+            if not capture.ok:
+                logger.warning(
+                    "commit_snapshot failed after provisioning failure: %s",
+                    capture.error,
+                )
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail="player character provisioning failed; please retry.",
@@ -296,8 +313,9 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
         "world_updates": _intro_hint(
             intro_result.raw_response,
             body.player_character_name,
-            established_archetype=established_archetype if pc_established else None,
-            established_level=(provisioning.STARTING_LEVEL if pc_established else None),
+            established_pc=(
+                prov_payload["updates"][0]["data"] if pc_established else None
+            ),
         ),
         "created_at": started_at,
     }
@@ -390,8 +408,7 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
 def _intro_hint(
     raw_response: str,
     player_name: str,
-    established_archetype: str | None = None,
-    established_level: int | None = None,
+    established_pc: dict | None = None,
 ) -> dict:
     """The intro's frontend hint, archetype-sanitized and vitality-seeded
     (RFC-0019) so it matches what the intro dispatch persists — including the
@@ -403,6 +420,18 @@ def _intro_hint(
     though the dispatched payload was sanitized (coderabbit).
     """
     hint = _parse_hint_block_for_frontend(raw_response)
+    # When provisioning created the PC but the DM's hint never mentions it,
+    # synthesize the skeleton entry — otherwise the UI has no PC until a reload
+    # (codex on PR #196). Before the sanitizers, so the entry flows through the
+    # same pins as a DM-written one.
+    if established_pc is not None:
+        provisioning.ensure_hint_pc(hint, established_pc)
+    established_archetype = (
+        established_pc.get("archetype") if isinstance(established_pc, dict) else None
+    )
+    established_level = (
+        established_pc.get("level") if isinstance(established_pc, dict) else None
+    )
     # Identity first — WorldCreation.jsx applies this hint directly and skips
     # hydration after creation, so an imposter claim would make the client treat it
     # as the player for the entire initial session (codex).

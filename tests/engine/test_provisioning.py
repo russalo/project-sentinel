@@ -193,3 +193,33 @@ def test_pin_hint_pc_level_tolerates_malformed_shapes():
     assert provisioning.pin_hint_pc_level(None, "Kael", 1) == 0
     assert provisioning.pin_hint_pc_level({"characters": {}}, "Kael", 1) == 0
     assert provisioning.pin_hint_pc_level({"characters": [None, "x"]}, "Kael", 1) == 0
+
+
+# ── ensure_hint_pc ───────────────────────────────────────────────────
+
+
+def test_ensure_hint_pc_appends_a_copy_when_absent():
+    pc = {"name": "Kael", "class": "Warrior", "role": "player", "level": 1}
+    hint = {}
+    assert provisioning.ensure_hint_pc(hint, pc) is True
+    assert hint["characters"] == [pc]
+    assert hint["characters"][0] is not pc  # a copy — hint mutation can't leak back
+
+
+def test_ensure_hint_pc_defers_to_an_existing_entry():
+    pc = {"name": "O'Neil", "role": "player", "level": 1}
+    # Slug-equivalent spelling counts as present (same entity file).
+    hint = {"characters": [{"name": "O Neil", "role": "npc"}]}
+    assert provisioning.ensure_hint_pc(hint, pc) is False
+    assert len(hint["characters"]) == 1
+
+
+def test_ensure_hint_pc_tolerates_malformed_shapes():
+    pc = {"name": "Kael"}
+    assert provisioning.ensure_hint_pc(None, pc) is False
+    assert provisioning.ensure_hint_pc({"characters": "oops"}, pc) is False
+    assert provisioning.ensure_hint_pc({}, None) is False
+    assert provisioning.ensure_hint_pc({}, {"name": "李"}) is False  # no slug
+    hint = {"characters": [None, "x"]}
+    assert provisioning.ensure_hint_pc(hint, pc) is True  # junk entries skipped
+    assert hint["characters"][-1] == {"name": "Kael"}

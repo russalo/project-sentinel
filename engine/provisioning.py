@@ -198,3 +198,36 @@ def pin_hint_pc_level(hint: Any, player_name: str, level: int | None) -> int:
             char["level"] = level
             touched += 1
     return touched
+
+
+def ensure_hint_pc(hint: Any, pc_data: Any) -> bool:
+    """Append the provisioned PC skeleton to a DM **hint** that has no entry for
+    it, in place. Returns True when an entry was added.
+
+    When the intro omits the PC (or omits ``<world_update>`` entirely), the
+    provisioning dispatch creates the entity on disk — but the hint sanitizers
+    only modify entries that exist, ``WorldCreation.jsx`` applies the hint
+    verbatim, and ``useWorldHydration`` skips re-fetching after creation. So
+    without this the UI's character panel and vitals don't know the PC exists
+    until a reload (codex on PR #196). The appended entry is a copy of exactly
+    what was dispatched — displayed == persisted, the #189 rule.
+    """
+    if not isinstance(hint, dict) or not isinstance(pc_data, dict):
+        return False
+    slug = _slugify_entity(str(pc_data.get("name", "")).strip())
+    if not slug:
+        return False
+    chars = hint.get("characters")
+    if chars is None:
+        chars = []
+        hint["characters"] = chars
+    if not isinstance(chars, list):
+        return False  # malformed LLM shape — never clobber, the hint is display-only
+    for char in chars:
+        if (
+            isinstance(char, dict)
+            and _slugify_entity(str(char.get("name", "")).strip()) == slug
+        ):
+            return False  # the DM introduced the PC itself; sanitizers own it
+    chars.append(dict(pc_data))
+    return True

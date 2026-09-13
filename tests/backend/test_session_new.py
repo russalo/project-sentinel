@@ -85,8 +85,10 @@ def test_new_session_dispatches_initial_world_state_to_fs_manager(
     assert prov_op["target_file"] == "data/state/core/entities/p.json"
     assert prov_op["data"]["role"] == "player"
     assert prov_op["data"]["level"] == 1
-    # Same world as every other dispatch — per-world routing threads through.
-    assert fake_dispatch_log[0]["world_id"] == fake_dispatch_log[1]["world_id"]
+    # Same world on every dispatch — per-world routing threads through all
+    # three, including the session-metadata write (coderabbit).
+    world_id = response.json()["worldId"]
+    assert {entry["world_id"] for entry in fake_dispatch_log} == {world_id}
 
     fact_payload = fake_dispatch_log[1]["payload"]
     targets = {u["target_file"] for u in fact_payload["updates"]}
@@ -649,3 +651,108 @@ def test_unsluggable_name_skips_provisioning_loudly(
     assert any("no usable entity slug" in rec.message for rec in caplog.records), (
         caplog.records
     )
+
+
+def test_oversized_player_name_is_rejected_at_the_boundary(client, fake_openai):
+    """coderabbit (PR #196): the name becomes the entity FILENAME via the slug
+    contract — an unbounded name builds an unwriteable path. 200 keeps
+    slug + ".json" under the 255-byte filesystem cap."""
+    resp = client.post(
+        "/api/session/new",
+        json={
+            "worldName": "W",
+            "playerCharacterName": "K" * 201,
+            "playerCharacterClass": "Warrior",
+        },
+    )
+    assert resp.status_code == 422
+    # …and the cap itself is fine.
+    fake_openai.chat.completions.set_blocking_response("A road. Nothing stirs.")
+    resp = client.post(
+        "/api/session/new",
+        json={
+            "worldName": "W",
+            "playerCharacterName": "K" * 200,
+            "playerCharacterClass": "Warrior",
+        },
+    )
+    assert resp.status_code == 200
+
+
+def test_provisioned_pc_is_synthesized_into_the_creation_hint(
+    client, fake_openai, fake_dispatch_log
+):
+    """codex (PR #196): when the DM omits the PC (or the whole world_update),
+    the UI must still learn the provisioned entity exists — WorldCreation
+    applies the hint verbatim and hydration is skipped after creation."""
+    fake_openai.chat.completions.set_blocking_response(
+        "The tavern is silent. Nothing stirs."
+    )
+    response = client.post(
+        "/api/session/new",
+        json={
+            "worldName": "Empty",
+            "playerCharacterName": "Ghost",
+            "playerCharacterClass": "Warrior",
+        },
+    )
+    assert response.status_code == 200
+    chars = response.json()["turns"][0]["worldUpdates"]["characters"]
+    (pc,) = chars
+    # Displayed == persisted: the hint entry is the dispatched skeleton.
+    assert pc == fake_dispatch_log[0]["payload"]["updates"][0]["data"]
+    assert pc["role"] == "player"
+    assert pc["level"] == 1
+    assert pc["archetype"] == "warrior"
+
+
+def test_hint_synthesis_defers_to_a_dm_written_pc(
+    client, fake_openai, fake_dispatch_log
+):
+    """When the DM's hint already carries the PC, nothing is appended — the
+    sanitizers own that entry (no duplicate cards)."""
+    fake_openai.chat.completions.set_blocking_response(_opening_response())
+    response = client.post(
+        "/api/session/new",
+        json={
+            "worldName": "W",
+            "playerCharacterName": "Old Maren",  # collides with the DM's NPC slug
+            "playerCharacterClass": "Warrior",
+        },
+    )
+    assert response.status_code == 200
+    chars = response.json()["turns"][0]["worldUpdates"]["characters"]
+    assert len([c for c in chars if c.get("name") == "Old Maren"]) == 1
+
+
+def test_provisioning_failure_commits_partial_state_before_502(
+    app, fake_openai, fake_commit_log, monkeypatch
+):
+    """codex (PR #196): fs-manager writes the entity BEFORE the session-log
+    append, so a non-409 failure can leave a real write on disk — commit it
+    before raising, like the session-write failure path."""
+    import engine
+    from fastapi.testclient import TestClient
+
+    _selective_dispatch(
+        monkeypatch,
+        engine.DispatchResult(
+            ok=False,
+            status_code=500,
+            body={"detail": "log append failed"},
+            error="fs-manager rejected payload (500): log append failed",
+        ),
+    )
+    fake_openai.chat.completions.set_blocking_response(_opening_response())
+    client = TestClient(app)
+    response = client.post(
+        "/api/session/new",
+        json={
+            "worldName": "Unlucky",
+            "playerCharacterName": "Kael",
+            "playerCharacterClass": "Warrior",
+        },
+    )
+    assert response.status_code == 502
+    assert len(fake_commit_log) == 1
+    assert "provisioning failure capture" in fake_commit_log[0]["summary"]
