@@ -207,6 +207,33 @@ def _normalize_archetype_hint(hint: dict, player_name: str, pin: str | None) -> 
             pc.pop("archetype", None)
 
 
+def _normalize_progression_hint(
+    hint: dict, player_name: str, level: int, stats: dict
+) -> None:
+    """Make the hint's ``level`` + ``stats`` agree with what
+    ``enforce_progression`` persists — on EVERY turn, not only a level-up
+    (Item 5b; playtest 2026-09-13: a DM hint carrying ``level: 99`` displayed
+    until reload while the persisted state was already forced — the mirror ran
+    only on levelUp turns).
+
+    Patches every existing PC fragment (the client applies fragments in order,
+    so a later unnormalized one would restore the rejected value); never
+    creates one — an untouched PC needs no correction. ``level`` is forced
+    outright; ``stats`` only corrected where the fragment emitted them — a
+    fragment without stats already displays the stored (authoritative) values
+    via the client store."""
+    for pc in _locate_all_pc_in_hint(hint, player_name):
+        pc["level"] = level
+        module_data = pc.get("module_data")
+        if not isinstance(module_data, dict):
+            continue
+        sheet = module_data.get("character_sheet")
+        if not isinstance(sheet, dict):
+            continue
+        if "stats" in sheet:
+            sheet["stats"] = dict(stats)
+
+
 def _normalize_pool(
     sheet: dict,
     key: str,
@@ -246,6 +273,13 @@ def _normalize_pool(
     if isinstance(existing, dict):
         if engine_max is not None:
             existing["max"] = engine_max
+            # Item 5b: the displayed current is bounded by the SAME rule the
+            # persisted one is (progression.clamp_current) — a DM hint pool of
+            # {current: 9999} would otherwise render 9999/<max> until reload.
+            if "current" in existing:
+                existing["current"] = progression.clamp_current(
+                    existing["current"], engine_max
+                )
     elif key in sheet:
         if engine_max is not None:
             sheet[key] = {"current": engine_max, "max": engine_max}
@@ -793,12 +827,15 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
             _class_rules,
         )
 
+        # The authoritative (level, stats) for this turn — stored values on an
+        # ordinary turn, stored+delta on an enacted level-up. Computed once and
+        # shared by the levelUp mirror below and the every-turn normalizer.
+        _prog = progression.authoritative_for_pc(
+            world_context.characters,
+            session.player_character_name,
+            _choice,
+        )
         if body.level_up is not None:
-            _prog = progression.authoritative_for_pc(
-                world_context.characters,
-                session.player_character_name,
-                _choice,
-            )
             if _prog is not None:
                 _mirror_progression_to_hint(
                     frontend_hint,
@@ -819,6 +856,13 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
         if _archetypes:
             _normalize_archetype_hint(
                 frontend_hint, session.player_character_name, _pin_archetype
+            )
+        # RFC-0017 display truthfulness on EVERY turn (Item 5b): level + stats
+        # are engine-owned and already forced on the persisted write — the hint
+        # must never show a DM claim enforcement rejects.
+        if _prog is not None:
+            _normalize_progression_hint(
+                frontend_hint, session.player_character_name, _prog[0], _prog[1]
             )
 
         # Emit the world_update event in the shape the frontend

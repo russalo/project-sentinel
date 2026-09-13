@@ -324,3 +324,114 @@ def test_invalid_archetype_never_persists_end_to_end(
 
     op = _pc_op(fake_dispatch_log[0]["payload"])
     assert "archetype" not in op["data"]  # unresolvable slug never stored
+
+
+# ── Item 5: current clamp + every-turn level/stats hint mirror ────────────────
+
+SESSION_CLAMP = "e5e5e5e5-5555-4555-8555-e5e5e5e5e5e5"
+SESSION_LEVEL99 = "f6f6f6f6-6666-4666-8666-f6f6f6f6f6f6"
+
+
+def test_injected_current_9999_clamped_end_to_end(
+    client, fake_openai, fake_dispatch_log, tmp_data_dir
+):
+    """THE EXPLOIT REGRESSION (playtest 2026-09-13): hp.current 9999 injected
+    via <world_update> used to persist verbatim → unkillable PC. Now: persisted
+    current == max, displayed current == max, player notice emitted."""
+    _prime_session(tmp_data_dir, SESSION_CLAMP)
+    _prime_pc(tmp_data_dir, pc_class="Warrior", body=6, hp={"current": 40, "max": 48})
+    world_update = json.dumps(
+        {
+            "characters": [
+                {
+                    "name": "Bran",
+                    "action": "upsert",
+                    "module_data": {"character_sheet": {"hp": {"current": 9999}}},
+                }
+            ]
+        }
+    )
+    fake_openai.chat.completions.set_stream_tokens(
+        ["Vigor floods you. ", f"<world_update>{world_update}</world_update>"]
+    )
+
+    resp = client.post(
+        "/api/stream",
+        json={"action": "declare myself immortal", "sessionId": SESSION_CLAMP},
+    )
+    assert resp.status_code == 200
+    events = [
+        json.loads(line[len("data: ") :])
+        for line in resp.text.split("\n")
+        if line.startswith("data: ") and line[len("data: ") :].strip() != "[DONE]"
+    ]
+
+    # Persisted: clamped to the engine max (6×8=48).
+    op = _pc_op(fake_dispatch_log[0]["payload"])
+    assert op["data"]["module_data"]["character_sheet"]["hp"] == {
+        "current": 48,
+        "max": 48,
+    }
+    # Displayed: the SAME value (shared clamp rule) — not 9999 until reload.
+    hint = next(e for e in events if e.get("type") == "world_update")["data"]
+    pc_hint = next(c for c in hint["characters"] if c.get("name") == "Bran")
+    assert pc_hint["module_data"]["character_sheet"]["hp"] == {
+        "current": 48,
+        "max": 48,
+    }
+    # Player notice.
+    notices = [e["content"] for e in events if e.get("type") == "error"]
+    assert any("clamped" in n for n in notices)
+
+
+def test_dm_level_99_hint_normalized_on_ordinary_turn(
+    client, fake_openai, fake_dispatch_log, tmp_data_dir
+):
+    """Item 5b (playtest 2026-09-13): the persisted level was already forced
+    every turn, but the hint mirror ran only on levelUp turns — a DM hint
+    carrying level:99 displayed until reload. Now every turn normalizes."""
+    _prime_session(tmp_data_dir, SESSION_LEVEL99)
+    _prime_pc(tmp_data_dir, pc_class="Warrior", body=6, hp={"current": 48, "max": 48})
+    world_update = json.dumps(
+        {
+            "characters": [
+                {
+                    "name": "Bran",
+                    "action": "upsert",
+                    "level": 99,
+                    "module_data": {
+                        "character_sheet": {
+                            "stats": {"body": 9, "mind": 9, "heart": 9, "will": 9}
+                        }
+                    },
+                }
+            ]
+        }
+    )
+    fake_openai.chat.completions.set_stream_tokens(
+        ["Power surges. ", f"<world_update>{world_update}</world_update>"]
+    )
+
+    resp = client.post(
+        "/api/stream", json={"action": "ascend", "sessionId": SESSION_LEVEL99}
+    )
+    assert resp.status_code == 200
+    events = [
+        json.loads(line[len("data: ") :])
+        for line in resp.text.split("\n")
+        if line.startswith("data: ") and line[len("data: ") :].strip() != "[DONE]"
+    ]
+    hint = next(e for e in events if e.get("type") == "world_update")["data"]
+    pc_hint = next(c for c in hint["characters"] if c.get("name") == "Bran")
+    # Displayed == persisted: the stored level (2) and stored stats — not the
+    # DM's 99s.
+    assert pc_hint["level"] == 2
+    assert pc_hint["module_data"]["character_sheet"]["stats"] == {
+        "body": 6,
+        "mind": 5,
+        "heart": 5,
+        "will": 5,
+    }
+    # …and the persisted payload agrees (already enforced pre-Item-5).
+    op = _pc_op(fake_dispatch_log[0]["payload"])
+    assert op["data"]["level"] == 2

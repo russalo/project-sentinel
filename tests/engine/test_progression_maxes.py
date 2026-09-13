@@ -467,3 +467,140 @@ def test_real_module_free_text_class_is_fail_safe():
         assert _sheet(payload)["hp"]["max"] == 200  # DM value survives
     finally:
         registry.clear()
+
+
+# ── current clamp (Item 5 — the injected-9999 unkillable-PC exploit) ──────────
+
+
+def test_injected_over_max_current_is_clamped_with_notice():
+    pc = _pc(
+        {"body": 7, "mind": 5, "heart": 6, "will": 4}, hp={"current": 40, "max": 56}
+    )
+    payload = _payload(
+        [_op(module_data={"character_sheet": {"hp": {"current": 9999}}})]
+    )
+    notices = progression.enforce_progression(
+        payload,
+        stored_characters=[pc],
+        player_name="Kael",
+        choice=None,
+        class_rules=WARRIOR,
+    )
+    hp = _sheet(payload)["hp"]
+    assert hp == {"current": 56, "max": 56}  # clamped to the engine max
+    assert any("clamped" in n for n in notices)
+
+
+def test_negative_current_is_floored_at_zero_with_notice():
+    """The 0-floor: status — not negative HP — is the death authority
+    (RFC-0014), and the vitals silhouette maps 0-100%."""
+    pc = _pc(
+        {"body": 7, "mind": 5, "heart": 6, "will": 4}, hp={"current": 12, "max": 56}
+    )
+    payload = _payload([_op(module_data={"character_sheet": {"hp": {"current": -3}}})])
+    notices = progression.enforce_progression(
+        payload,
+        stored_characters=[pc],
+        player_name="Kael",
+        choice=None,
+        class_rules=WARRIOR,
+    )
+    assert _sheet(payload)["hp"]["current"] == 0
+    assert any("clamped" in n for n in notices)
+
+
+def test_legitimate_damage_current_is_untouched_no_notice():
+    pc = _pc(
+        {"body": 7, "mind": 5, "heart": 6, "will": 4}, hp={"current": 56, "max": 56}
+    )
+    payload = _payload([_op(module_data={"character_sheet": {"hp": {"current": 31}}})])
+    notices = progression.enforce_progression(
+        payload,
+        stored_characters=[pc],
+        player_name="Kael",
+        choice=None,
+        class_rules=WARRIOR,
+    )
+    assert _sheet(payload)["hp"]["current"] == 31
+    assert not any("clamped" in n for n in notices)
+
+
+def test_prefix_stored_overflow_is_clamped_on_next_write():
+    """A pre-fix stored 9999 heals on the NEXT PC write: enforcement deep-merges
+    the stored module_data into every PC op, and _apply_max clamps whatever
+    lands. No notice — the DM wrote nothing out of range this turn."""
+    pc = _pc(
+        {"body": 7, "mind": 5, "heart": 6, "will": 4}, hp={"current": 9999, "max": 56}
+    )
+    payload = _payload([_op(status="alive")])  # PC op carrying no pool at all
+    notices = progression.enforce_progression(
+        payload,
+        stored_characters=[pc],
+        player_name="Kael",
+        choice=None,
+        class_rules=WARRIOR,
+    )
+    assert _sheet(payload)["hp"] == {"current": 56, "max": 56}
+    assert not any("clamped" in n for n in notices)
+
+
+def test_growth_over_max_is_clamped():
+    """stored current + growth can't exceed the new max (belt-and-suspenders —
+    growth derives from the same stats as the max, but a stored overflow or
+    future rule drift must never mint an over-full pool)."""
+    assert progression._apply_max({"max": 64}, 64, 8, {"current": 60}) == {
+        "current": 64,
+        "max": 64,
+    }
+
+
+def test_magic_pool_current_clamped_symmetrically():
+    pc = _pc(
+        {"body": 3, "mind": 5, "heart": 6, "will": 8},
+        hp={"current": 12, "max": 12},
+        magic_pool={"current": 10, "max": 16},
+    )
+    payload = _payload(
+        [_op(module_data={"character_sheet": {"magic_pool": {"current": 500}}})]
+    )
+    notices = progression.enforce_progression(
+        payload,
+        stored_characters=[pc],
+        player_name="Kael",
+        choice=None,
+        class_rules=MAGE,
+    )
+    assert _sheet(payload)["magic_pool"]["current"] == 16
+    assert any("clamped" in n for n in notices)
+
+
+def test_no_known_max_means_no_clamp_fail_safe():
+    pc = _pc({"body": 7, "mind": 5, "heart": 6, "will": 4})
+    payload = _payload(
+        [_op(module_data={"character_sheet": {"hp": {"current": 9999, "max": 10}}})]
+    )
+    notices = progression.enforce_progression(
+        payload,
+        stored_characters=[pc],
+        player_name="Kael",
+        choice=None,
+        class_rules=None,  # free-text class — engine owns no max
+    )
+    assert _sheet(payload)["hp"]["current"] == 9999  # nothing to clamp against
+    assert notices == []
+
+
+def test_verdict_pool_current_is_clamped():
+    """The shared verdict (hint consumer) clamps the same way enforcement does."""
+    pc = _pc(
+        {"body": 7, "mind": 5, "heart": 6, "will": 4}, hp={"current": 9999, "max": 56}
+    )
+    verdict = progression.authoritative_vitality_for_pc([pc], "Kael", None, WARRIOR)
+    assert verdict["hp_pool"] == {"current": 56, "max": 56}
+
+
+def test_clamp_current_helper_bounds_and_coerces():
+    assert progression.clamp_current(9999, 56) == 56
+    assert progression.clamp_current(-3, 56) == 0
+    assert progression.clamp_current(31, 56) == 31
+    assert progression.clamp_current("junk", 56) == 0  # malformed → 0

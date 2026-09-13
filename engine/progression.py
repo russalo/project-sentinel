@@ -98,6 +98,20 @@ def _canonical_archetype(value: Any, archetypes: tuple[str, ...] | None) -> str 
     return None
 
 
+def clamp_current(value: Any, max_value: int) -> int:
+    """The bounded ``current`` for a pool whose ``max`` the engine owns: [0, max].
+
+    ``current`` stays narrative-owned (damage / casting), but it is BOUNDED —
+    an injected ``hp.current: 9999`` used to persist verbatim (never clamped)
+    → an unkillable PC (playtest 2026-09-13, Item 5). The floor is 0: status,
+    not negative HP, is the death authority (RFC-0014), and the vitals
+    silhouette maps 0–100%, so a negative current is display-garbage. Shared
+    by ``_apply_max`` (persisted) and the SSE hint normalizer (displayed) so
+    the two can never disagree. Malformed input coerces via ``_to_int`` → 0
+    (malformed-LLM-output intolerance)."""
+    return min(max(0, _to_int(value)), max_value)
+
+
 def _apply_max(
     pool: Any, new_max: int, growth: int, stored_pool: dict[str, Any]
 ) -> dict[str, Any]:
@@ -116,6 +130,10 @@ def _apply_max(
       it — a damage / casting / reconcile turn must not touch it. Only a genuinely
       *absent* current (first establishment) is seeded to ``new_max`` so a max never
       ships without one; a DM-written current that turn (e.g. damage) is kept.
+    - **Bounded** (Item 5): whatever branch produced it, ``current`` is clamped
+      to ``[0, new_max]`` — narrative-owned but never out of range. Covers the
+      injected-9999 exploit AND a pre-fix stored 9999 (enforcement deep-merges
+      the stored module_data into every PC op, so the next PC write clamps it).
     """
     pool = _as_dict(pool)
     pool["max"] = new_max
@@ -126,6 +144,7 @@ def _apply_max(
         )
     elif "current" not in pool:
         pool["current"] = new_max
+    pool["current"] = clamp_current(pool["current"], new_max)
     return pool
 
 
@@ -271,7 +290,10 @@ def authoritative_vitality_for_pc(
         if stored_current is None:
             # Nothing stored: only a growth turn justifies seeding a full pool.
             return growth, ({"current": new_max, "max": new_max} if growth else None)
-        return growth, {"current": _to_int(stored_current) + growth, "max": new_max}
+        return growth, {
+            "current": clamp_current(_to_int(stored_current) + growth, new_max),
+            "max": new_max,
+        }
 
     factor = _to_int(_as_dict(class_rules).get("hp_factor", 0))
     hp_growth, hp_pool = _pool("body", factor, hp_max, "hp")
@@ -345,8 +367,10 @@ def enforce_progression(
     establishment). The **currents** are otherwise untouched — a plain damage turn
     (no growth) leaves ``hp.current`` exactly as the DM wrote it. When
     ``class_rules`` can't derive a max (None / free-text class not an archetype),
-    that max is left DM-authored — fail-safe (see ``authoritative_maxes``). Clamping
-    ``current ≤ max`` is out of scope (a combat-lane follow-up).
+    that max is left DM-authored — fail-safe (see ``authoritative_maxes``). The
+    **currents** are additionally BOUNDED to ``[0, max]`` wherever the engine
+    knows the max (Item 5 — the injected-``hp.current: 9999`` unkillable-PC
+    exploit); with no known max there is nothing to clamp against — fail-safe.
 
     RFC-0019 (``archetypes`` supplied — the bound class module's archetype slugs):
     also pin the top-level ``archetype``, the mechanical handle that maps a
@@ -447,6 +471,7 @@ def enforce_progression(
 
     dm_attempted = False
     max_attempted = False
+    current_attempted = False
     archetype_attempted = False
     for op in matching:
         data = op.get("data")
@@ -477,6 +502,21 @@ def enforce_progression(
             and _to_int(mp_in.get("max")) != new_mp_max
         )
         max_attempted = max_attempted or hp_max_bad or mp_max_bad
+        # A DM-written current outside [0, max] is a separate attempt (Item 5):
+        # the clamp in _apply_max fixes the write silently; this is the notice.
+        hp_cur_bad = (
+            new_hp_max is not None
+            and "current" in hp_in
+            and _to_int(hp_in.get("current"))
+            != clamp_current(hp_in.get("current"), new_hp_max)
+        )
+        mp_cur_bad = (
+            new_mp_max is not None
+            and "current" in mp_in
+            and _to_int(mp_in.get("current"))
+            != clamp_current(mp_in.get("current"), new_mp_max)
+        )
+        current_attempted = current_attempted or hp_cur_bad or mp_cur_bad
         # RFC-0019 archetype pin (write-once). Precedence:
         #  - a valid STORED archetype is forced on every PC op, so a DM re-map is
         #    overridden (it would otherwise be a free HP lever via the class factor);
@@ -547,6 +587,11 @@ def enforce_progression(
         notices.append(
             "Maximum health and magic are derived by the engine from your stats and "
             "class — the DM's values were corrected."
+        )
+    if current_attempted:
+        notices.append(
+            "Current health and magic stay between zero and their maximums — the "
+            "DM's out-of-range value was clamped."
         )
     if archetype_attempted:
         notices.append(
