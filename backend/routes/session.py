@@ -254,6 +254,9 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
         body.player_character_class,
     )
     pc_established = False
+    pc_preexisting = (
+        False  # the create-409 path: a stored entity already owns this slug
+    )
     if prov_payload is None:
         # Fail LOUD, not fatal: an unsluggable (e.g. non-ASCII) name has no
         # entity file the Fact-Extractor could target either, so the session
@@ -269,6 +272,7 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
         if prov_result.ok:
             pc_established = True
         elif prov_result.status_code == 409:
+            pc_preexisting = True
             # fs-manager's create-409 IS the idempotency mechanism: the entity
             # already exists (a shared-tree slug surviving from a prior
             # session), and re-minting would clobber a leveled character back
@@ -339,6 +343,15 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
         provisioning.strip_payload_pc_level(
             extracted.payload, body.player_character_name
         )
+        if pc_preexisting:
+            # Write-once (RFC-0019): the STORED archetype is authoritative and
+            # this path runs no enforcement, so even a VALID DM claim must not
+            # shallow-merge over it — drop it; a stored entity still lacking
+            # one gets established on a normal turn, where enforce_progression
+            # sees the stored state (coderabbit).
+            provisioning.strip_payload_pc_archetype(
+                extracted.payload, body.player_character_name
+            )
         # …and seed the engine-derived vitality for a PC the intro validly
         # classified. Enforcement never runs here, so otherwise the DM's invented
         # maxes persist: a cleric written as 20/20 is later reconciled to 20/36 and
@@ -363,6 +376,7 @@ def new_session(request: Request, body: NewSessionRequest) -> NewSessionResponse
             established_pc=(
                 prov_payload["updates"][0]["data"] if pc_established else None
             ),
+            pc_preexisting=pc_preexisting,
         ),
         "created_at": started_at,
     }
@@ -456,6 +470,7 @@ def _intro_hint(
     raw_response: str,
     player_name: str,
     established_pc: dict | None = None,
+    pc_preexisting: bool = False,
 ) -> dict:
     """The intro's frontend hint, archetype-sanitized and vitality-seeded
     (RFC-0019) so it matches what the intro dispatch persists — including the
@@ -491,6 +506,11 @@ def _intro_hint(
     # Mirror the payload-side level handling: pin the engine's establishment
     # level when the PC was just provisioned, strip the DM's claim otherwise.
     provisioning.pin_hint_pc_level(hint, player_name, established_level)
+    if pc_preexisting:
+        # Mirror the payload-side 409 rule: the stored archetype is
+        # authoritative, so the display must not show the claim the write seam
+        # just dropped (#189).
+        provisioning.strip_hint_pc_archetype(hint, player_name)
     # …and seed the SAME engine-derived vitality the dispatched payload gets.
     # WorldCreation.jsx applies this hint directly and hydration is skipped after
     # creation, so an unseeded hint would show the DM's invented pools while the

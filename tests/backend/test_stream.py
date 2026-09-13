@@ -486,6 +486,33 @@ def test_stream_cut_midword_without_block_still_notifies(
         e["content"] for e in events if isinstance(e, dict) and e.get("type") == "error"
     ]
     assert any("cut off" in n for n in notices)
+    assert events[-1] == "[DONE]"
+
+
+def test_pure_length_clip_turn_is_not_persisted(
+    client, fake_openai, fake_dispatch_log, fake_commit_log, tmp_data_dir
+):
+    """coderabbit (PR #196): a clipped plain narrative — truncated, no block
+    markup, nothing dispatched — must not be recorded as a completed turn:
+    the notice told the player it was discarded, and persisting it would have
+    the DM build on the half-sentence. The resend regenerates the same turn."""
+    session_id = VALID_SESSION_ID_5
+    _prime_session(tmp_data_dir, session_id)
+    fake_openai.chat.completions.set_stream_tokens(
+        ["Dust settles over ", "the mournful cre"],
+        finish_reason="length",
+    )
+
+    response = client.post(
+        "/api/stream", json={"action": "look", "sessionId": session_id}
+    )
+    assert response.status_code == 200
+    # No dispatch of any kind: no world write, no session write, no commit.
+    assert fake_dispatch_log == []
+    assert fake_commit_log == []
+    # The unclosed-block sibling (test_truncated_stream_block_never_reaches_
+    # the_wire) DOES keep its clean prose prefix — that narrative was complete
+    # before the block began.
 
 
 def test_healthy_stream_emits_no_truncation_notice(client, fake_openai, tmp_data_dir):

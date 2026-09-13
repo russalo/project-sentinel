@@ -134,18 +134,9 @@ def _is_pc_entity_op(op: Any, player_slug: str) -> bool:
     return bool(name) and _slugify_entity(name) == player_slug
 
 
-def strip_payload_pc_level(payload: Any, player_name: str) -> int:
-    """Remove ``level`` from the PC's entity ops in an intro payload, in place.
-    Returns how many were removed.
-
-    ``level`` is engine-owned (RFC-0017), but the intro path runs no
-    ``enforce_progression`` — so a DM emitting ``"level": 7`` at establishment
-    would shallow-merge over the provisioned ``level: 1`` (or over a stored
-    level, in the shared-tree 409 case) and persist unenforced. Stripping —
-    rather than overwriting with 1 — lets fs-manager's merge keep whatever the
-    engine already committed, which is correct in both cases. Tolerant of any
-    malformed payload shape.
-    """
+def _strip_pc_payload_field(payload: Any, player_name: str, field: str) -> int:
+    """Remove one top-level ``field`` from the PC's entity ops, in place.
+    Tolerant of any malformed payload shape; returns how many were removed."""
     stripped = 0
     if not isinstance(payload, dict):
         return 0
@@ -158,10 +149,38 @@ def strip_payload_pc_level(payload: Any, player_name: str) -> int:
     for op in updates:
         if not _is_pc_entity_op(op, player_slug):
             continue
-        if "level" in op["data"]:
-            op["data"].pop("level")
+        if field in op["data"]:
+            op["data"].pop(field)
             stripped += 1
     return stripped
+
+
+def strip_payload_pc_level(payload: Any, player_name: str) -> int:
+    """Remove ``level`` from the PC's entity ops in an intro payload, in place.
+    Returns how many were removed.
+
+    ``level`` is engine-owned (RFC-0017), but the intro path runs no
+    ``enforce_progression`` — so a DM emitting ``"level": 7`` at establishment
+    would shallow-merge over the provisioned ``level: 1`` (or over a stored
+    level, in the shared-tree 409 case) and persist unenforced. Stripping —
+    rather than overwriting with 1 — lets fs-manager's merge keep whatever the
+    engine already committed, which is correct in both cases.
+    """
+    return _strip_pc_payload_field(payload, player_name, "level")
+
+
+def strip_payload_pc_archetype(payload: Any, player_name: str) -> int:
+    """Remove ``archetype`` from the PC's entity ops, in place — the 409
+    already-established path. Returns how many were removed.
+
+    The stored archetype is write-once (RFC-0019) and the intro runs no
+    enforcement, so a valid-but-DIFFERENT DM claim would shallow-merge over
+    the stored pin unchecked (coderabbit on PR #196). Dropping the claim keeps
+    the stored value authoritative; a stored entity that still LACKS one gets
+    established on a normal turn, where ``enforce_progression`` can see the
+    stored state.
+    """
+    return _strip_pc_payload_field(payload, player_name, "archetype")
 
 
 def pin_hint_pc_level(hint: Any, player_name: str, level: int | None) -> int:
@@ -198,6 +217,31 @@ def pin_hint_pc_level(hint: Any, player_name: str, level: int | None) -> int:
             char["level"] = level
             touched += 1
     return touched
+
+
+def strip_hint_pc_archetype(hint: Any, player_name: str) -> int:
+    """Display-side twin of ``strip_payload_pc_archetype`` (#189 rule): on the
+    409 already-established path the hint must not show an archetype claim the
+    write seam just dropped."""
+    stripped = 0
+    if not isinstance(hint, dict):
+        return 0
+    chars = hint.get("characters")
+    if not isinstance(chars, list):
+        return 0
+    player_slug = _slugify_entity(str(player_name or "").strip())
+    if not player_slug:
+        return 0
+    for char in chars:
+        if not isinstance(char, dict):
+            continue
+        name = str(char.get("name", "")).strip()
+        if not name or _slugify_entity(name) != player_slug:
+            continue
+        if "archetype" in char:
+            char.pop("archetype")
+            stripped += 1
+    return stripped
 
 
 def ensure_hint_pc(hint: Any, pc_data: Any) -> bool:

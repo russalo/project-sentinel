@@ -698,9 +698,10 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
         # it off the wire; strip_unclosed_block keeps it out of persistence)
         # and the player is told to resend: their retry IS the retry loop here.
         # Any COMPLETE blocks in the response are valid data and still dispatch.
-        if fact_extractor.looks_truncated(
+        truncated = fact_extractor.looks_truncated(
             raw_response, stream_meta.get("finish_reason")
-        ):
+        )
+        if truncated:
             logger.warning(
                 "DM stream truncated (finish_reason=%r, %d chars) — partial discarded",
                 stream_meta.get("finish_reason"),
@@ -919,6 +920,24 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
                         "content": f"fs-manager rejected update: {dispatch.error}",
                     }
                 )
+
+        # A pure length-clip — truncated, no world_update markup anywhere, and
+        # nothing dispatched — is NOT a completed turn: persisting the
+        # half-sentence would have the DM build on it next turn while the
+        # notice just told the player it was discarded (coderabbit). Skip the
+        # turn record entirely; the resend regenerates the same turn number.
+        # A truncated response that still carried a COMPLETE block (state
+        # landed above) or an UNCLOSED one (its prose prefix is complete)
+        # keeps the cleaned record.
+        if (
+            truncated
+            and payload is None
+            and not _BLOCK_RE.search(raw_response)
+            and not fact_extractor.has_unclosed_block(raw_response)
+        ):
+            logger.info("truncated plain-narrative turn discarded, not persisted")
+            yield "data: [DONE]\n\n"
+            return
 
         # Append the turn to the session file and re-serialize it.
         session.turns.append(

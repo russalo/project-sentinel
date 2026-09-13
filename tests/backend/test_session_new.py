@@ -579,17 +579,20 @@ def test_provisioning_409_is_the_idempotency_path(
         for u in log[1]["payload"]["updates"]
         if u["target_file"].endswith("/entities/kael.json")
     )
-    # No pin: the DM's valid archetype stands (normal-turn enforcement owns
-    # reconciliation against the stored entity).
-    assert pc_op["archetype"] == "mage"
+    # Write-once (RFC-0019): even a VALID DM archetype claim is dropped on the
+    # 409 path — the STORED pin is authoritative and the intro runs no
+    # enforcement, so merging it would overwrite write-once (coderabbit).
+    assert "archetype" not in pc_op
     # level stays engine-owned: stripped so the STORED level survives the merge.
     assert "level" not in pc_op
 
     chars = response.json()["turns"][0]["worldUpdates"]["characters"]
     hint_pc = next(c for c in chars if c["name"] == "Kael")
     # Stripped, not pinned — the stored level isn't known at this seam, and
-    # showing nothing beats showing a DM invention.
+    # showing nothing beats showing a DM invention. Same for the archetype
+    # claim the write seam just dropped (#189: displayed == persisted).
     assert "level" not in hint_pc
+    assert "archetype" not in hint_pc
 
 
 def test_provisioning_failure_returns_502(app, fake_openai, monkeypatch):
