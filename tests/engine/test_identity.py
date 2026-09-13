@@ -254,3 +254,112 @@ def test_an_unsluggable_player_name_still_anchors():
     assert (
         find_player_character([{"name": "0-imposter", "role": "player"}], "李") is None
     )
+
+
+# ── PC self-demotion repair (Item 4 — the #192 sibling gap) ──────────
+
+
+def _pc_op(data, target="data/state/core/entities/kael.json"):
+    return {
+        "session_id": "11111111-1111-1111-1111-111111111111",
+        "log_entry": "a demotion attempt arrives",
+        "updates": [{"target_file": target, "operation": "update", "data": data}],
+    }
+
+
+def test_enforce_repairs_a_pc_self_demotion():
+    from engine.identity import enforce_pc_identity
+
+    payload = _pc_op({"name": "Kael", "role": "npc", "status": "alive"})
+    notices = enforce_pc_identity(payload, "Kael")
+    assert payload["updates"][0]["data"]["role"] == "player"
+    assert notices and "remains the player character" in notices[0]
+
+
+def test_enforce_leaves_the_role_player_repair_shape_alone():
+    """playtest 2026-09-13: an op on the PC's own slug carrying role:"player"
+    is the documented RECOVERY path for a contaminated file — authorized,
+    untouched, no notice."""
+    from engine.identity import enforce_pc_identity
+
+    payload = _pc_op({"name": "Kael", "role": "player"})
+    assert enforce_pc_identity(payload, "Kael") == []
+    assert payload["updates"][0]["data"]["role"] == "player"
+
+
+def test_enforce_pc_op_without_role_is_untouched():
+    from engine.identity import enforce_pc_identity
+
+    payload = _pc_op({"name": "Kael", "status": "alive"})
+    assert enforce_pc_identity(payload, "Kael") == []
+    assert "role" not in payload["updates"][0]["data"]
+
+
+def test_enforce_demotion_repair_normalizes_case_variants():
+    from engine.identity import enforce_pc_identity
+
+    payload = _pc_op({"name": "Kael", "role": "  NPC "})
+    enforce_pc_identity(payload, "Kael")
+    assert payload["updates"][0]["data"]["role"] == "player"
+
+
+def test_enforce_imposter_and_demotion_in_one_payload_yield_both_notices():
+    from engine.identity import enforce_pc_identity
+
+    payload = _pc_op({"name": "Kael", "role": "npc"})
+    payload["updates"].append(
+        {
+            "target_file": "data/state/core/entities/0-imposter.json",
+            "operation": "update",
+            "data": {"name": "0-imposter", "role": "player"},
+        }
+    )
+    notices = enforce_pc_identity(payload, "Kael")
+    assert payload["updates"][0]["data"]["role"] == "player"
+    assert payload["updates"][1]["data"]["role"] == "npc"
+    assert len(notices) == 2
+
+
+def test_enforce_unsluggable_name_keeps_existing_semantics():
+    """No slug → no op can be authorized as the PC's, so the demotion repair
+    stays inert (and the strip-all imposter rule is unchanged)."""
+    from engine.identity import enforce_pc_identity
+
+    payload = _pc_op(
+        {"name": "李", "role": "npc"}, target="data/state/core/entities/x.json"
+    )
+    assert enforce_pc_identity(payload, "李") == []
+    assert payload["updates"][0]["data"]["role"] == "npc"
+
+
+def test_hint_repairs_a_pc_self_demotion():
+    from engine.identity import sanitize_hint_pc_identity
+
+    hint = {"characters": [{"name": "Kael", "role": "npc"}]}
+    notices = sanitize_hint_pc_identity(hint, "Kael")
+    assert hint["characters"][0]["role"] == "player"
+    assert notices and "remains the player character" in notices[0]
+
+
+def test_hint_repair_works_for_a_casefold_identity_pc():
+    """The hint side anchors on NAME identity, so even an unsluggable PC
+    (casefold fallback) is protected from display-side demotion."""
+    from engine.identity import sanitize_hint_pc_identity
+
+    hint = {"characters": [{"name": "李", "role": "npc"}]}
+    sanitize_hint_pc_identity(hint, "李")
+    assert hint["characters"][0]["role"] == "player"
+
+
+def test_hint_pc_without_role_and_npcs_are_untouched():
+    from engine.identity import sanitize_hint_pc_identity
+
+    hint = {
+        "characters": [
+            {"name": "Kael"},
+            {"name": "Goblin", "role": "npc"},
+        ]
+    }
+    assert sanitize_hint_pc_identity(hint, "Kael") == []
+    assert "role" not in hint["characters"][0]
+    assert hint["characters"][1]["role"] == "npc"
