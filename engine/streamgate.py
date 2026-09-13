@@ -56,7 +56,15 @@ class WorldUpdateGate:
                     self._pending = self._pending[idx + len(_OPEN) :]
                     self._inside = True
                     continue
-                hold = _partial_suffix_len(self._pending, _OPEN)
+                # Prefixes of EITHER tag: truncation detection treats a
+                # trailing ">= 4 chars of </world_update>" as a cut too, so a
+                # close-tag prefix must not leak to the wire before the guard
+                # runs (coderabbit on PR #200). A disambiguated tail (next
+                # token makes it non-prefix) is emitted as normal prose.
+                hold = max(
+                    _partial_suffix_len(self._pending, _OPEN),
+                    _partial_suffix_len(self._pending, _CLOSE),
+                )
                 cut = len(self._pending) - hold
                 emitted.append(self._pending[:cut])
                 self._pending = self._pending[cut:]
@@ -75,7 +83,9 @@ class WorldUpdateGate:
         pending, self._pending = self._pending, ""
         if self._inside:
             return ""
-        if len(pending) >= 4 and _OPEN.startswith(pending):
+        if len(pending) >= 4 and (
+            _OPEN.startswith(pending) or _CLOSE.startswith(pending)
+        ):
             return ""
         return pending
 

@@ -159,11 +159,26 @@ def _parse_frontend_hint(raw: str) -> dict:
     return parsed if isinstance(parsed, dict) else {}
 
 
+def _pc_name_key(value) -> str | None:
+    """The identity key for a character name in the hint: the Fact-Extractor
+    slug when sluggable, else the casefolded name — the SAME predicate
+    enforcement (``_pc_entity_op``) and the identity guard use. An exact
+    lowercased comparison missed punctuation variants (stored ``O Neil`` vs
+    session ``O'Neil``, both ``o_neil.json``): enforcement corrected the
+    write, but the hint kept the rejected value (codex + coderabbit on
+    PR #200, convergent)."""
+    name = str(value or "").strip()
+    if not name:
+        return None
+    return _slugify_entity(name) or name.casefold()
+
+
 def _locate_pc_in_hint(hint: dict, player_name: str, *, create: bool) -> dict | None:
     """Find the PC's entry in the SSE ``world_update`` hint (prefer ``role ==
-    "player"``, else name). With ``create``, add a minimal entry when absent so a
-    committed change reaches the UI even if the DM emitted no PC entry. Tolerant of
-    a malformed hint (returns None)."""
+    "player"``, else slug/casefold name identity — see ``_pc_name_key``). With
+    ``create``, add a minimal entry when absent so a committed change reaches
+    the UI even if the DM emitted no PC entry. Tolerant of a malformed hint
+    (returns None)."""
     if not isinstance(hint, dict) or not isinstance(player_name, str):
         return None
     chars = hint.get("characters")
@@ -172,14 +187,15 @@ def _locate_pc_in_hint(hint: dict, player_name: str, *, create: bool) -> dict | 
             return None
         chars = []
         hint["characters"] = chars
-    lowered = player_name.strip().lower()
+    player_key = _pc_name_key(player_name)
     for char in chars:
         if isinstance(char, dict) and str(char.get("role", "")).lower() == "player":
             return char
     for char in chars:
         if (
             isinstance(char, dict)
-            and str(char.get("name", "")).strip().lower() == lowered
+            and player_key is not None
+            and _pc_name_key(char.get("name")) == player_key
         ):
             return char
     if not create:
@@ -343,21 +359,22 @@ def _locate_all_pc_in_hint(hint: dict, player_name: str) -> list[dict]:
     can emit the PC more than once in ``characters``, ``enforce_progression``
     corrects every matching op, and the client applies fragments in order — so an
     unnormalized later fragment would restore a rejected value. Matches the same
-    way as the single locator (``role == "player"`` or a name match), as a union.
-    Tolerant of a malformed hint (returns [])."""
+    way as the single locator (``role == "player"`` or the slug/casefold name
+    identity — ``_pc_name_key``), as a union. Tolerant of a malformed hint
+    (returns [])."""
     if not isinstance(hint, dict) or not isinstance(player_name, str):
         return []
     chars = hint.get("characters")
     if not isinstance(chars, list):
         return []
-    lowered = player_name.strip().lower()
+    player_key = _pc_name_key(player_name)
     return [
         c
         for c in chars
         if isinstance(c, dict)
         and (
             str(c.get("role", "")).lower() == "player"
-            or str(c.get("name", "")).strip().lower() == lowered
+            or (player_key is not None and _pc_name_key(c.get("name")) == player_key)
         )
     ]
 

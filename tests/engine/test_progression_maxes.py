@@ -604,3 +604,29 @@ def test_clamp_current_helper_bounds_and_coerces():
     assert progression.clamp_current(-3, 56) == 0
     assert progression.clamp_current(31, 56) == 31
     assert progression.clamp_current("junk", 56) == 0  # malformed → 0
+
+
+def test_non_finite_current_clamps_to_zero_not_crash():
+    """A valid JSON number like 1e309 parses to float('inf'); int(inf) raises
+    OverflowError, which used to escape _to_int and kill the SSE generator
+    mid-hint-normalization (codex on PR #200). Malformed → 0, same as junk."""
+    assert progression.clamp_current(float("inf"), 56) == 0
+    assert progression.clamp_current(1e309, 56) == 0
+    assert progression.clamp_current(float("nan"), 56) == 0
+
+
+def test_non_positive_governing_stats_derive_no_max():
+    """Legacy/malformed stores can carry 0/negative stats (nothing range-checks
+    them at the intro); body=-2 must not mint hp_max=-16 for the clamp to then
+    drag current down to (coderabbit on PR #200). Non-positive → None →
+    DM-authored, the standard fail-safe."""
+    assert progression.authoritative_maxes({"body": -2, "will": 5}, WARRIOR) == (
+        None,
+        None,
+    )
+    assert progression.authoritative_maxes({"body": 0, "will": 8}, MAGE) == (None, 16)
+    assert progression.authoritative_maxes({"body": 3, "will": 0}, MAGE) == (12, None)
+    assert progression.authoritative_maxes({"body": 3, "will": -1}, MAGE) == (
+        12,
+        None,
+    )

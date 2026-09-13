@@ -86,3 +86,15 @@ def test_junk_tokens_are_tolerated():
     assert gate.feed("") == ""
     assert gate.feed(None) == ""  # type: ignore[arg-type]
     assert gate.flush() == ""
+
+
+def test_close_tag_prefix_at_end_is_held_and_dropped():
+    """Truncation detection counts a trailing >= 4-char CLOSE-tag prefix as a
+    cut, so the gate must not leak it to the wire either (coderabbit on
+    PR #200) — while a disambiguated tail streams as normal prose."""
+    assert _run(["Story ends ", "</wor"]) == "Story ends "
+    assert (
+        _run(["He mutters ", "</worry, not a tag"]) == "He mutters </worry, not a tag"
+    )
+    # Short close-prefix runs stay prose at flush (threshold 4, aligned).
+    assert _run(["He trails off …</"]) == "He trails off …</"

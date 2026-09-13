@@ -58,7 +58,11 @@ def _deep_merge(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]
 def _to_int(value: Any, default: int = 0) -> int:
     try:
         return int(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
+        # OverflowError: a valid JSON number like 1e309 parses to float('inf'),
+        # and int(inf) raises OverflowError — without this, a malformed LLM
+        # current would crash hint normalization mid-stream instead of
+        # clamping (codex on PR #200). NaN raises ValueError, already caught.
         return default
 
 
@@ -207,11 +211,17 @@ def authoritative_maxes(
     """
     rules = _as_dict(class_rules)
     factor = _to_int(rules.get("hp_factor", 0))
-    hp_max = _to_int(stats.get("body", 0)) * factor if factor > 0 else None
+    # A governing stat must be POSITIVE to derive from: stats are 1-10 by the
+    # module contract, but a legacy/malformed store can carry 0 or negatives
+    # (nothing range-checks stats at the intro), and body=-2 would otherwise
+    # mint hp_max=-16 — which _apply_max then persists and clamp_current
+    # dutifully clamps current DOWN to (coderabbit on PR #200). Non-positive →
+    # None → that max stays DM-authored, the standard fail-safe.
+    body = _to_int(stats.get("body", 0))
+    will = _to_int(stats.get("will", 0))
+    hp_max = body * factor if factor > 0 and body > 0 else None
     magic_pool_max = (
-        _to_int(stats.get("will", 0)) * MAGIC_POOL_PER_WILL
-        if rules.get("magic")
-        else None
+        will * MAGIC_POOL_PER_WILL if rules.get("magic") and will > 0 else None
     )
     return hp_max, magic_pool_max
 
