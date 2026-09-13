@@ -47,6 +47,31 @@ def _identity_key(value: Any) -> str | None:
     return _slugify_entity(name) or name.casefold()
 
 
+def _loose_name_key(value: Any) -> str | None:
+    """Casefolded alphanumerics-only key (unicode-aware) — the collision
+    detector for Item 7. Two names that slug identically can still be told
+    apart here: a punctuation VARIANT of the PC's name differs only in
+    non-alphanumerics ("O'Neil" / "O Neil" → both "oneil" — the PC's own
+    write, authorized per #192), while a lossy-slug COLLISION differs in the
+    letters ``_slugify`` dropped ("Þóra Björnsdóttir" → "þórabjörnsdóttir" vs
+    "Ra Bj Rnsd Ttir" → "rabjrnsdttir" — playtest F4's chimera). None when
+    nothing alphanumeric survives — no evidence, never a mismatch."""
+    text = str(value or "").strip()
+    if not text:
+        return None
+    return "".join(ch for ch in text.casefold() if ch.isalnum()) or None
+
+
+def _collision_notice(dropped: list[str]) -> list[str]:
+    if not dropped:
+        return []
+    who = ", ".join(dict.fromkeys(dropped))
+    return [
+        f"A character couldn't be recorded — the name {who} collides with "
+        "your character's. The DM can reintroduce them under a distinct name."
+    ]
+
+
 def _is_pc(name: Any, player_key: str) -> bool:
     """True when this character NAME resolves to the PC's identity."""
     return _identity_key(name) == player_key
@@ -76,6 +101,30 @@ def sanitize_hint_pc_identity(hint: Any, player_name: str) -> list[str]:
     if not player_key:
         return []
 
+    # Item 7 display twin: an entry whose SLUG matches the PC but whose loose
+    # name mismatches is the same collision — and worse here, because the
+    # PC-matching below would treat it AS the PC (#199 would repair its role,
+    # the normalizers would force level onto it). Remove it from the hint.
+    # Casefold-identity PCs (unsluggable names) can't loose-collide — an
+    # identical casefold IS the same name.
+    player_loose = _loose_name_key(player_name)
+    collided: list[str] = []
+    if player_loose:
+        kept_chars = []
+        for char in chars:
+            if isinstance(char, dict):
+                name = char.get("name")
+                if (
+                    _is_pc(name, player_key)
+                    and _loose_name_key(name) is not None
+                    and _loose_name_key(name) != player_loose
+                ):
+                    collided.append(str(name or "").strip() or "unnamed")
+                    continue
+            kept_chars.append(char)
+        if collided:
+            chars[:] = kept_chars
+
     stripped: list[str] = []
     repaired = False
     for char in chars:
@@ -102,7 +151,7 @@ def sanitize_hint_pc_identity(hint: Any, player_name: str) -> list[str]:
         # `role:"player"` in the store.
         char["role"] = "npc"
         stripped.append(str(char.get("name", "")).strip() or "an unnamed character")
-    return _notice(stripped) + _demotion_notice(repaired)
+    return _notice(stripped) + _demotion_notice(repaired) + _collision_notice(collided)
 
 
 def _demotion_notice(repaired: bool) -> list[str]:
@@ -154,6 +203,42 @@ def enforce_pc_identity(payload: Any, player_name: str) -> list[str]:
     # contract, so a punctuation variant of the PC's name still targets its file.
     player_slug = _slugify_entity(str(player_name).strip())
 
+    # Item 7 (playtest F4): _slugify is lossy, so a DIFFERENT character can
+    # slug onto the PC's file ("Ra Bj Rnsd Ttir" → ra_bj_rnsd_ttir, the same
+    # file as "Þóra Björnsdóttir") and — being "the PC's own write" under the
+    # target-path authorization — rename and clobber the PC into a chimera.
+    # An op on the PC's file with a PRESENT, loose-MISMATCHING name is
+    # collision evidence and the op is DROPPED (the character re-lands when
+    # the DM renames it). A loose-matching name (punctuation variant), an
+    # ABSENT name (ordinary fragment update — no evidence; and the
+    # Fact-Extractor always emits name on entity ops, so LLM-path ops are
+    # never nameless), or an unkeyable name stay authorized — fail-safe.
+    # role grants NOTHING here: a colliding op claiming role:"player" is
+    # still a collision (the brief's literal "repair shape" exemption would
+    # have been a bypass). The real repair path — an op with the PC's OWN
+    # name — is untouched.
+    player_loose = _loose_name_key(player_name)
+    collided: list[str] = []
+    if player_slug and player_loose:
+        kept = []
+        for op in updates:
+            data = op.get("data") if isinstance(op, dict) else None
+            if (
+                isinstance(op, dict)
+                and isinstance(data, dict)
+                and str(op.get("target_file", "")).endswith(
+                    f"/entities/{player_slug}.json"
+                )
+                and "name" in data
+            ):
+                op_loose = _loose_name_key(data.get("name"))
+                if op_loose is not None and op_loose != player_loose:
+                    collided.append(str(data.get("name", "")).strip() or "unnamed")
+                    continue
+            kept.append(op)
+        if collided:
+            updates[:] = kept
+
     stripped: list[str] = []
     repaired = False
     for op in updates:
@@ -189,4 +274,4 @@ def enforce_pc_identity(payload: Any, player_name: str) -> list[str]:
         # or one an imposter already landed) and the notice would be a lie (codex).
         data["role"] = "npc"
         stripped.append(str(data.get("name", "")).strip() or target.rsplit("/", 1)[-1])
-    return _notice(stripped) + _demotion_notice(repaired)
+    return _notice(stripped) + _demotion_notice(repaired) + _collision_notice(collided)

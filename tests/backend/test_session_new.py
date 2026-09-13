@@ -839,3 +839,42 @@ def test_intro_retry_charges_the_llm_ceiling(app, fake_openai, monkeypatch):
     assert response.status_code == 429
     # Only the first call happened — the ceiling stopped the retry.
     assert len(fake_openai.chat.completions.calls) == 1
+
+
+def test_intro_collision_still_yields_the_pc_skeleton_in_the_hint(
+    client, fake_openai, fake_dispatch_log
+):
+    """Item 7 intro-seam ordering: a slug-twin in the intro is dropped by the
+    identity sanitize, and ensure_hint_pc (now AFTER it) still synthesizes
+    the provisioned skeleton — running before, it would have seen the
+    imposter's slug, deferred, and left the hint with no PC at all."""
+    import json as _j
+
+    pc = "Þóra Björnsdóttir"
+    collider = "Ra Bj Rnsd Ttir"
+    block = _j.dumps(
+        {"characters": [{"name": collider, "action": "upsert", "role": "npc"}]}
+    )
+    fake_openai.chat.completions.set_blocking_response(
+        f"Two shadows, one name.\n<world_update>\n{block}\n</world_update>"
+    )
+    response = client.post(
+        "/api/session/new",
+        json={
+            "worldName": "Röstigraben",
+            "playerCharacterName": pc,
+            "playerCharacterClass": "Skald",
+        },
+    )
+    assert response.status_code == 200
+
+    # The dispatched intro payload carries no collider op…
+    fact_payload = fake_dispatch_log[1]["payload"]
+    for op in fact_payload["updates"]:
+        if op["target_file"].endswith("/entities/ra_bj_rnsd_ttir.json"):
+            assert op["data"].get("name") != collider
+    # …and the hint shows the provisioned PC, not the imposter and not nothing.
+    chars = response.json()["turns"][0]["worldUpdates"]["characters"]
+    names = [c.get("name") for c in chars]
+    assert pc in names
+    assert collider not in names
