@@ -758,9 +758,14 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
         # below and have the real PC's authoritative fields copied onto it — and
         # the client falls back to any role=='player' character for vitals, checks
         # and the level-up UI until a reload (codex).
+        # Identity notices can fire at BOTH seams (hint display + payload
+        # write) for the same violation and read identically — emit each text
+        # once per turn (playtest 2026-09-13 nit: the #192 notice showed twice).
+        _identity_notices_emitted: set[str] = set()
         for _notice in identity.sanitize_hint_pc_identity(
             frontend_hint, session.player_character_name
         ):
+            _identity_notices_emitted.add(_notice)
             yield _sse_event({"type": "error", "content": _notice})
 
         # RFC-0014: mirror the engine-committed death outcome into the SSE hint so
@@ -881,6 +886,9 @@ def stream_turn(request: Request, body: StreamRequest) -> StreamingResponse:
             for _notice in identity.enforce_pc_identity(
                 payload, session.player_character_name
             ):
+                if _notice in _identity_notices_emitted:
+                    continue  # same violation already surfaced at the hint seam
+                _identity_notices_emitted.add(_notice)
                 yield _sse_event({"type": "error", "content": _notice})
 
             progression_notices = progression.enforce_progression(

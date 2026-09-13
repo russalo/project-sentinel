@@ -77,22 +77,48 @@ def sanitize_hint_pc_identity(hint: Any, player_name: str) -> list[str]:
         return []
 
     stripped: list[str] = []
+    repaired = False
     for char in chars:
         if not isinstance(char, dict):
             continue
-        if str(char.get("role", "")).strip().lower() != "player":
-            continue
+        role = str(char.get("role", "")).strip().lower()
         # A hint fragment has no target_file, so the NAME is the only identity we
         # have here — that's fine: the hint never authorizes a write, it only drives
         # display, and the payload guard is what protects disk.
         if _is_pc(char.get("name"), player_key):
+            # The PC's own entry (playtest 2026-09-13, the #192 sibling gap):
+            # a role OTHER than "player" here would flow into worldStore and
+            # orphan every component that locates the PC by role === "player"
+            # (vitals silhouette, check prompts, level-up UI). Repair in place;
+            # an explicit role:"player" is the normal shape and passes silently.
+            if "role" in char and role != "player":
+                char["role"] = "player"
+                repaired = True
+            continue
+        if role != "player":
             continue
         # Explicit non-player role, not a pop: the client shallow-spreads top-level
         # character fields, so omitting the key would leave a previously-applied
         # `role:"player"` in the store.
         char["role"] = "npc"
         stripped.append(str(char.get("name", "")).strip() or "an unnamed character")
-    return _notice(stripped)
+    return _notice(stripped) + _demotion_notice(repaired)
+
+
+def _demotion_notice(repaired: bool) -> list[str]:
+    """Player-facing notice for a repaired PC self-demotion (Item 4).
+
+    A DM op/entry writing a non-player role onto the REAL PC is the sibling of
+    the imposter mint: fs-manager's shallow merge would land it on disk, the
+    DM's POV flips to whoever holds role:"player" next turn, and the SPA
+    orphans the PC. Names aren't needed — it is always the session PC.
+    """
+    if not repaired:
+        return []
+    return [
+        "Your character remains the player character — an attempt to change "
+        "their role was ignored."
+    ]
 
 
 def _notice(stripped: list[str]) -> list[str]:
@@ -129,6 +155,7 @@ def enforce_pc_identity(payload: Any, player_name: str) -> list[str]:
     player_slug = _slugify_entity(str(player_name).strip())
 
     stripped: list[str] = []
+    repaired = False
     for op in updates:
         if not isinstance(op, dict):
             continue
@@ -138,16 +165,28 @@ def enforce_pc_identity(payload: Any, player_name: str) -> list[str]:
         data = op.get("data")
         if not isinstance(data, dict):
             continue
-        if str(data.get("role", "")).strip().lower() != "player":
+        role = str(data.get("role", "")).strip().lower()
+        if player_slug and target.endswith(f"/entities/{player_slug}.json"):
+            # The PC's OWN file (authorized by TARGET PATH, as everywhere in
+            # this guard). role:"player" here is the normal — and documented
+            # RECOVERY — shape (playtest 2026-09-13: it repairs a previously
+            # contaminated file) and passes untouched. Any OTHER role is a
+            # self-demotion: fs-manager's shallow merge would flip the stored
+            # role, hand the DM's POV to an imposter, and orphan the SPA's
+            # role === "player" lookups. Repair in place (Item 4, the #192
+            # sibling gap — the original guard only protected NON-PC ops).
+            if "role" in data and role != "player":
+                data["role"] = "player"
+                repaired = True
+            continue
+        if role != "player":
             continue
         # An unsluggable PC name has no entity file the extractor could ever write,
         # so no op can legitimately be the PC's — strip them all.
-        if player_slug and target.endswith(f"/entities/{player_slug}.json"):
-            continue
         # Write an explicit non-player role rather than dropping the key: fs-manager
         # applies `existing.update(data)`, so merely omitting `role` would leave a
         # PREVIOUSLY STORED `role:"player"` in place (worlds predating this guard,
         # or one an imposter already landed) and the notice would be a lie (codex).
         data["role"] = "npc"
         stripped.append(str(data.get("name", "")).strip() or target.rsplit("/", 1)[-1])
-    return _notice(stripped)
+    return _notice(stripped) + _demotion_notice(repaired)
