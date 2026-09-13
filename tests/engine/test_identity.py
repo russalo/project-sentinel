@@ -363,3 +363,184 @@ def test_hint_pc_without_role_and_npcs_are_untouched():
     assert sanitize_hint_pc_identity(hint, "Kael") == []
     assert "role" not in hint["characters"][0]
     assert hint["characters"][1]["role"] == "npc"
+
+
+# ── PC-file name-collision guard (Item 7 — playtest F4) ──────────────
+
+
+PC_NON_ASCII = "Þóra Björnsdóttir"  # _slugify → ra_bj_rnsd_ttir (lossy)
+COLLIDER = "Ra Bj Rnsd Ttir"  # same slug, different character
+
+
+def _collision_payload(extra_ops=None):
+    ops = [
+        {
+            "target_file": "data/state/core/entities/ra_bj_rnsd_ttir.json",
+            "operation": "update",
+            "data": {"name": COLLIDER, "role": "npc", "description": "a stranger"},
+        }
+    ]
+    if extra_ops:
+        ops.extend(extra_ops)
+    return {
+        "session_id": "11111111-1111-1111-1111-111111111111",
+        "log_entry": "a stranger arrives",
+        "updates": ops,
+    }
+
+
+def test_enforce_drops_a_slug_colliding_op():
+    from engine.identity import enforce_pc_identity
+
+    payload = _collision_payload()
+    notices = enforce_pc_identity(payload, PC_NON_ASCII)
+    assert payload["updates"] == []  # the chimera write never dispatches
+    assert notices and "collides" in notices[0]
+
+
+def test_enforce_keeps_the_pcs_own_op_beside_a_collision():
+    from engine.identity import enforce_pc_identity
+
+    pc_op = {
+        "target_file": "data/state/core/entities/ra_bj_rnsd_ttir.json",
+        "operation": "update",
+        "data": {"name": PC_NON_ASCII, "status": "wounded"},
+    }
+    payload = _collision_payload(extra_ops=[pc_op])
+    enforce_pc_identity(payload, PC_NON_ASCII)
+    assert payload["updates"] == [pc_op]  # collision gone, real write kept
+
+
+def test_role_player_grants_no_collision_bypass():
+    """The brief's literal 'repair shape' exemption would have been a bypass:
+    a colliding op just adds role:"player". Name-based authorization only."""
+    from engine.identity import enforce_pc_identity
+
+    payload = _collision_payload()
+    payload["updates"][0]["data"]["role"] = "player"
+    notices = enforce_pc_identity(payload, PC_NON_ASCII)
+    assert payload["updates"] == []
+    assert any("collides" in n for n in notices)
+
+
+def test_punctuation_variant_is_the_pcs_write_not_a_collision():
+    from engine.identity import enforce_pc_identity
+
+    payload = {
+        "session_id": "11111111-1111-1111-1111-111111111111",
+        "log_entry": "the name shifts",
+        "updates": [
+            {
+                "target_file": "data/state/core/entities/o_neil.json",
+                "operation": "update",
+                "data": {"name": "O Neil", "status": "alive"},
+            }
+        ],
+    }
+    assert enforce_pc_identity(payload, "O'Neil") == []
+    assert len(payload["updates"]) == 1  # authorized, untouched
+
+
+def test_absent_name_fragment_update_stays_authorized():
+    """No name = no collision evidence (fail-safe). LLM-path ops always carry
+    a name (the Fact-Extractor discards nameless entries), so this is the
+    direct-caller tolerance."""
+    from engine.identity import enforce_pc_identity
+
+    payload = {
+        "session_id": "11111111-1111-1111-1111-111111111111",
+        "log_entry": "a blow lands",
+        "updates": [
+            {
+                "target_file": "data/state/core/entities/ra_bj_rnsd_ttir.json",
+                "operation": "update",
+                "data": {"status": "wounded"},
+            }
+        ],
+    }
+    assert enforce_pc_identity(payload, PC_NON_ASCII) == []
+    assert len(payload["updates"]) == 1
+
+
+def test_hint_collision_entry_is_removed_not_adopted():
+    """Without the guard the slug-twin is treated AS the PC on the display
+    seam — #199 would repair its role and the normalizers would force level
+    onto it (a display chimera)."""
+    from engine.identity import sanitize_hint_pc_identity
+
+    hint = {
+        "characters": [
+            {"name": COLLIDER, "role": "npc", "description": "a stranger"},
+            {"name": "Goblin", "role": "npc"},
+        ]
+    }
+    notices = sanitize_hint_pc_identity(hint, PC_NON_ASCII)
+    assert [c["name"] for c in hint["characters"]] == ["Goblin"]
+    assert any("collides" in n for n in notices)
+
+
+def test_hint_keeps_the_pcs_own_entry_and_variants():
+    from engine.identity import sanitize_hint_pc_identity
+
+    hint = {"characters": [{"name": PC_NON_ASCII, "status": "wounded"}]}
+    assert sanitize_hint_pc_identity(hint, PC_NON_ASCII) == []
+    assert len(hint["characters"]) == 1
+    hint = {"characters": [{"name": "O Neil"}]}
+    assert sanitize_hint_pc_identity(hint, "O'Neil") == []
+    assert len(hint["characters"]) == 1
+
+
+def test_loose_key_edge_shapes():
+    from engine.identity import _loose_name_key
+
+    assert _loose_name_key("O'Neil") == _loose_name_key("O Neil") == "oneil"
+    assert _loose_name_key(PC_NON_ASCII) != _loose_name_key(COLLIDER)
+    # Alphanumeric-free names fall back to the casefolded raw name — None
+    # would disable the collision pass for exactly the most-exposed names
+    # (codex on PR #202).
+    assert _loose_name_key("***") == "***"
+    assert _loose_name_key("") is None
+    assert _loose_name_key(None) is None
+
+
+def test_alphanumeric_free_pc_name_is_still_collision_guarded():
+    """codex (PR #202): PC "---" slugs validly ("---") and loose-keyed to
+    None, disabling the pass — while "Þ---" slugs onto the SAME file and
+    would then be role-repaired into the PC. The casefold fallback keeps the
+    guard armed."""
+    from engine.identity import enforce_pc_identity, sanitize_hint_pc_identity
+
+    payload = {
+        "session_id": "11111111-1111-1111-1111-111111111111",
+        "log_entry": "a dashed stranger",
+        "updates": [
+            {
+                "target_file": "data/state/core/entities/---.json",
+                "operation": "update",
+                "data": {"name": "Þ---", "role": "npc"},
+            }
+        ],
+    }
+    notices = enforce_pc_identity(payload, "---")
+    assert payload["updates"] == []
+    assert any("collides" in n for n in notices)
+
+    # The PC's own degenerate name still writes.
+    payload = {
+        "session_id": "11111111-1111-1111-1111-111111111111",
+        "log_entry": "the dashes endure",
+        "updates": [
+            {
+                "target_file": "data/state/core/entities/---.json",
+                "operation": "update",
+                "data": {"name": "---", "status": "alive"},
+            }
+        ],
+    }
+    assert enforce_pc_identity(payload, "---") == []
+    assert len(payload["updates"]) == 1
+
+    hint = {"characters": [{"name": "Þ---", "role": "npc"}]}
+    notices = sanitize_hint_pc_identity(hint, "---")
+    assert hint["characters"] == []
+    assert any("collides" in n for n in notices)

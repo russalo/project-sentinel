@@ -89,3 +89,76 @@ def test_pc_self_demotion_is_repaired_in_payload_and_hint(
     assert len(notices) == len(set(notices)), notices
     assert any("remains the player character" in n for n in notices)
     assert any("was ignored" in n for n in notices)
+
+
+# ── Item 7: slug-collision guard through the routes (playtest F4) ────
+
+SESSION_F4 = "77777777-8888-4999-8aaa-bbbbbbbbbbbb"
+PC_NON_ASCII = "Þóra Björnsdóttir"
+COLLIDER = "Ra Bj Rnsd Ttir"
+
+
+def test_slug_collision_never_reaches_disk_or_display(
+    client, fake_openai, fake_dispatch_log, tmp_data_dir
+):
+    """THE F4 REGRESSION: the collider slugs onto the PC's file and — as 'the
+    PC's own write' under target-path authorization — renamed and clobbered
+    the PC into a chimera. Now: op dropped, hint entry dropped, notice."""
+    session_dir = tmp_data_dir / "state" / "core" / "sessions"
+    session_dir.mkdir(parents=True, exist_ok=True)
+    (session_dir / f"{SESSION_F4}.json").write_text(
+        json.dumps(
+            {
+                "session_id": SESSION_F4,
+                "world_name": "Röstigraben",
+                "started_at": "2026-09-11T00:00:00Z",
+                "turns": [],
+                "active": True,
+                "player_character_name": PC_NON_ASCII,
+                "world_id": "7c0ffee0-0000-4000-8000-00000000000f",
+            }
+        ),
+        encoding="utf-8",
+    )
+    block = json.dumps(
+        {
+            "characters": [
+                {"name": PC_NON_ASCII, "action": "update", "status": "wounded"},
+                {
+                    "name": COLLIDER,
+                    "action": "upsert",
+                    "role": "player",  # bypass attempt rides along
+                    "description": "a stranger who wears your face",
+                },
+            ]
+        }
+    )
+    fake_openai.chat.completions.set_stream_tokens(
+        ["A mirror cracks. ", f"<world_update>{block}</world_update>"]
+    )
+
+    response = client.post(
+        "/api/stream", json={"action": "face them", "sessionId": SESSION_F4}
+    )
+    assert response.status_code == 200
+    events = _events(response.text)
+
+    # Write seam: exactly ONE op for the shared slug — the PC's own.
+    entity_ops = [
+        u
+        for entry in fake_dispatch_log
+        for u in entry["payload"]["updates"]
+        if u["target_file"].endswith("/entities/ra_bj_rnsd_ttir.json")
+    ]
+    assert len(entity_ops) == 1
+    assert entity_ops[0]["data"]["name"] == PC_NON_ASCII
+    assert entity_ops[0]["data"]["status"] == "wounded"
+
+    # Display seam: the collider is gone; the PC's entry survives.
+    hint = next(e for e in events if e.get("type") == "world_update")["data"]
+    names = [c.get("name") for c in hint["characters"]]
+    assert COLLIDER not in names
+    assert PC_NON_ASCII in names
+
+    notices = [e["content"] for e in events if e.get("type") == "error"]
+    assert any("collides" in n for n in notices)

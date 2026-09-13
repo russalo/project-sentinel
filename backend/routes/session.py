@@ -482,12 +482,6 @@ def _intro_hint(
     though the dispatched payload was sanitized (coderabbit).
     """
     hint = _parse_hint_block_for_frontend(raw_response)
-    # When provisioning created the PC but the DM's hint never mentions it,
-    # synthesize the skeleton entry — otherwise the UI has no PC until a reload
-    # (codex on PR #196). Before the sanitizers, so the entry flows through the
-    # same pins as a DM-written one.
-    if established_pc is not None:
-        provisioning.ensure_hint_pc(hint, established_pc)
     established_archetype = (
         established_pc.get("archetype") if isinstance(established_pc, dict) else None
     )
@@ -498,6 +492,15 @@ def _intro_hint(
     # hydration after creation, so an imposter claim would make the client treat it
     # as the player for the entire initial session (codex).
     identity.sanitize_hint_pc_identity(hint, player_name)
+    # When provisioning created the PC but the DM's hint never mentions it,
+    # synthesize the skeleton entry — otherwise the UI has no PC until a reload
+    # (codex on PR #196). AFTER the identity sanitize (Item 7): a colliding
+    # slug-twin entry gets dropped there, and running this first would have
+    # seen the imposter's slug, deferred, and left the hint with no PC at all.
+    # Before the remaining sanitizers, so the entry flows through the same
+    # pins as a DM-written one.
+    if established_pc is not None:
+        provisioning.ensure_hint_pc(hint, established_pc)
     class_rules.sanitize_hint_archetypes(
         hint,
         player_name=player_name,
