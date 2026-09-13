@@ -54,12 +54,16 @@ def _loose_name_key(value: Any) -> str | None:
     non-alphanumerics ("O'Neil" / "O Neil" → both "oneil" — the PC's own
     write, authorized per #192), while a lossy-slug COLLISION differs in the
     letters ``_slugify`` dropped ("Þóra Björnsdóttir" → "þórabjörnsdóttir" vs
-    "Ra Bj Rnsd Ttir" → "rabjrnsdttir" — playtest F4's chimera). None when
-    nothing alphanumeric survives — no evidence, never a mismatch."""
+    "Ra Bj Rnsd Ttir" → "rabjrnsdttir" — playtest F4's chimera). When nothing
+    alphanumeric survives, fall back to the CASEFOLDED raw name rather than
+    None: a PC named "---" has a valid slug ("---" — hyphens are slug chars)
+    and "Þ---" slugs onto the same file, so returning None here disabled the
+    whole collision pass for exactly the names most exposed to it (codex on
+    PR #202). None only for an empty/whitespace name — genuinely no evidence."""
     text = str(value or "").strip()
     if not text:
         return None
-    return "".join(ch for ch in text.casefold() if ch.isalnum()) or None
+    return "".join(ch for ch in text.casefold() if ch.isalnum()) or text.casefold()
 
 
 def _collision_notice(dropped: list[str]) -> list[str]:

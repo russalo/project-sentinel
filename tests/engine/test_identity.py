@@ -495,6 +495,52 @@ def test_loose_key_edge_shapes():
 
     assert _loose_name_key("O'Neil") == _loose_name_key("O Neil") == "oneil"
     assert _loose_name_key(PC_NON_ASCII) != _loose_name_key(COLLIDER)
-    assert _loose_name_key("***") is None  # unkeyable → never a mismatch
+    # Alphanumeric-free names fall back to the casefolded raw name — None
+    # would disable the collision pass for exactly the most-exposed names
+    # (codex on PR #202).
+    assert _loose_name_key("***") == "***"
     assert _loose_name_key("") is None
     assert _loose_name_key(None) is None
+
+
+def test_alphanumeric_free_pc_name_is_still_collision_guarded():
+    """codex (PR #202): PC "---" slugs validly ("---") and loose-keyed to
+    None, disabling the pass — while "Þ---" slugs onto the SAME file and
+    would then be role-repaired into the PC. The casefold fallback keeps the
+    guard armed."""
+    from engine.identity import enforce_pc_identity, sanitize_hint_pc_identity
+
+    payload = {
+        "session_id": "11111111-1111-1111-1111-111111111111",
+        "log_entry": "a dashed stranger",
+        "updates": [
+            {
+                "target_file": "data/state/core/entities/---.json",
+                "operation": "update",
+                "data": {"name": "Þ---", "role": "npc"},
+            }
+        ],
+    }
+    notices = enforce_pc_identity(payload, "---")
+    assert payload["updates"] == []
+    assert any("collides" in n for n in notices)
+
+    # The PC's own degenerate name still writes.
+    payload = {
+        "session_id": "11111111-1111-1111-1111-111111111111",
+        "log_entry": "the dashes endure",
+        "updates": [
+            {
+                "target_file": "data/state/core/entities/---.json",
+                "operation": "update",
+                "data": {"name": "---", "status": "alive"},
+            }
+        ],
+    }
+    assert enforce_pc_identity(payload, "---") == []
+    assert len(payload["updates"]) == 1
+
+    hint = {"characters": [{"name": "Þ---", "role": "npc"}]}
+    notices = sanitize_hint_pc_identity(hint, "---")
+    assert hint["characters"] == []
+    assert any("collides" in n for n in notices)
